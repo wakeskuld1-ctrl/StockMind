@@ -1,0 +1,24 @@
+{
+  "analysis_date": "2026-04-15",
+  "chair_process_action": "approve_execution",
+  "chair_resolution_ref": "chair-resolution:601916.SH:2026-04-15:committee:v1::tampered",
+  "conclusion_summary": "post meeting artifact was tampered after the package object graph had already frozen the chair binding",
+  "contract_version": "security_post_meeting_conclusion.v1",
+  "decision_id": "decision-601916-SH-2026-04-15",
+  "document_type": "security_post_meeting_conclusion",
+  "execution_notes": [
+    "keep the approved execution rhythm"
+  ],
+  "final_action": "buy",
+  "final_confidence": 0.82,
+  "final_exposure_side": "long",
+  "final_trading_stance": "bullish",
+  "follow_up_actions": [
+    "track the next disclosure window"
+  ],
+  "generated_at": "2026-04-15T09:45:00+08:00",
+  "post_meeting_conclusion_id": "post-meeting-decision-601916-SH-2026-04-15",
+  "return_to_stage": null,
+  "revision_required": false,
+  "symbol": "601916.SH"
+}

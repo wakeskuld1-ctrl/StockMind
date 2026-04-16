@@ -1,0 +1,101 @@
+{
+  "package_id": "pkg-601916.SH-2026-04-08",
+  "contract_version": "security_decision_package.v1",
+  "created_at": "2026-04-09T09:30:00+08:00",
+  "package_version": 1,
+  "previous_package_path": null,
+  "revision_reason": "initial_submission",
+  "trigger_event_summary": "initial package generated from submit approval",
+  "scene_name": "security_decision_committee",
+  "decision_id": "601916.SH-2026-04-08",
+  "decision_ref": "decision_ref:25116:1775676958704329000",
+  "approval_ref": "approval_ref:25116:1775676958704341700",
+  "symbol": "601916.SH",
+  "analysis_date": "2026-04-08",
+  "package_status": "pending_review_materials",
+  "object_graph": {
+    "decision_ref": "decision_ref:25116:1775676958704329000",
+    "approval_ref": "approval_ref:25116:1775676958704341700",
+    "position_plan_ref": "plan-601916.SH-2026-04-08",
+    "approval_brief_ref": "brief-601916.SH-2026-04-08",
+    "scorecard_ref": "scorecard-601916.SH-2026-04-08",
+    "decision_card_path": "tests\\runtime_fixtures\\security_scorecard\\submit_approval_scorecard_1775676958610618200\\decisions\\601916.SH-2026-04-08.json",
+    "approval_request_path": "tests\\runtime_fixtures\\security_scorecard\\submit_approval_scorecard_1775676958610618200\\approvals\\approval_ref__25116__1775676958704341700.json",
+    "position_plan_path": "tests\\runtime_fixtures\\security_scorecard\\submit_approval_scorecard_1775676958610618200\\position_plans\\601916.SH-2026-04-08.json",
+    "approval_brief_path": "tests\\runtime_fixtures\\security_scorecard\\submit_approval_scorecard_1775676958610618200\\approval_briefs\\601916.SH-2026-04-08.json",
+    "scorecard_path": "tests\\runtime_fixtures\\security_scorecard\\submit_approval_scorecard_1775676958610618200\\scorecards\\601916.SH-2026-04-08.json"
+  },
+  "artifact_manifest": [
+    {
+      "artifact_role": "decision_card",
+      "path": "tests\\runtime_fixtures\\security_scorecard\\submit_approval_scorecard_1775676958610618200\\decisions\\601916.SH-2026-04-08.json",
+      "sha256": "00f1a9209ca7163ead25a7865d27a757d593cbd29710ef06ff56a4d0760d2788",
+      "contract_version": "sheetmind.decision_card.v1",
+      "required": true,
+      "present": true
+    },
+    {
+      "artifact_role": "approval_request",
+      "path": "tests\\runtime_fixtures\\security_scorecard\\submit_approval_scorecard_1775676958610618200\\approvals\\approval_ref__25116__1775676958704341700.json",
+      "sha256": "689c053df276ba956fe73e309cb7db348d58db2b84178b45ee551a34f5e9176f",
+      "contract_version": "sheetmind.approval_request.v1",
+      "required": true,
+      "present": true
+    },
+    {
+      "artifact_role": "approval_events",
+      "path": "tests\\runtime_fixtures\\security_scorecard\\submit_approval_scorecard_1775676958610618200\\approval_events\\601916.SH-2026-04-08.json",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "contract_version": "security_approval_events.v1",
+      "required": true,
+      "present": true
+    },
+    {
+      "artifact_role": "position_plan",
+      "path": "tests\\runtime_fixtures\\security_scorecard\\submit_approval_scorecard_1775676958610618200\\position_plans\\601916.SH-2026-04-08.json",
+      "sha256": "17f45e426f02278a1dcb983622e98422ac00ea5bd3e7660dfcb8d377c36cd417",
+      "contract_version": "security_position_plan.v2",
+      "required": true,
+      "present": true
+    },
+    {
+      "artifact_role": "approval_brief",
+      "path": "tests\\runtime_fixtures\\security_scorecard\\submit_approval_scorecard_1775676958610618200\\approval_briefs\\601916.SH-2026-04-08.json",
+      "sha256": "e3a1b20a065c7fea5726bc28512d89855477505804f0193e736396247e0b6494",
+      "contract_version": "security_approval_brief.v1",
+      "required": true,
+      "present": true
+    },
+    {
+      "artifact_role": "security_scorecard",
+      "path": "tests\\runtime_fixtures\\security_scorecard\\submit_approval_scorecard_1775676958610618200\\scorecards\\601916.SH-2026-04-08.json",
+      "sha256": "0c2370d70beac29fe95e808988fa6c4880625a988c0eda04fac8d5cd0752fb29",
+      "contract_version": "security_scorecard.v1",
+      "required": true,
+      "present": true
+    },
+    {
+      "artifact_role": "audit_log",
+      "path": "tests\\runtime_fixtures\\security_scorecard\\submit_approval_scorecard_1775676958610618200\\audit_log\\601916.SH-2026-04-08.jsonl",
+      "sha256": "f1edc21eeba602223910821c3d00e89529617d18b3a7655d1d6e9bc6b35c0238",
+      "contract_version": "security_decision_audit_log.v1",
+      "required": true,
+      "present": true
+    },
+    {
+      "artifact_role": "approval_brief_signature",
+      "path": "",
+      "sha256": "",
+      "contract_version": "security_approval_brief_signature.v1",
+      "required": false,
+      "present": false
+    }
+  ],
+  "governance_binding": {
+    "evidence_hash": "sec-7e8b26acbe1edf6a",
+    "governance_hash": "gov-b6bff85afdf7e2203ee4ba7f29a8ff98a4f276c14731662b14b80aa015609758",
+    "decision_ref": "decision_ref:25116:1775676958704329000",
+    "approval_ref": "approval_ref:25116:1775676958704341700",
+    "package_scope": "security_decision_submit_approval"
+  }
+}

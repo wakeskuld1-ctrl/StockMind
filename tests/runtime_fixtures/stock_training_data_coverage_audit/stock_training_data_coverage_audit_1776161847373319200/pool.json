@@ -1,0 +1,18 @@
+{
+  "meta": { "version": "test_pool_v1" },
+  "market_scope": "A_SHARE",
+  "instrument_scope": "EQUITY",
+  "readiness_gates": {
+    "minimum_symbol_count": 1,
+    "minimum_industry_bucket_count": 1,
+    "minimum_effective_history_days_per_symbol": 750,
+    "hard_floor_history_days_per_symbol": 200
+  },
+  "pools": [
+    {
+      "pool_id": "bank_core",
+      "sector_proxy_symbol": "512800.SH",
+      "equity_symbols": ["600000.SH", "600036.SH", "601398.SH"]
+    }
+  ]
+}

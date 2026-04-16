@@ -1,0 +1,35 @@
+{
+  "analysis_date": "2026-04-15",
+  "chair_process_action": "defer",
+  "chair_resolution_ref": "chair-601916.SH-2026-04-15",
+  "conclusion_summary": "会后结论确认 `abstain` 为当前正式执行动作，后续跟踪锚定于主席决议 `chair-601916.SH-2026-04-15`。",
+  "contract_version": "security_post_meeting_conclusion.v1",
+  "decision_id": "601916.SH-2026-04-15",
+  "document_type": "security_post_meeting_conclusion",
+  "execution_notes": [
+    "keep the plan",
+    "主席批准流转前，必须遵守风险否决状态 `none` 与最终流程动作 `defer`。",
+    "当前最终交易立场为 `observe`，对应委员会建议动作 `abstain`。",
+    "等待市场环境与个股方向进一步共振",
+    "继续跟踪多头失效条件：量能确认不足；方向确认不足，过早押注单边容易来回止损；个股自身尚未完成方向确认，贸然追随环境可能放大假突破风险",
+    "继续核对空头挑战点：个股自身尚未完成方向确认，贸然追随环境可能放大假突破风险；量能确认不足；方向确认不足，过早押注单边容易来回止损",
+    "当前未提供评分卡模型 artifact，无法执行分箱、WOE 与点数累加。",
+    "本轮只保留正式对象、原始特征快照与治理链挂接，不输出伪造分数。"
+  ],
+  "final_action": "abstain",
+  "final_confidence": 0.49,
+  "final_exposure_side": "neutral",
+  "final_trading_stance": "observe",
+  "follow_up_actions": [
+    "track next disclosure",
+    "等待市场环境与个股方向进一步共振",
+    "继续跟踪多头失效条件：量能确认不足；方向确认不足，过早押注单边容易来回止损；个股自身尚未完成方向确认，贸然追随环境可能放大假突破风险",
+    "继续核对空头挑战点：个股自身尚未完成方向确认，贸然追随环境可能放大假突破风险；量能确认不足；方向确认不足，过早押注单边容易来回止损",
+    "补齐训练样本或正式模型后再进入可执行审阅"
+  ],
+  "generated_at": "2026-04-16T12:30:00+08:00",
+  "post_meeting_conclusion_id": "post-meeting-601916.SH-2026-04-15",
+  "return_to_stage": "security_decision_committee",
+  "revision_required": false,
+  "symbol": "601916.SH"
+}

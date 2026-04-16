@@ -1,0 +1,23 @@
+{
+  "analysis_date": "2026-04-16",
+  "chair_process_action": "approve_execution",
+  "chair_resolution_ref": "chair-decision-601916-SH-2026-04-16::tampered",
+  "conclusion_summary": "fixture post meeting",
+  "contract_version": "security_post_meeting_conclusion.v1",
+  "decision_id": "decision-601916-SH-2026-04-16",
+  "document_type": "security_post_meeting_conclusion",
+  "execution_notes": [
+    "keep the plan"
+  ],
+  "final_action": "buy",
+  "final_confidence": 0.82,
+  "final_exposure_side": "long",
+  "final_trading_stance": "bullish",
+  "follow_up_actions": [
+    "track next disclosure"
+  ],
+  "generated_at": "2026-04-16T09:20:00+08:00",
+  "post_meeting_conclusion_id": "post-meeting-decision-601916-SH-2026-04-16",
+  "revision_required": false,
+  "symbol": "601916.SH"
+}

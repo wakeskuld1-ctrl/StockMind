@@ -1,0 +1,67 @@
+{
+  "add_summary": "add on retest",
+  "analysis_date": "2026-04-16",
+  "approval_ref": "approval:decision-601916-SH-2026-04-16",
+  "approval_status": "Pending",
+  "bear_summary": [
+    "macro risk"
+  ],
+  "brief_id": "brief-decision-601916-SH-2026-04-16",
+  "bull_summary": [
+    "trend supportive"
+  ],
+  "cancel_summary": "cancel on macro break",
+  "committee_status": "ready_for_review",
+  "confidence_band": "high",
+  "confidence_score": 0.82,
+  "contract_version": "security_approval_brief.v1",
+  "core_risks": [
+    "core risk"
+  ],
+  "core_supporting_points": [
+    "supporting point"
+  ],
+  "decision_id": "decision-601916-SH-2026-04-16",
+  "decision_ref": "decision:601916.SH:2026-04-16",
+  "decision_status": "ready_for_review",
+  "direction": "Long",
+  "document_type": "security_approval_brief",
+  "entry_summary": "enter on breakout",
+  "evidence_hash": "evidence-hash",
+  "executive_summary": "fixture summary",
+  "final_recommendation": "buy",
+  "gate_outcome_summary": [
+    "analysis_date_gate -> pass"
+  ],
+  "gate_summary": [
+    "analysis_date_gate:pass:fixture"
+  ],
+  "generated_at": "2026-04-16T09:05:00+08:00",
+  "governance_hash": "governance-hash",
+  "package_binding": {
+    "approval_ref": "approval:decision-601916-SH-2026-04-16",
+    "artifact_role": "approval_brief",
+    "brief_contract_version": "security_approval_brief.v1",
+    "decision_id": "decision-601916-SH-2026-04-16",
+    "decision_ref": "decision:601916.SH:2026-04-16"
+  },
+  "position_plan_summary": {
+    "add_summary": "add on retest",
+    "cancel_summary": "cancel on macro break",
+    "entry_summary": "enter on breakout",
+    "position_plan_status": "ready",
+    "risk_budget_summary": "risk 2%",
+    "stop_loss_summary": "stop 5%",
+    "take_profit_summary": "targets 10/18%"
+  },
+  "position_summary": "starter long",
+  "recommended_review_action": "proceed_with_review",
+  "required_next_actions": [
+    "await reviewers"
+  ],
+  "risk_budget_summary": "risk 2%",
+  "scene_name": "security_review",
+  "stop_loss_summary": "stop 5%",
+  "symbol": "601916.SH",
+  "take_profit_summary": "targets 10/18%"
+}

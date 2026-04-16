@@ -1,0 +1,527 @@
+{
+  "symbol": "513180.SH",
+  "analysis_date": "2025-08-08",
+  "evidence_version": "security-analysis-fullstack:513180.SH:2025-08-08:v1",
+  "analysis_date_guard": {
+    "requested_as_of_date": "2025-08-08",
+    "effective_analysis_date": "2025-08-08",
+    "effective_trade_date": "2025-08-08",
+    "local_data_last_date": "2025-08-08",
+    "data_freshness_status": "local_exact_requested_date",
+    "sync_attempted": false,
+    "sync_result": null,
+    "date_fallback_reason": null
+  },
+  "technical_context": {
+    "symbol": "513180.SH",
+    "market_symbol": "510300.SH",
+    "sector_symbol": "513180.SH",
+    "analysis_date": "2025-08-08",
+    "evidence_version": "security-analysis-contextual:513180.SH:2025-08-08:v1",
+    "analysis_date_guard": {
+      "requested_as_of_date": "2025-08-08",
+      "effective_analysis_date": "2025-08-08",
+      "effective_trade_date": "2025-08-08",
+      "local_data_last_date": "2025-08-08",
+      "data_freshness_status": "local_exact_requested_date",
+      "sync_attempted": false,
+      "sync_result": null,
+      "date_fallback_reason": null
+    },
+    "stock_analysis": {
+      "symbol": "513180.SH",
+      "as_of_date": "2025-08-08",
+      "analysis_date": "2025-08-08",
+      "requested_as_of_date": "2025-08-08",
+      "effective_analysis_date": "2025-08-08",
+      "effective_trade_date": "2025-08-08",
+      "local_data_last_date": "2025-08-08",
+      "data_freshness_status": "local_exact_requested_date",
+      "sync_attempted": false,
+      "sync_result": null,
+      "date_fallback_reason": null,
+      "history_row_count": 220,
+      "trend_bias": "bullish",
+      "trend_strength": "strong",
+      "volume_confirmation": "confirmed",
+      "money_flow_signal": "overbought_distribution",
+      "mean_reversion_signal": "overbought_reversal_risk",
+      "range_position_signal": "overbought_pullback_risk",
+      "bollinger_position_signal": "neutral",
+      "bollinger_midline_signal": "midline_support_bias",
+      "bollinger_bandwidth_signal": "expanding",
+      "breakout_signal": "confirmed_resistance_breakout",
+      "divergence_signal": "none",
+      "timing_signal": "neutral",
+      "rsrs_signal": "neutral",
+      "momentum_signal": "positive",
+      "volatility_state": "high",
+      "consultation_conclusion": {
+        "bias": "bullish_continuation",
+        "confidence": "high",
+        "headline": "多头延续占优，近 20 日阻力 108.02 已被有效突破。",
+        "rationale": [
+          "近 20 日阻力 108.02 已被有效突破，价格进入关键位上方。",
+          "均线结构与趋势强度仍偏多，主趋势尚未转弱。",
+          "量能与当前方向保持一致，结构确认度更高。",
+          "MACD 与 RSI 组合显示动量仍偏正向。",
+          "多头延续结构已经成立，突破后若能继续守住关键位，向上剧本才会保持完整。"
+        ],
+        "risk_flags": [
+          "当前波动偏高",
+          "突破后回踩若承接转弱，多头延续强度会下降",
+          "高位过热后回落风险"
+        ]
+      },
+      "summary": "整体偏多，趋势强度较强，量能配合较好，未见明显背离，动量偏强，波动偏高。 鐭嚎鎷╂椂淇″彿涓€?銆? RSRS 暂未形成 beta 与 zscore 的同向共振，斜率结构仍待确认。 MFI 显示短线资金已进入高位过热区，需提防分配与回吐压力。 CCI 显示价格已明显偏离均值上沿，短线存在均值回归与高位回落风险。 Williams %R 显示收盘已贴近近期区间上沿，短线需防范高位回落与追高承接不足。 布林带显示价格仍运行在上下轨之间，位置端暂未形成极端突破信号。 布林带中轨仍提供支撑，价格暂时保持在中轨上方运行。 布林带带宽正在扩张，说明波动正在放大。 近 20 日阻力位 108.02 已被有效突破，价格已经站上关键位。",
+      "recommended_actions": [
+        "优先按顺势思路观察回踩 10 日 EMA 后的承接力度",
+        "ADX 显示趋势强度已经成型，可优先关注顺势延续而不是频繁抄底摸顶",
+        "量能已与当前方向形成配合，可优先关注趋势延续而不是单纯猜测反转",
+        "保留对强势延续的跟踪，但避免在短线过热位置追高",
+        "提高波动容忍和止损纪律，避免在剧烈摆动中频繁反向操作",
+        "KDJ 鏆傛湭缁欏嚭鏄庣‘鐭嚎鎷╂椂浼樺娍锛屽缓璁户缁粨鍚堣秼鍔裤€侀噺鑳藉拰鍏抽敭浠蜂綅涓€璧疯窡韪?",
+        "RSRS 暂未形成 beta 与 zscore 的同向共振，建议继续结合趋势、量能和关键价位确认是否出现新的斜率强化",
+        "MFI 已进入过热区，优先确认高位放量后的承接质量，不要把持续拉升直接等同于无风险追高",
+        "CCI 已进入上沿极值区，优先确认冲高后的承接与回踩质量，不要把短线过度偏离直接等同于可持续追高",
+        "Williams %R 已进入区间上沿，优先确认冲高后是否出现放量滞涨与回踩承接，不要把贴近上沿直接等同于还能继续追高",
+        "布林带位置仍在中性区间，建议继续等待价格向上下轨给出更清晰的方向确认。",
+        "价格仍运行在布林带中轨上方，可优先观察中轨回踩后的承接是否延续，再决定是否继续按偏多节奏跟踪。",
+        "布林带带宽正在扩张，执行上要预留更大的波动缓冲，不要用过紧的节奏处理仓位。",
+        "价格已有效突破近 20 日阻力位 108.02，优先观察回踩关键位后的承接是否延续，而不是把所有冲高都当成一次性行情。"
+      ],
+      "watch_points": [
+        "留意收盘价是否继续站稳 10 日 EMA 之上",
+        "留意 50 日均线与 200 日均线的多头排列是否保持",
+        "留意 ADX 是否继续保持在 25 之上，以确认趋势强度没有明显衰减",
+        "留意 +DI 是否继续高于 -DI，以确认多头方向没有被破坏",
+        "留意成交量是否继续维持在 20 日均量之上，确认量价共振没有减弱",
+        "留意 ATR 是否继续抬升，避免把高波动误判成有效趋势",
+        "鐣欐剰 KDJ 鏄惁鍑虹幇鏂扮殑浣庝綅閲戝弶鎴栭珮浣嶆鍙夛紝鍒ゆ柇鐭嚎鎷╂椂鐘舵€佹槸鍚﹀紑濮嬪彉鍖?",
+        "留意 RSRS 的 beta 与 zscore 是否开始形成同向共振，判断斜率结构是否从当前中性状态转向强化或走弱",
+        "留意 MFI 是否继续停留在 80 上方并伴随价格滞涨，确认高位资金过热是否开始转化为分配压力",
+        "留意 CCI 是否仍继续停留在 100 上方并伴随价格滞涨，确认高位偏离是否开始回归均值",
+        "留意 Williams %R 是否仍停留在 -20 上方附近并伴随价格冲高乏力，确认近期区间高位是否开始转弱回落",
+        "留意价格是否继续在布林带中轨附近整理，或开始向上下轨一端扩张形成新的位置倾向。",
+        "留意布林带中轨回踩时能否继续获得承接，确认中轨支撑是否仍然有效。",
+        "留意布林带带宽是否继续扩张，判断当前波动放大是趋势延续还是情绪冲击。",
+        "留意价格回踩近 20 日阻力位 108.02 后能否转化为新的支撑，并观察量能是否重新回到 20 日均量上方。"
+      ],
+      "indicator_snapshot": {
+        "close": 108.9,
+        "ema_10": 104.97740820169423,
+        "sma_50": 91.34200000000001,
+        "sma_200": 58.39300000000001,
+        "adx_14": 100.0,
+        "plus_di_14": 40.06755446360442,
+        "minus_di_14": 0.0,
+        "obv": 435810000.0,
+        "volume_sma_20": 2885500.0,
+        "volume_ratio_20": 1.0296309131866228,
+        "mfi_14": 100.0,
+        "cci_20": 126.66666666666633,
+        "williams_r_14": -4.8219584569732294,
+        "boll_width_ratio_20": 0.20188293382355882,
+        "macd": 5.015906131745808,
+        "macd_signal": 4.627599602436042,
+        "macd_histogram": 0.38830652930976584,
+        "rsi_14": 100.0,
+        "k_9": 92.83048113447694,
+        "d_9": 92.77832449083208,
+        "j_9": 92.93479442176667,
+        "rsrs_beta_18": 1.0,
+        "rsrs_zscore_18_60": -0.5638144498286046,
+        "boll_upper": 110.68865508331031,
+        "boll_middle": 100.54,
+        "boll_lower": 90.3913449166897,
+        "support_level_20": 91.3,
+        "resistance_level_20": 108.02,
+        "atr_14": 1.9355125418594155
+      },
+      "data_window_summary": {
+        "requested_lookback_days": 260,
+        "loaded_row_count": 220,
+        "start_date": "2025-01-01",
+        "end_date": "2025-08-08"
+      }
+    },
+    "market_analysis": {
+      "symbol": "510300.SH",
+      "as_of_date": "2025-08-08",
+      "analysis_date": "2025-08-08",
+      "requested_as_of_date": "2025-08-08",
+      "effective_analysis_date": "2025-08-08",
+      "effective_trade_date": "2025-08-08",
+      "local_data_last_date": "2025-08-08",
+      "data_freshness_status": "local_exact_requested_date",
+      "sync_attempted": false,
+      "sync_result": null,
+      "date_fallback_reason": null,
+      "history_row_count": 220,
+      "trend_bias": "bullish",
+      "trend_strength": "strong",
+      "volume_confirmation": "confirmed",
+      "money_flow_signal": "overbought_distribution",
+      "mean_reversion_signal": "overbought_reversal_risk",
+      "range_position_signal": "overbought_pullback_risk",
+      "bollinger_position_signal": "neutral",
+      "bollinger_midline_signal": "midline_support_bias",
+      "bollinger_bandwidth_signal": "expanding",
+      "breakout_signal": "confirmed_resistance_breakout",
+      "divergence_signal": "none",
+      "timing_signal": "neutral",
+      "rsrs_signal": "neutral",
+      "momentum_signal": "positive",
+      "volatility_state": "high",
+      "consultation_conclusion": {
+        "bias": "bullish_continuation",
+        "confidence": "high",
+        "headline": "多头延续占优，近 20 日阻力 108.02 已被有效突破。",
+        "rationale": [
+          "近 20 日阻力 108.02 已被有效突破，价格进入关键位上方。",
+          "均线结构与趋势强度仍偏多，主趋势尚未转弱。",
+          "量能与当前方向保持一致，结构确认度更高。",
+          "MACD 与 RSI 组合显示动量仍偏正向。",
+          "多头延续结构已经成立，突破后若能继续守住关键位，向上剧本才会保持完整。"
+        ],
+        "risk_flags": [
+          "当前波动偏高",
+          "突破后回踩若承接转弱，多头延续强度会下降",
+          "高位过热后回落风险"
+        ]
+      },
+      "summary": "整体偏多，趋势强度较强，量能配合较好，未见明显背离，动量偏强，波动偏高。 鐭嚎鎷╂椂淇″彿涓€?銆? RSRS 暂未形成 beta 与 zscore 的同向共振，斜率结构仍待确认。 MFI 显示短线资金已进入高位过热区，需提防分配与回吐压力。 CCI 显示价格已明显偏离均值上沿，短线存在均值回归与高位回落风险。 Williams %R 显示收盘已贴近近期区间上沿，短线需防范高位回落与追高承接不足。 布林带显示价格仍运行在上下轨之间，位置端暂未形成极端突破信号。 布林带中轨仍提供支撑，价格暂时保持在中轨上方运行。 布林带带宽正在扩张，说明波动正在放大。 近 20 日阻力位 108.02 已被有效突破，价格已经站上关键位。",
+      "recommended_actions": [
+        "优先按顺势思路观察回踩 10 日 EMA 后的承接力度",
+        "ADX 显示趋势强度已经成型，可优先关注顺势延续而不是频繁抄底摸顶",
+        "量能已与当前方向形成配合，可优先关注趋势延续而不是单纯猜测反转",
+        "保留对强势延续的跟踪，但避免在短线过热位置追高",
+        "提高波动容忍和止损纪律，避免在剧烈摆动中频繁反向操作",
+        "KDJ 鏆傛湭缁欏嚭鏄庣‘鐭嚎鎷╂椂浼樺娍锛屽缓璁户缁粨鍚堣秼鍔裤€侀噺鑳藉拰鍏抽敭浠蜂綅涓€璧疯窡韪?",
+        "RSRS 暂未形成 beta 与 zscore 的同向共振，建议继续结合趋势、量能和关键价位确认是否出现新的斜率强化",
+        "MFI 已进入过热区，优先确认高位放量后的承接质量，不要把持续拉升直接等同于无风险追高",
+        "CCI 已进入上沿极值区，优先确认冲高后的承接与回踩质量，不要把短线过度偏离直接等同于可持续追高",
+        "Williams %R 已进入区间上沿，优先确认冲高后是否出现放量滞涨与回踩承接，不要把贴近上沿直接等同于还能继续追高",
+        "布林带位置仍在中性区间，建议继续等待价格向上下轨给出更清晰的方向确认。",
+        "价格仍运行在布林带中轨上方，可优先观察中轨回踩后的承接是否延续，再决定是否继续按偏多节奏跟踪。",
+        "布林带带宽正在扩张，执行上要预留更大的波动缓冲，不要用过紧的节奏处理仓位。",
+        "价格已有效突破近 20 日阻力位 108.02，优先观察回踩关键位后的承接是否延续，而不是把所有冲高都当成一次性行情。"
+      ],
+      "watch_points": [
+        "留意收盘价是否继续站稳 10 日 EMA 之上",
+        "留意 50 日均线与 200 日均线的多头排列是否保持",
+        "留意 ADX 是否继续保持在 25 之上，以确认趋势强度没有明显衰减",
+        "留意 +DI 是否继续高于 -DI，以确认多头方向没有被破坏",
+        "留意成交量是否继续维持在 20 日均量之上，确认量价共振没有减弱",
+        "留意 ATR 是否继续抬升，避免把高波动误判成有效趋势",
+        "鐣欐剰 KDJ 鏄惁鍑虹幇鏂扮殑浣庝綅閲戝弶鎴栭珮浣嶆鍙夛紝鍒ゆ柇鐭嚎鎷╂椂鐘舵€佹槸鍚﹀紑濮嬪彉鍖?",
+        "留意 RSRS 的 beta 与 zscore 是否开始形成同向共振，判断斜率结构是否从当前中性状态转向强化或走弱",
+        "留意 MFI 是否继续停留在 80 上方并伴随价格滞涨，确认高位资金过热是否开始转化为分配压力",
+        "留意 CCI 是否仍继续停留在 100 上方并伴随价格滞涨，确认高位偏离是否开始回归均值",
+        "留意 Williams %R 是否仍停留在 -20 上方附近并伴随价格冲高乏力，确认近期区间高位是否开始转弱回落",
+        "留意价格是否继续在布林带中轨附近整理，或开始向上下轨一端扩张形成新的位置倾向。",
+        "留意布林带中轨回踩时能否继续获得承接，确认中轨支撑是否仍然有效。",
+        "留意布林带带宽是否继续扩张，判断当前波动放大是趋势延续还是情绪冲击。",
+        "留意价格回踩近 20 日阻力位 108.02 后能否转化为新的支撑，并观察量能是否重新回到 20 日均量上方。"
+      ],
+      "indicator_snapshot": {
+        "close": 108.9,
+        "ema_10": 104.97740820169423,
+        "sma_50": 91.34200000000001,
+        "sma_200": 58.39300000000001,
+        "adx_14": 100.0,
+        "plus_di_14": 40.06755446360442,
+        "minus_di_14": 0.0,
+        "obv": 435810000.0,
+        "volume_sma_20": 2885500.0,
+        "volume_ratio_20": 1.0296309131866228,
+        "mfi_14": 100.0,
+        "cci_20": 126.66666666666633,
+        "williams_r_14": -4.8219584569732294,
+        "boll_width_ratio_20": 0.20188293382355882,
+        "macd": 5.015906131745808,
+        "macd_signal": 4.627599602436042,
+        "macd_histogram": 0.38830652930976584,
+        "rsi_14": 100.0,
+        "k_9": 92.83048113447694,
+        "d_9": 92.77832449083208,
+        "j_9": 92.93479442176667,
+        "rsrs_beta_18": 1.0,
+        "rsrs_zscore_18_60": -0.5638144498286046,
+        "boll_upper": 110.68865508331031,
+        "boll_middle": 100.54,
+        "boll_lower": 90.3913449166897,
+        "support_level_20": 91.3,
+        "resistance_level_20": 108.02,
+        "atr_14": 1.9355125418594155
+      },
+      "data_window_summary": {
+        "requested_lookback_days": 260,
+        "loaded_row_count": 220,
+        "start_date": "2025-01-01",
+        "end_date": "2025-08-08"
+      }
+    },
+    "sector_analysis": {
+      "symbol": "513180.SH",
+      "as_of_date": "2025-08-08",
+      "analysis_date": "2025-08-08",
+      "requested_as_of_date": "2025-08-08",
+      "effective_analysis_date": "2025-08-08",
+      "effective_trade_date": "2025-08-08",
+      "local_data_last_date": "2025-08-08",
+      "data_freshness_status": "local_exact_requested_date",
+      "sync_attempted": false,
+      "sync_result": null,
+      "date_fallback_reason": null,
+      "history_row_count": 220,
+      "trend_bias": "bullish",
+      "trend_strength": "strong",
+      "volume_confirmation": "confirmed",
+      "money_flow_signal": "overbought_distribution",
+      "mean_reversion_signal": "overbought_reversal_risk",
+      "range_position_signal": "overbought_pullback_risk",
+      "bollinger_position_signal": "neutral",
+      "bollinger_midline_signal": "midline_support_bias",
+      "bollinger_bandwidth_signal": "expanding",
+      "breakout_signal": "confirmed_resistance_breakout",
+      "divergence_signal": "none",
+      "timing_signal": "neutral",
+      "rsrs_signal": "neutral",
+      "momentum_signal": "positive",
+      "volatility_state": "high",
+      "consultation_conclusion": {
+        "bias": "bullish_continuation",
+        "confidence": "high",
+        "headline": "多头延续占优，近 20 日阻力 108.02 已被有效突破。",
+        "rationale": [
+          "近 20 日阻力 108.02 已被有效突破，价格进入关键位上方。",
+          "均线结构与趋势强度仍偏多，主趋势尚未转弱。",
+          "量能与当前方向保持一致，结构确认度更高。",
+          "MACD 与 RSI 组合显示动量仍偏正向。",
+          "多头延续结构已经成立，突破后若能继续守住关键位，向上剧本才会保持完整。"
+        ],
+        "risk_flags": [
+          "当前波动偏高",
+          "突破后回踩若承接转弱，多头延续强度会下降",
+          "高位过热后回落风险"
+        ]
+      },
+      "summary": "整体偏多，趋势强度较强，量能配合较好，未见明显背离，动量偏强，波动偏高。 鐭嚎鎷╂椂淇″彿涓€?銆? RSRS 暂未形成 beta 与 zscore 的同向共振，斜率结构仍待确认。 MFI 显示短线资金已进入高位过热区，需提防分配与回吐压力。 CCI 显示价格已明显偏离均值上沿，短线存在均值回归与高位回落风险。 Williams %R 显示收盘已贴近近期区间上沿，短线需防范高位回落与追高承接不足。 布林带显示价格仍运行在上下轨之间，位置端暂未形成极端突破信号。 布林带中轨仍提供支撑，价格暂时保持在中轨上方运行。 布林带带宽正在扩张，说明波动正在放大。 近 20 日阻力位 108.02 已被有效突破，价格已经站上关键位。",
+      "recommended_actions": [
+        "优先按顺势思路观察回踩 10 日 EMA 后的承接力度",
+        "ADX 显示趋势强度已经成型，可优先关注顺势延续而不是频繁抄底摸顶",
+        "量能已与当前方向形成配合，可优先关注趋势延续而不是单纯猜测反转",
+        "保留对强势延续的跟踪，但避免在短线过热位置追高",
+        "提高波动容忍和止损纪律，避免在剧烈摆动中频繁反向操作",
+        "KDJ 鏆傛湭缁欏嚭鏄庣‘鐭嚎鎷╂椂浼樺娍锛屽缓璁户缁粨鍚堣秼鍔裤€侀噺鑳藉拰鍏抽敭浠蜂綅涓€璧疯窡韪?",
+        "RSRS 暂未形成 beta 与 zscore 的同向共振，建议继续结合趋势、量能和关键价位确认是否出现新的斜率强化",
+        "MFI 已进入过热区，优先确认高位放量后的承接质量，不要把持续拉升直接等同于无风险追高",
+        "CCI 已进入上沿极值区，优先确认冲高后的承接与回踩质量，不要把短线过度偏离直接等同于可持续追高",
+        "Williams %R 已进入区间上沿，优先确认冲高后是否出现放量滞涨与回踩承接，不要把贴近上沿直接等同于还能继续追高",
+        "布林带位置仍在中性区间，建议继续等待价格向上下轨给出更清晰的方向确认。",
+        "价格仍运行在布林带中轨上方，可优先观察中轨回踩后的承接是否延续，再决定是否继续按偏多节奏跟踪。",
+        "布林带带宽正在扩张，执行上要预留更大的波动缓冲，不要用过紧的节奏处理仓位。",
+        "价格已有效突破近 20 日阻力位 108.02，优先观察回踩关键位后的承接是否延续，而不是把所有冲高都当成一次性行情。"
+      ],
+      "watch_points": [
+        "留意收盘价是否继续站稳 10 日 EMA 之上",
+        "留意 50 日均线与 200 日均线的多头排列是否保持",
+        "留意 ADX 是否继续保持在 25 之上，以确认趋势强度没有明显衰减",
+        "留意 +DI 是否继续高于 -DI，以确认多头方向没有被破坏",
+        "留意成交量是否继续维持在 20 日均量之上，确认量价共振没有减弱",
+        "留意 ATR 是否继续抬升，避免把高波动误判成有效趋势",
+        "鐣欐剰 KDJ 鏄惁鍑虹幇鏂扮殑浣庝綅閲戝弶鎴栭珮浣嶆鍙夛紝鍒ゆ柇鐭嚎鎷╂椂鐘舵€佹槸鍚﹀紑濮嬪彉鍖?",
+        "留意 RSRS 的 beta 与 zscore 是否开始形成同向共振，判断斜率结构是否从当前中性状态转向强化或走弱",
+        "留意 MFI 是否继续停留在 80 上方并伴随价格滞涨，确认高位资金过热是否开始转化为分配压力",
+        "留意 CCI 是否仍继续停留在 100 上方并伴随价格滞涨，确认高位偏离是否开始回归均值",
+        "留意 Williams %R 是否仍停留在 -20 上方附近并伴随价格冲高乏力，确认近期区间高位是否开始转弱回落",
+        "留意价格是否继续在布林带中轨附近整理，或开始向上下轨一端扩张形成新的位置倾向。",
+        "留意布林带中轨回踩时能否继续获得承接，确认中轨支撑是否仍然有效。",
+        "留意布林带带宽是否继续扩张，判断当前波动放大是趋势延续还是情绪冲击。",
+        "留意价格回踩近 20 日阻力位 108.02 后能否转化为新的支撑，并观察量能是否重新回到 20 日均量上方。"
+      ],
+      "indicator_snapshot": {
+        "close": 108.9,
+        "ema_10": 104.97740820169423,
+        "sma_50": 91.34200000000001,
+        "sma_200": 58.39300000000001,
+        "adx_14": 100.0,
+        "plus_di_14": 40.06755446360442,
+        "minus_di_14": 0.0,
+        "obv": 435810000.0,
+        "volume_sma_20": 2885500.0,
+        "volume_ratio_20": 1.0296309131866228,
+        "mfi_14": 100.0,
+        "cci_20": 126.66666666666633,
+        "williams_r_14": -4.8219584569732294,
+        "boll_width_ratio_20": 0.20188293382355882,
+        "macd": 5.015906131745808,
+        "macd_signal": 4.627599602436042,
+        "macd_histogram": 0.38830652930976584,
+        "rsi_14": 100.0,
+        "k_9": 92.83048113447694,
+        "d_9": 92.77832449083208,
+        "j_9": 92.93479442176667,
+        "rsrs_beta_18": 1.0,
+        "rsrs_zscore_18_60": -0.5638144498286046,
+        "boll_upper": 110.68865508331031,
+        "boll_middle": 100.54,
+        "boll_lower": 90.3913449166897,
+        "support_level_20": 91.3,
+        "resistance_level_20": 108.02,
+        "atr_14": 1.9355125418594155
+      },
+      "data_window_summary": {
+        "requested_lookback_days": 260,
+        "loaded_row_count": 220,
+        "start_date": "2025-01-01",
+        "end_date": "2025-08-08"
+      }
+    },
+    "contextual_conclusion": {
+      "alignment": "tailwind",
+      "headline": "个股与大盘、板块同向，当前属于多头顺风环境",
+      "rationale": [
+        "个股 513180.SH、大盘代理 510300.SH、板块代理 513180.SH 当前技术面结论同向",
+        "大盘与板块同向共振，说明当前环境对个股方向形成外部支持"
+      ],
+      "risk_flags": [
+        "即使处于顺风环境，仍需跟踪个股关键位与量能确认是否持续"
+      ]
+    }
+  },
+  "fundamental_context": {
+    "status": "unavailable",
+    "source": "multi_source_fallback",
+    "latest_report_period": null,
+    "report_notice_date": null,
+    "headline": "财报快照当前不可用，综合结论已退化为技术优先。",
+    "profit_signal": "unknown",
+    "report_metrics": {
+      "revenue": null,
+      "revenue_yoy_pct": null,
+      "net_profit": null,
+      "net_profit_yoy_pct": null,
+      "roe_pct": null
+    },
+    "narrative": [
+      "多源财报抓取均未返回可消费数据，当前已跳过财报层聚合。"
+    ],
+    "risk_flags": [
+      "财报源请求失败: eastmoney_financials: 财报源请求失败: http://127.0.0.1:63932/financials?type=1&code=SH513180: Connection Failed: Connect error: 由于目标计算机积极拒绝，无法连接。 (os error 10061) | sina_financial_guideline: 财报源没有返回可用数据"
+    ]
+  },
+  "disclosure_context": {
+    "status": "unavailable",
+    "source": "multi_source_fallback",
+    "announcement_count": 0,
+    "headline": "公告摘要当前不可用，综合结论未纳入事件驱动层信息。",
+    "keyword_summary": [],
+    "recent_announcements": [],
+    "risk_flags": [
+      "公告源请求失败: eastmoney_announcements: 公告源请求失败: http://127.0.0.1:63932/announcements?sr=-1&page_size=8&page_index=1&ann_type=A&stock_list=513180: Connection Failed: Connect error: 由于目标计算机积极拒绝，无法连接。 (os error 10061) | sina_announcements: 公告源没有返回可用数据"
+    ]
+  },
+  "etf_context": {
+    "status": "unavailable",
+    "source": "public_etf_fallback",
+    "fund_name": null,
+    "benchmark": null,
+    "asset_scope": null,
+    "latest_scale": null,
+    "latest_share": null,
+    "premium_discount_rate_pct": null,
+    "headline": "ETF 专项公开事实层当前不可用，主链暂不输出基金结构与折溢价结论。",
+    "structure_risk_flags": [
+      "ETF 公开事实源请求失败: 未配置 ETF 公共事实源 URL"
+    ],
+    "research_gaps": [
+      "ETF 专项公开事实源不可用。",
+      "当前缺少跟踪基准、规模/份额与折溢价等正式输入。"
+    ]
+  },
+  "cross_border_context": {
+    "status": "incomplete",
+    "analysis_method": "underlying_first_cross_border_etf_v1",
+    "underlying_market": {
+      "status": "missing_input",
+      "symbol": null,
+      "bias": null,
+      "confidence": null,
+      "headline": "缺少 underlying_symbol，当前无法先对穿透标的做正式技术判断。",
+      "support_level_20": null,
+      "resistance_level_20": null,
+      "rationale": [],
+      "risk_flags": []
+    },
+    "fx_market": {
+      "status": "missing_input",
+      "symbol": null,
+      "bias": null,
+      "confidence": null,
+      "headline": "缺少 fx_symbol，当前无法补齐跨境 ETF 的汇率判断层。",
+      "support_level_20": null,
+      "resistance_level_20": null,
+      "rationale": [],
+      "risk_flags": []
+    },
+    "premium_assessment": {
+      "status": "unavailable",
+      "premium_discount_rate_pct": null,
+      "verdict": "incomplete",
+      "headline": "当前缺少 ETF 折溢价字段，穿透市场结论无法完整映射到执行层。",
+      "risk_flags": [
+        "缺少正式折溢价输入，跨境 ETF 建议不能视作完整执行结论。"
+      ]
+    },
+    "resonance_verdict": "incomplete_underlying_chain",
+    "headline": "跨境 ETF 穿透分析输入尚不完整，当前只能保留为不完整的观察结论。",
+    "rationale": [
+      "本轮跨境 ETF 先看穿透标的 待补 underlying_symbol，再看汇率层 待补 fx_symbol，最后再把结果映射到 ETF 折溢价。",
+      "当前缺少 ETF 折溢价字段，穿透市场结论无法完整映射到执行层。",
+      "ETF 自身本地技术面 tailwind 只作为映射层参考，不再替代穿透市场判断。"
+    ],
+    "risk_flags": [
+      "缺少正式折溢价输入，跨境 ETF 建议不能视作完整执行结论。",
+      "跨境 ETF 缺少穿透标的或汇率分析输入，当前不能把 ETF 本地走势直接当成主判断。"
+    ]
+  },
+  "industry_context": {
+    "sector_symbol": "513180.SH",
+    "proxy_bias": "bullish_continuation",
+    "headline": "多头延续占优，近 20 日阻力 108.02 已被有效突破。",
+    "rationale": [
+      "近 20 日阻力 108.02 已被有效突破，价格进入关键位上方。",
+      "均线结构与趋势强度仍偏多，主趋势尚未转弱。",
+      "量能与当前方向保持一致，结构确认度更高。",
+      "MACD 与 RSI 组合显示动量仍偏正向。",
+      "多头延续结构已经成立，突破后若能继续守住关键位，向上剧本才会保持完整。"
+    ],
+    "risk_flags": [
+      "当前波动偏高",
+      "突破后回踩若承接转弱，多头延续强度会下降",
+      "高位过热后回落风险"
+    ]
+  },
+  "integrated_conclusion": {
+    "stance": "technical_only",
+    "headline": "信息面主链当前不可用，当前结论暂时只能以技术面和行业代理为主。",
+    "rationale": [
+      "技术层当前为 tailwind，行业代理 513180.SH 的 headline 为：多头延续占优，近 20 日阻力 108.02 已被有效突破。",
+      "财报层状态为 unavailable，利润信号为 unknown。",
+      "公告层状态为 unavailable，最近纳入 0 条公告摘要。",
+      "跨境 ETF 穿透分析输入尚不完整，当前只能保留为不完整的观察结论。"
+    ],
+    "risk_flags": [
+      "财报面或公告面当前缺失，综合判断存在信息盲区",
+      "财报源请求失败: eastmoney_financials: 财报源请求失败: http://127.0.0.1:63932/financials?type=1&code=SH513180: Connection Failed: Connect error: 由于目标计算机积极拒绝，无法连接。 (os error 10061) | sina_financial_guideline: 财报源没有返回可用数据",
+      "公告源请求失败: eastmoney_announcements: 公告源请求失败: http://127.0.0.1:63932/announcements?sr=-1&page_size=8&page_index=1&ann_type=A&stock_list=513180: Connection Failed: Connect error: 由于目标计算机积极拒绝，无法连接。 (os error 10061) | sina_announcements: 公告源没有返回可用数据",
+      "ETF 公开事实源请求失败: 未配置 ETF 公共事实源 URL",
+      "ETF 专项公开事实源不可用。",
+      "当前缺少跟踪基准、规模/份额与折溢价等正式输入。",
+      "缺少正式折溢价输入，跨境 ETF 建议不能视作完整执行结论。",
+      "跨境 ETF 缺少穿透标的或汇率分析输入，当前不能把 ETF 本地走势直接当成主判断。"
+    ]
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "contract_version": "security_real_data_validation_backfill.v1",
+  "document_type": "security_real_data_validation_manifest",
+  "slice_id": "513180_sh_cross_border_real_validation",
+  "primary_symbol": "513180.SH",
+  "market_symbol": "510300.SH",
+  "sector_symbol": "513180.SH",
+  "market_profile": "a_share_core",
+  "sector_profile": "cross_border_etf",
+  "created_at": "2026-04-12T21:20:00+08:00",
+  "validation_runtime_root": "tests\\runtime_fixtures\\security_real_data_validation_backfill\\security_real_data_validation_backfill_cross_border_proxy_import_1776301690789198300",
+  "runtime_db_path": "tests\\runtime_fixtures\\security_real_data_validation_backfill\\security_real_data_validation_backfill_cross_border_proxy_import_1776301690789198300\\stock_history.db",
+  "fundamental_history_db_path": "tests\\runtime_fixtures\\security_real_data_validation_backfill\\security_real_data_validation_backfill_cross_border_proxy_import_1776301690789198300\\security_fundamental_history.db",
+  "disclosure_history_db_path": "tests\\runtime_fixtures\\security_real_data_validation_backfill\\security_real_data_validation_backfill_cross_border_proxy_import_1776301690789198300\\security_disclosure_history.db",
+  "external_proxy_db_path": "tests\\runtime_fixtures\\local_memory\\security_real_data_validation_backfill_cross_border_proxy_import_1776301690771146500\\security_external_proxy.db",
+  "external_proxy_import_result_paths": [
+    "tests\\runtime_fixtures\\local_memory\\security_real_data_validation_backfill_cross_border_proxy_import_1776301690771146500\\external_proxy_backfill_results\\external_proxy_backfill_validation_slice_proxy_513180_sh_cross_border_real_validation_cross_border_pool_proxy_history.json"
+  ],
+  "fullstack_context_path": "tests\\runtime_fixtures\\security_real_data_validation_backfill\\security_real_data_validation_backfill_cross_border_proxy_import_1776301690789198300\\fullstack_context.json",
+  "price_sync_summaries": [
+    {
+      "symbol": "510300.SH",
+      "provider_used": "sina",
+      "imported_row_count": 220,
+      "date_range": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-08-08"
+      }
+    },
+    {
+      "symbol": "513180.SH",
+      "provider_used": "sina",
+      "imported_row_count": 220,
+      "date_range": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-08-08"
+      }
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "add_plan": {
+    "allow_add": true,
+    "max_gross_pct": 0.12,
+    "notes": "fixture",
+    "trigger_condition": "retest holds"
+  },
+  "analysis_date": "2026-04-16",
+  "approval_binding": {
+    "approval_ref": "approval:decision-601916-SH-2026-04-16",
+    "approval_request_ref": "approval:decision-601916-SH-2026-04-16",
+    "binding_status": "bound",
+    "decision_ref": "decision:601916.SH:2026-04-16",
+    "package_scope": "security_decision_submit_approval"
+  },
+  "approval_ref": "approval:decision-601916-SH-2026-04-16",
+  "cancel_conditions": [
+    "macro break"
+  ],
+  "contract_version": "security_position_plan.v1",
+  "decision_id": "decision-601916-SH-2026-04-16",
+  "decision_ref": "decision:601916.SH:2026-04-16",
+  "document_type": "security_position_plan",
+  "entry_blockers": [],
+  "entry_grade": "A",
+  "entry_plan": {
+    "entry_mode": "breakout",
+    "notes": "fixture",
+    "starter_gross_pct": 0.04,
+    "trigger_condition": "price above breakout"
+  },
+  "entry_reason": "fixture entry",
+  "max_gross_pct": 0.12,
+  "plan_direction": "Long",
+  "plan_id": "position-plan:601916.SH:2026-04-16",
+  "plan_status": "ready",
+  "reduce_plan": {
+    "allow_reduce": true,
+    "notes": "fixture",
+    "target_gross_pct": 0.05,
+    "trigger_condition": "momentum weakens"
+  },
+  "risk_budget_pct": 0.02,
+  "sizing_grade": "A",
+  "sizing_rationale": [
+    "fixture rationale"
+  ],
+  "sizing_reason": "fixture sizing",
+  "sizing_risk_flags": [],
+  "starter_gross_pct": 0.04,
+  "stop_loss_plan": {
+    "hard_stop_condition": "close below invalidation",
+    "notes": "fixture",
+    "stop_loss_pct": 0.05
+  },
+  "suggested_gross_pct": 0.06,
+  "symbol": "601916.SH",
+  "take_profit_plan": {
+    "first_target_pct": 0.1,
+    "notes": "fixture",
+    "partial_exit_rule": "take one third",
+    "second_target_pct": 0.18
+  },
+  "target_gross_pct": 0.1
+}

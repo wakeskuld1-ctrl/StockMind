@@ -1,0 +1,437 @@
+{
+  "base_score": 600.0,
+  "binning_version": "woe_binning.v1",
+  "coefficient_version": "woe_logistic.v1",
+  "features": [
+    {
+      "bins": [
+        {
+          "bin_label": "constructive",
+          "logit_contribution": 1.9216888832935095,
+          "match_values": [
+            "constructive"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 192.16888832935095,
+          "predicted_value": null,
+          "woe": 1.6094379124341005
+        },
+        {
+          "bin_label": "watchful_positive",
+          "logit_contribution": -1.9216888832935095,
+          "match_values": [
+            "watchful_positive"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": -192.16888832935095,
+          "predicted_value": null,
+          "woe": -1.6094379124341005
+        },
+        {
+          "bin_label": "__other__",
+          "logit_contribution": 0.0,
+          "match_values": [
+            "__other__"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 0.0,
+          "predicted_value": null,
+          "woe": 0.0
+        }
+      ],
+      "feature_name": "integrated_stance",
+      "group_name": "M"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "mixed",
+          "logit_contribution": -1.9216888832935095,
+          "match_values": [
+            "mixed"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": -192.16888832935095,
+          "predicted_value": null,
+          "woe": -1.6094379124341005
+        },
+        {
+          "bin_label": "tailwind",
+          "logit_contribution": 1.9216888832935095,
+          "match_values": [
+            "tailwind"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 192.16888832935095,
+          "predicted_value": null,
+          "woe": 1.6094379124341005
+        }
+      ],
+      "feature_name": "technical_alignment",
+      "group_name": "T"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "bearish",
+          "logit_contribution": -1.080279359246482,
+          "match_values": [
+            "bearish"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": -108.0279359246482,
+          "predicted_value": null,
+          "woe": -1.0986122886681098
+        },
+        {
+          "bin_label": "bullish",
+          "logit_contribution": 1.5825806562742253,
+          "match_values": [
+            "bullish"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 158.25806562742252,
+          "predicted_value": null,
+          "woe": 1.6094379124341005
+        },
+        {
+          "bin_label": "sideways",
+          "logit_contribution": -1.080279359246482,
+          "match_values": [
+            "sideways"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": -108.0279359246482,
+          "predicted_value": null,
+          "woe": -1.0986122886681098
+        }
+      ],
+      "feature_name": "trend_bias",
+      "group_name": "T"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "strong",
+          "logit_contribution": 0.0,
+          "match_values": [
+            "strong"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 0.0,
+          "predicted_value": null,
+          "woe": 0.0
+        }
+      ],
+      "feature_name": "trend_strength",
+      "group_name": "T"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "confirmed",
+          "logit_contribution": 0.12960380525052193,
+          "match_values": [
+            "confirmed"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 12.960380525052193,
+          "predicted_value": null,
+          "woe": 0.5108256237659907
+        },
+        {
+          "bin_label": "neutral",
+          "logit_contribution": -0.278733733160571,
+          "match_values": [
+            "neutral"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": -27.873373316057094,
+          "predicted_value": null,
+          "woe": -1.0986122886681098
+        }
+      ],
+      "feature_name": "volume_confirmation",
+      "group_name": "T"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "confirmed_resistance_breakout",
+          "logit_contribution": 1.9216888832935095,
+          "match_values": [
+            "confirmed_resistance_breakout"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 192.16888832935095,
+          "predicted_value": null,
+          "woe": 1.6094379124341005
+        },
+        {
+          "bin_label": "range_bound",
+          "logit_contribution": -1.9216888832935095,
+          "match_values": [
+            "range_bound"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": -192.16888832935095,
+          "predicted_value": null,
+          "woe": -1.6094379124341005
+        }
+      ],
+      "feature_name": "breakout_signal",
+      "group_name": "T"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "neutral",
+          "logit_contribution": -1.9216888832935095,
+          "match_values": [
+            "neutral"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": -192.16888832935095,
+          "predicted_value": null,
+          "woe": -1.6094379124341005
+        },
+        {
+          "bin_label": "positive",
+          "logit_contribution": 1.9216888832935095,
+          "match_values": [
+            "positive"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 192.16888832935095,
+          "predicted_value": null,
+          "woe": 1.6094379124341005
+        }
+      ],
+      "feature_name": "momentum_signal",
+      "group_name": "T"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "positive",
+          "logit_contribution": 0.0,
+          "match_values": [
+            "positive"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 0.0,
+          "predicted_value": null,
+          "woe": 0.0
+        },
+        {
+          "bin_label": "__other__",
+          "logit_contribution": 0.0,
+          "match_values": [
+            "__other__"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 0.0,
+          "predicted_value": null,
+          "woe": 0.0
+        }
+      ],
+      "feature_name": "profit_signal",
+      "group_name": "F"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "available",
+          "logit_contribution": 0.0,
+          "match_values": [
+            "available"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 0.0,
+          "predicted_value": null,
+          "woe": 0.0
+        }
+      ],
+      "feature_name": "fundamental_status",
+      "group_name": "F"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "available",
+          "logit_contribution": 0.0,
+          "match_values": [
+            "available"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 0.0,
+          "predicted_value": null,
+          "woe": 0.0
+        }
+      ],
+      "feature_name": "disclosure_status",
+      "group_name": "E"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "all",
+          "logit_contribution": 0.0,
+          "match_values": [],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 0.0,
+          "predicted_value": null,
+          "woe": 0.0
+        }
+      ],
+      "feature_name": "announcement_count",
+      "group_name": "E"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "all",
+          "logit_contribution": 0.0,
+          "match_values": [],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 0.0,
+          "predicted_value": null,
+          "woe": 0.0
+        }
+      ],
+      "feature_name": "disclosure_risk_keyword_count",
+      "group_name": "E"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "false",
+          "logit_contribution": 0.0,
+          "match_values": [
+            "false"
+          ],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 0.0,
+          "predicted_value": null,
+          "woe": 0.0
+        }
+      ],
+      "feature_name": "has_risk_warning_notice",
+      "group_name": "E"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "all",
+          "logit_contribution": 0.0,
+          "match_values": [],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 0.0,
+          "predicted_value": null,
+          "woe": 0.0
+        }
+      ],
+      "feature_name": "data_gap_count",
+      "group_name": "R"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "all",
+          "logit_contribution": 0.0,
+          "match_values": [],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 0.0,
+          "predicted_value": null,
+          "woe": 0.0
+        }
+      ],
+      "feature_name": "risk_note_count",
+      "group_name": "R"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "all",
+          "logit_contribution": 0.0,
+          "match_values": [],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 0.0,
+          "predicted_value": null,
+          "woe": 0.0
+        }
+      ],
+      "feature_name": "revenue_yoy_pct",
+      "group_name": "F"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "all",
+          "logit_contribution": 0.0,
+          "match_values": [],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 0.0,
+          "predicted_value": null,
+          "woe": 0.0
+        }
+      ],
+      "feature_name": "net_profit_yoy_pct",
+      "group_name": "F"
+    },
+    {
+      "bins": [
+        {
+          "bin_label": "all",
+          "logit_contribution": 0.0,
+          "match_values": [],
+          "max_exclusive": null,
+          "min_inclusive": null,
+          "points": 0.0,
+          "predicted_value": null,
+          "woe": 0.0
+        }
+      ],
+      "feature_name": "roe_pct",
+      "group_name": "F"
+    }
+  ],
+  "instrument_subscope": null,
+  "intercept": -0.08305657165042422,
+  "label_definition": "security_forward_outcome.v1",
+  "model_id": "a_share_equity_10d_direction_head",
+  "model_sha256": null,
+  "model_version": "candidate_2026_04_09T17_30_00_08_00",
+  "oot_window": "2025-12-01..2026-01-31",
+  "positive_label_definition": "positive_return_10d",
+  "prediction_baseline": null,
+  "prediction_mode": "direction_probability",
+  "target_head": "direction_head",
+  "training_window": "2025-03-01..2025-08-31"
+}

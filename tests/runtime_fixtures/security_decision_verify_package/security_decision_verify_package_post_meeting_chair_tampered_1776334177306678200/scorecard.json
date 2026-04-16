@@ -1,0 +1,38 @@
+{
+  "analysis_date": "2026-04-16",
+  "approval_ref": "approval:decision-601916-SH-2026-04-16",
+  "base_score": 600.0,
+  "contract_version": "security_scorecard.v1",
+  "decision_id": "decision-601916-SH-2026-04-16",
+  "decision_ref": "decision:601916.SH:2026-04-16",
+  "document_type": "security_scorecard",
+  "exposure_side": "long",
+  "feature_contributions": [],
+  "generated_at": "2026-04-16T09:10:00+08:00",
+  "group_breakdown": [],
+  "label_definition": "horizon_10d_stop_5pct_target_10pct",
+  "limitations": [],
+  "model_binding": {
+    "binning_version": "bin-v1",
+    "coefficient_version": "coef-v1",
+    "instrument_subscope": "a_share_bank",
+    "model_id": "model-001",
+    "model_sha256": "sha256-fixture",
+    "model_version": "v1",
+    "oot_window": "2026-01-01..2026-03-31",
+    "positive_label_definition": "10d_profit",
+    "training_window": "2024-01-01..2025-12-31"
+  },
+  "quant_signal": "supportive",
+  "quant_stance": "build",
+  "raw_feature_snapshot": {
+    "trend_strength": 0.82
+  },
+  "recommendation_action": "buy",
+  "score_status": "ready",
+  "score_summary": "fixture scorecard",
+  "scorecard_id": "scorecard-601916.SH-2026-04-16",
+  "success_probability": 0.71,
+  "symbol": "601916.SH",
+  "total_score": 680.0
+}

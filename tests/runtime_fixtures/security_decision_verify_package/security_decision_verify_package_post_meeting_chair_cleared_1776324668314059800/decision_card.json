@@ -1,0 +1,51 @@
+{
+  "approval": {
+    "approval_ref": "approval:decision-601916-SH-2026-04-16",
+    "approval_state": "Pending",
+    "required": true
+  },
+  "asset_id": "601916.SH",
+  "confidence_score": 0.82,
+  "decision_id": "decision-601916-SH-2026-04-16",
+  "decision_ref": "decision:601916.SH:2026-04-16",
+  "direction": "Long",
+  "downside_risk": {
+    "hard_stop": 0.05,
+    "soft_stop": 0.03,
+    "tail_risk_note": "fixture tail risk"
+  },
+  "evidence_refs": [
+    "evidence-v1"
+  ],
+  "expected_return_range": {
+    "base": 0.12,
+    "high": 0.18,
+    "low": 0.08
+  },
+  "exposure_side": "long",
+  "horizon": "swing_10d",
+  "instrument_type": "equity",
+  "invalidation_conditions": [
+    "break below support"
+  ],
+  "key_risks": [
+    "earnings volatility"
+  ],
+  "key_supporting_points": [
+    "trend intact"
+  ],
+  "portfolio_impact": {
+    "factor_exposure_note": "bank beta up",
+    "liquidity_class": "liquid",
+    "sector_exposure_delta": 0.02
+  },
+  "position_size_suggestion": {
+    "gross_pct": 0.06,
+    "max_pct": 0.12,
+    "sizing_basis": "fixture"
+  },
+  "recommendation_action": "buy",
+  "scene_name": "security_review",
+  "status": "ReadyForReview",
+  "strategy_type": "security_decision_committee"
+}

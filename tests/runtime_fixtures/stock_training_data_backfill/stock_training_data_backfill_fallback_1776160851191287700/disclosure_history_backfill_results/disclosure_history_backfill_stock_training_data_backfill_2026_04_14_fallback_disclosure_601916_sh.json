@@ -1,0 +1,33 @@
+{
+  "contract_version": "security_disclosure_history_backfill.v1",
+  "document_type": "security_disclosure_history_backfill_result",
+  "batch_ref": "disclosure-history-backfill:stock-training-data-backfill-2026-04-14-fallback-disclosure-601916_sh",
+  "imported_record_count": 3,
+  "covered_symbol_count": 1,
+  "covered_published_dates": [
+    "2026-02-14",
+    "2026-03-28"
+  ],
+  "storage_path": "tests\\runtime_fixtures\\stock_training_data_backfill\\stock_training_data_backfill_fallback_1776160851191287700\\security_disclosure_history.db",
+  "backfill_result_path": "tests\\runtime_fixtures\\stock_training_data_backfill\\stock_training_data_backfill_fallback_1776160851191287700\\disclosure_history_backfill_results\\disclosure_history_backfill_stock_training_data_backfill_2026_04_14_fallback_disclosure_601916_sh.json",
+  "records": [
+    {
+      "record_ref": "AN202603281234567890",
+      "symbol": "601916.SH",
+      "published_at": "2026-03-28",
+      "title": "2025 Annual Report"
+    },
+    {
+      "record_ref": "AN202603281234567891",
+      "symbol": "601916.SH",
+      "published_at": "2026-03-28",
+      "title": "2025 Profit Distribution Plan"
+    },
+    {
+      "record_ref": "AN202602141234567892",
+      "symbol": "601916.SH",
+      "published_at": "2026-02-14",
+      "title": "Shareholder Meeting Resolution"
+    }
+  ]
+}

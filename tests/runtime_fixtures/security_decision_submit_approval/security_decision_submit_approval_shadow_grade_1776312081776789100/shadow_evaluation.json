@@ -1,0 +1,29 @@
+{
+  "class_balance_status": "class_balance_ready",
+  "contract_version": "security_shadow_evaluation.v1",
+  "created_at": "2026-04-11T20:00:00+08:00",
+  "document_type": "security_shadow_evaluation",
+  "evaluation_notes": [
+    "shadow-grade approval fixture"
+  ],
+  "instrument_scope": "EQUITY",
+  "market_scope": "A_SHARE",
+  "model_registry_ref": "registry-shadow-601916",
+  "oot_stability_status": "oot_thin",
+  "path_event_coverage_status": "path_event_ready",
+  "production_readiness": "shadow_ready",
+  "promotion_blockers": [
+    "champion gate requires at least three governed shadow observations"
+  ],
+  "promotion_evidence_notes": [
+    "champion gate requires at least two stable comparison windows"
+  ],
+  "proxy_coverage_status": "history_coverage_ready",
+  "recommended_model_grade": "shadow",
+  "sample_readiness_status": "sample_ready",
+  "shadow_consistency_status": "shadow_consistent",
+  "shadow_evaluation_id": "shadow-evaluation:A_SHARE:EQUITY:none:2026-04-11:v1",
+  "shadow_observation_count": 2,
+  "shadow_window_count": 2,
+  "window_consistency_status": "window_observation_thin"
+}

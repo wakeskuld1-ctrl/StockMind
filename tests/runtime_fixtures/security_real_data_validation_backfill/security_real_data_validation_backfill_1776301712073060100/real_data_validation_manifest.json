@@ -1,0 +1,43 @@
+{
+  "contract_version": "security_real_data_validation_backfill.v1",
+  "document_type": "security_real_data_validation_manifest",
+  "slice_id": "601916_sh_real_validation",
+  "primary_symbol": "601916.SH",
+  "market_symbol": "510300.SH",
+  "sector_symbol": "512800.SH",
+  "created_at": "2026-04-12T20:30:00+08:00",
+  "validation_runtime_root": "tests\\runtime_fixtures\\security_real_data_validation_backfill\\security_real_data_validation_backfill_1776301712073060100",
+  "runtime_db_path": "tests\\runtime_fixtures\\security_real_data_validation_backfill\\security_real_data_validation_backfill_1776301712073060100\\stock_history.db",
+  "fundamental_history_db_path": "tests\\runtime_fixtures\\security_real_data_validation_backfill\\security_real_data_validation_backfill_1776301712073060100\\security_fundamental_history.db",
+  "disclosure_history_db_path": "tests\\runtime_fixtures\\security_real_data_validation_backfill\\security_real_data_validation_backfill_1776301712073060100\\security_disclosure_history.db",
+  "fullstack_context_path": "tests\\runtime_fixtures\\security_real_data_validation_backfill\\security_real_data_validation_backfill_1776301712073060100\\fullstack_context.json",
+  "price_sync_summaries": [
+    {
+      "symbol": "510300.SH",
+      "provider_used": "sina",
+      "imported_row_count": 220,
+      "date_range": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-08-08"
+      }
+    },
+    {
+      "symbol": "512800.SH",
+      "provider_used": "sina",
+      "imported_row_count": 220,
+      "date_range": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-08-08"
+      }
+    },
+    {
+      "symbol": "601916.SH",
+      "provider_used": "sina",
+      "imported_row_count": 220,
+      "date_range": {
+        "start_date": "2025-01-01",
+        "end_date": "2025-08-08"
+      }
+    }
+  ]
+}

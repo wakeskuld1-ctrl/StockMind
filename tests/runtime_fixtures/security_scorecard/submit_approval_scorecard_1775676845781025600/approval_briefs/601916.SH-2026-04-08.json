@@ -1,0 +1,93 @@
+{
+  "brief_id": "brief-601916.SH-2026-04-08",
+  "contract_version": "security_approval_brief.v1",
+  "document_type": "security_approval_brief",
+  "generated_at": "2026-04-09T09:30:00+08:00",
+  "scene_name": "security_decision_committee",
+  "decision_id": "601916.SH-2026-04-08",
+  "decision_ref": "decision_ref:21844:1775676845866326500",
+  "approval_ref": "approval_ref:21844:1775676845866405000",
+  "symbol": "601916.SH",
+  "analysis_date": "2026-04-08",
+  "decision_status": "needs_more_evidence",
+  "approval_status": "Pending",
+  "committee_status": "needs_more_evidence",
+  "direction": "neutral",
+  "confidence_score": 0.11999999999999994,
+  "confidence_band": "guarded",
+  "executive_summary": "当前仅建议以 pilot 级别观察或试探，虽然风报比为 2.40，但仍有 3 个闸门处于提醒状态。",
+  "bull_summary": [
+    "空头结构处于反抽观察阶段，留意旧支撑 2.94 附近是否重新受压。",
+    "个股仍处等待态，环境偏强但暂不构成顺风确认",
+    "信息面源暂不可用，当前只能基于技术与行业代理给出临时结论。",
+    "最近公告中已出现需要重点复核的风险关键词，信息面不宜按纯正向理解。"
+  ],
+  "bear_summary": [
+    "基本面上下文当前不可用：财报快照当前不可用，综合结论已退化为技术优先。",
+    "个股自身尚未完成方向确认，贸然追随环境可能放大假突破风险",
+    "财报源请求失败: financials HTTP 406: <html><body>financials HTTP 406</body></html>",
+    "最近公告含诉讼事项，需留意经营不确定性",
+    "回踩承接尚待确认"
+  ],
+  "core_supporting_points": [
+    "空头结构处于反抽观察阶段，留意旧支撑 2.94 附近是否重新受压。",
+    "个股仍处等待态，环境偏强但暂不构成顺风确认",
+    "信息面源暂不可用，当前只能基于技术与行业代理给出临时结论。",
+    "最近公告中已出现需要重点复核的风险关键词，信息面不宜按纯正向理解。"
+  ],
+  "core_risks": [
+    "基本面上下文当前不可用：财报快照当前不可用，综合结论已退化为技术优先。",
+    "个股自身尚未完成方向确认，贸然追随环境可能放大假突破风险",
+    "财报源请求失败: financials HTTP 406: <html><body>financials HTTP 406</body></html>",
+    "最近公告含诉讼事项，需留意经营不确定性",
+    "回踩承接尚待确认"
+  ],
+  "gate_summary": [
+    "analysis_date_gate:pass:分析日期已冻结为 2026-04-08",
+    "data_completeness_gate:warn:存在外部信息缺口，研究可继续但需要降低结论确定性",
+    "market_alignment_gate:warn:环境与个股并未完全共振，仍需等待更多确认",
+    "event_risk_gate:warn:信息面记录到 1 条事件风险，需要在执行前人工复核",
+    "risk_reward_gate:pass:目标收益/止损比为 2.40，达到最小风报比 2.00"
+  ],
+  "gate_outcome_summary": [
+    "analysis_date_gate -> pass",
+    "data_completeness_gate -> warn",
+    "market_alignment_gate -> warn",
+    "event_risk_gate -> warn",
+    "risk_reward_gate -> pass"
+  ],
+  "position_summary": "pilot",
+  "risk_budget_summary": "风险预算 0.50%",
+  "entry_summary": "首仓 3.00%：首仓 3.0% ，满足投决条件后执行",
+  "add_summary": "加仓上限 5.00%：当前不允许加仓",
+  "stop_loss_summary": "止损 5.00%：跌破 5.0% 风险线则执行硬止损",
+  "take_profit_summary": "止盈 12.00% / 18.00%：第一目标减仓三分之一，第二目标继续兑现",
+  "cancel_summary": "补齐证据前不得扩大仓位。；若出现新增阻断性风险闸门，取消执行。",
+  "position_plan_summary": {
+    "position_plan_status": "probe_only",
+    "risk_budget_summary": "风险预算 0.50%",
+    "entry_summary": "首仓 3.00%：首仓 3.0% ，满足投决条件后执行",
+    "add_summary": "加仓上限 5.00%：当前不允许加仓",
+    "stop_loss_summary": "止损 5.00%：跌破 5.0% 风险线则执行硬止损",
+    "take_profit_summary": "止盈 12.00% / 18.00%：第一目标减仓三分之一，第二目标继续兑现",
+    "cancel_summary": "补齐证据前不得扩大仓位。；若出现新增阻断性风险闸门，取消执行。"
+  },
+  "required_next_actions": [
+    "补齐基本面或公告信息后再提升结论等级",
+    "等待市场环境与个股方向进一步共振",
+    "补看最新公告、财报或重大事项后再执行",
+    "继续跟踪多头失效条件：量能确认不足；反抽受压尚待确认；低位超卖后反抽干扰；个股自身尚未完成方向确认，贸然追随环境可能放大假突破风险",
+    "继续核对空头挑战点：基本面上下文当前不可用：财报快照当前不可用，综合结论已退化为技术优先。；个股自身尚未完成方向确认，贸然追随环境可能放大假突破风险；财报源请求失败: financials HTTP 406: <html><body>financials HTTP 406</body></html>；最近公告含诉讼事项，需留意经营不确定性；回踩承接尚待确认"
+  ],
+  "final_recommendation": "当前仅建议以 pilot 级别观察或试探，虽然风报比为 2.40，但仍有 3 个闸门处于提醒状态。",
+  "recommended_review_action": "request_more_evidence",
+  "evidence_hash": "sec-7e8b26acbe1edf6a",
+  "governance_hash": "gov-b6bff85afdf7e2203ee4ba7f29a8ff98a4f276c14731662b14b80aa015609758",
+  "package_binding": {
+    "artifact_role": "approval_brief",
+    "brief_contract_version": "security_approval_brief.v1",
+    "decision_ref": "decision_ref:21844:1775676845866326500",
+    "approval_ref": "approval_ref:21844:1775676845866405000",
+    "decision_id": "601916.SH-2026-04-08"
+  }
+}

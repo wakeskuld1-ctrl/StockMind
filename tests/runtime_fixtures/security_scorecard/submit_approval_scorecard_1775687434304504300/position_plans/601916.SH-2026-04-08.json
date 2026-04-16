@@ -1,0 +1,60 @@
+{
+  "contract_version": "security_position_plan.v2",
+  "document_type": "security_position_plan",
+  "plan_id": "plan-601916.SH-2026-04-08",
+  "decision_id": "601916.SH-2026-04-08",
+  "decision_ref": "decision_ref:10808:1775687434390710400",
+  "approval_ref": "approval_ref:10808:1775687434390742300",
+  "symbol": "601916.SH",
+  "analysis_date": "2026-04-08",
+  "plan_direction": "NoTrade",
+  "plan_status": "probe_only",
+  "risk_budget_pct": 0.005,
+  "suggested_gross_pct": 0.05,
+  "starter_gross_pct": 0.03,
+  "max_gross_pct": 0.05,
+  "entry_plan": {
+    "entry_mode": "probe",
+    "trigger_condition": "首仓 3.0% ，满足投决条件后执行",
+    "starter_gross_pct": 0.03,
+    "notes": "首仓方案依据当前状态 probe_only"
+  },
+  "add_plan": {
+    "allow_add": false,
+    "trigger_condition": "当前不允许加仓",
+    "max_gross_pct": 0.05,
+    "notes": "补证据或风险解除前禁止加仓"
+  },
+  "reduce_plan": {
+    "allow_reduce": true,
+    "trigger_condition": "达到第一目标位或市场环境转弱时允许主动减仓",
+    "target_gross_pct": 0.0,
+    "notes": "减仓规则用于把仓位降回更稳健区间，避免只定义加仓而不定义收缩。"
+  },
+  "stop_loss_plan": {
+    "stop_loss_pct": 0.05,
+    "hard_stop_condition": "跌破 5.0% 风险线则执行硬止损",
+    "notes": "止损线直接继承投决会风险参数"
+  },
+  "take_profit_plan": {
+    "first_target_pct": 0.12,
+    "second_target_pct": 0.18,
+    "partial_exit_rule": "第一目标减仓三分之一，第二目标继续兑现",
+    "notes": "止盈目标沿用投决卡预期收益区间"
+  },
+  "cancel_conditions": [
+    "补齐证据前不得扩大仓位。",
+    "若出现新增阻断性风险闸门，取消执行。"
+  ],
+  "sizing_rationale": [
+    "当前仅处于 needs_more_evidence，对应试探仓计划。",
+    "在补证据并重新审批前，不允许扩大仓位。"
+  ],
+  "approval_binding": {
+    "decision_ref": "decision_ref:10808:1775687434390710400",
+    "approval_ref": "approval_ref:10808:1775687434390742300",
+    "approval_request_ref": "approval_ref:10808:1775687434390742300",
+    "package_scope": "security_decision_submit_approval",
+    "binding_status": "bound_to_approval_request"
+  }
+}

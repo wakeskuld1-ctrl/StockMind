@@ -1,0 +1,29 @@
+{
+  "approval_ref": "approval:decision-601916-SH-2026-04-16",
+  "approved_reviewers": [],
+  "approved_signatures": [],
+  "auto_reject_gate_names": [],
+  "auto_reject_reason": null,
+  "auto_reject_recommended": false,
+  "created_at": "2026-04-16T09:00:00+08:00",
+  "decision_id": "decision-601916-SH-2026-04-16",
+  "decision_ref": "decision:601916.SH:2026-04-16",
+  "enforce_role_matrix": true,
+  "evidence_hash": "evidence-hash",
+  "governance_hash": "governance-hash",
+  "min_approvals": 2,
+  "position_plan_binding": {
+    "gross_limit_summary": "starter 4%, max 12%",
+    "plan_direction": "Long",
+    "plan_status": "ready",
+    "position_plan_contract_version": "security_position_plan.v1",
+    "position_plan_path": "tests\\runtime_fixtures\\security_decision_verify_package\\security_decision_verify_package_post_meeting_chair_tampered_1776323974285056800\\position_plan.json",
+    "position_plan_ref": "position-plan:601916.SH:2026-04-16",
+    "position_plan_sha256": "8e176371334b88605314239cb146ad01ea207daf7221fc3bacc4ceb415e142a1"
+  },
+  "recovery_action_required": false,
+  "recovery_actions": [],
+  "require_risk_signoff": true,
+  "scene_name": "security_review",
+  "status": "Pending"
+}

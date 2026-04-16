@@ -1,0 +1,62 @@
+{
+  "decision_ref": "decision_ref:11168:1775675771176894000",
+  "decision_id": "601916.SH-2026-04-08",
+  "scene_name": "security_decision_committee",
+  "asset_id": "601916.SH",
+  "instrument_type": "equity",
+  "strategy_type": "security_decision_committee",
+  "horizon": "swing",
+  "direction": "Long",
+  "status": "NeedsMoreEvidence",
+  "confidence_score": 0.11999999999999994,
+  "expected_return_range": {
+    "low": 0.12,
+    "base": 0.15,
+    "high": 0.18
+  },
+  "downside_risk": {
+    "soft_stop": 0.05,
+    "hard_stop": 0.05,
+    "tail_risk_note": "当前需要重点核查证据缺口、事件风险与环境变化，而不是直接把研究偏强等同于可执行"
+  },
+  "position_size_suggestion": {
+    "gross_pct": 0.05,
+    "max_pct": 0.08,
+    "sizing_basis": "pilot"
+  },
+  "key_supporting_points": [
+    "空头结构处于反抽观察阶段，留意旧支撑 2.94 附近是否重新受压。",
+    "个股仍处等待态，环境偏强但暂不构成顺风确认",
+    "信息面源暂不可用，当前只能基于技术与行业代理给出临时结论。",
+    "最近公告中已出现需要重点复核的风险关键词，信息面不宜按纯正向理解。"
+  ],
+  "key_risks": [
+    "基本面上下文当前不可用：财报快照当前不可用，综合结论已退化为技术优先。",
+    "个股自身尚未完成方向确认，贸然追随环境可能放大假突破风险",
+    "财报源请求失败: financials HTTP 406: <html><body>financials HTTP 406</body></html>",
+    "最近公告含诉讼事项，需留意经营不确定性",
+    "回踩承接尚待确认",
+    "data_completeness_gate: 存在外部信息缺口，研究可继续但需要降低结论确定性",
+    "market_alignment_gate: 环境与个股并未完全共振，仍需等待更多确认",
+    "event_risk_gate: 信息面记录到 1 条事件风险，需要在执行前人工复核"
+  ],
+  "invalidation_conditions": [
+    "量能确认不足",
+    "反抽受压尚待确认",
+    "低位超卖后反抽干扰",
+    "个股自身尚未完成方向确认，贸然追随环境可能放大假突破风险"
+  ],
+  "evidence_refs": [
+    "sec-7e8b26acbe1edf6a"
+  ],
+  "portfolio_impact": {
+    "sector_exposure_delta": null,
+    "factor_exposure_note": null,
+    "liquidity_class": "unknown"
+  },
+  "approval": {
+    "required": true,
+    "approval_state": "Pending",
+    "approval_ref": "approval_ref:11168:1775675771176937000"
+  }
+}

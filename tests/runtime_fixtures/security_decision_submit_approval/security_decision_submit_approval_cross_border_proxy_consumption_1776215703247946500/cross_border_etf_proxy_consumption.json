@@ -1,0 +1,71 @@
+{
+  "base_score": 600.0,
+  "binning_version": "woe_binning.v1",
+  "coefficient_version": "woe_logistic.v1",
+  "features": [
+    {
+      "bins": [],
+      "feature_name": "close_vs_sma50",
+      "group_name": "T"
+    },
+    {
+      "bins": [],
+      "feature_name": "close_vs_sma200",
+      "group_name": "T"
+    },
+    {
+      "bins": [],
+      "feature_name": "volume_ratio_20",
+      "group_name": "T"
+    },
+    {
+      "bins": [],
+      "feature_name": "support_gap_pct_20",
+      "group_name": "T"
+    },
+    {
+      "bins": [],
+      "feature_name": "resistance_gap_pct_20",
+      "group_name": "T"
+    },
+    {
+      "bins": [],
+      "feature_name": "fx_proxy_status",
+      "group_name": "X"
+    },
+    {
+      "bins": [],
+      "feature_name": "fx_return_5d",
+      "group_name": "X"
+    },
+    {
+      "bins": [],
+      "feature_name": "overseas_market_proxy_status",
+      "group_name": "X"
+    },
+    {
+      "bins": [],
+      "feature_name": "overseas_market_return_5d",
+      "group_name": "X"
+    },
+    {
+      "bins": [],
+      "feature_name": "market_session_gap_status",
+      "group_name": "X"
+    },
+    {
+      "bins": [],
+      "feature_name": "market_session_gap_days",
+      "group_name": "X"
+    }
+  ],
+  "instrument_subscope": "cross_border_etf",
+  "intercept": 0.0,
+  "label_definition": "security_forward_outcome.v1",
+  "model_id": "a_share_etf_cross_border_etf_10d_direction_head",
+  "model_sha256": null,
+  "model_version": "candidate_2026_04_11T22_05_00_08_00",
+  "oot_window": "2025-07-01..2025-09-30",
+  "positive_label_definition": "positive_return_10d",
+  "training_window": "2025-01-01..2025-06-30"
+}

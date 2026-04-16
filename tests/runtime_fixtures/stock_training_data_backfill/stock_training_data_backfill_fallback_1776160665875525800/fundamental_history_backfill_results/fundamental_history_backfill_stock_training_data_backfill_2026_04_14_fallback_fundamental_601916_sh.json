@@ -1,0 +1,27 @@
+{
+  "contract_version": "security_fundamental_history_backfill.v1",
+  "document_type": "security_fundamental_history_backfill_result",
+  "batch_ref": "fundamental-history-backfill:stock-training-data-backfill-2026-04-14-fallback-fundamental-601916_sh",
+  "imported_record_count": 2,
+  "covered_symbol_count": 1,
+  "covered_report_periods": [
+    "2024-12-31",
+    "2025-12-31"
+  ],
+  "storage_path": "tests\\runtime_fixtures\\stock_training_data_backfill\\stock_training_data_backfill_fallback_1776160665875525800\\security_fundamental_history.db",
+  "backfill_result_path": "tests\\runtime_fixtures\\stock_training_data_backfill\\stock_training_data_backfill_fallback_1776160665875525800\\fundamental_history_backfill_results\\fundamental_history_backfill_stock_training_data_backfill_2026_04_14_fallback_fundamental_601916_sh.json",
+  "records": [
+    {
+      "record_ref": "fundamental-history:601916.SH:2025-12-31:v1",
+      "symbol": "601916.SH",
+      "report_period": "2025-12-31",
+      "notice_date": null
+    },
+    {
+      "record_ref": "fundamental-history:601916.SH:2024-12-31:v1",
+      "symbol": "601916.SH",
+      "report_period": "2024-12-31",
+      "notice_date": null
+    }
+  ]
+}

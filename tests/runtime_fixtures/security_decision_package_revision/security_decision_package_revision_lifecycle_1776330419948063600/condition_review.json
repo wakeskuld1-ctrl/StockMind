@@ -1,0 +1,21 @@
+{
+  "analysis_date": "2026-04-12",
+  "binding": {
+    "approval_ref": "approval_ref:23588:1776330408730792100",
+    "decision_package_path": "tests\\runtime_fixtures\\local_memory\\security_decision_package_revision_lifecycle_1776330405760925200\\scenes_runtime\\decision_packages\\601916.SH-2026-04-15.json",
+    "decision_ref": "decision_ref:23588:1776330408730787600",
+    "position_plan_ref": "plan-601916.SH-2026-04-15"
+  },
+  "condition_review_id": "condition-review:601916.SH:2026-04-12:manual_review:v1",
+  "contract_version": "security_condition_review.v1",
+  "created_at": "2026-04-12T10:05:00+08:00",
+  "document_type": "security_condition_review",
+  "recommended_follow_up_action": "keep_plan",
+  "review_notes": [
+    "review preserved the current plan pending further lifecycle events"
+  ],
+  "review_status": "recorded",
+  "review_trigger_summary": "build-day lifecycle review fixture",
+  "review_trigger_type": "manual_review",
+  "symbol": "601916.SH"
+}

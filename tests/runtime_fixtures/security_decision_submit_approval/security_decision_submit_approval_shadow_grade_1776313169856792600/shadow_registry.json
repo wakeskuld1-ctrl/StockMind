@@ -1,0 +1,20 @@
+{
+  "artifact_path": "tests\\runtime_fixtures\\local_memory\\security_scorecard_training_ready_1776156088157978400\\scorecard_training_runtime\\scorecard_artifacts\\a_share_equity_10d_direction_head__candidate_2026_04_09T17_30_00_08_00.json",
+  "artifact_sha256": "fixture-sha",
+  "document_type": "security_scorecard_model_registry",
+  "grade_reason": "promoted_by_shadow_evaluation",
+  "horizon_days": 10,
+  "instrument_scope": "EQUITY",
+  "market_scope": "A_SHARE",
+  "metrics_summary_json": {
+    "readiness_assessment": {
+      "production_readiness": "shadow_ready"
+    }
+  },
+  "model_grade": "shadow",
+  "model_id": "a_share_equity_10d_direction_head",
+  "model_version": "candidate_20260411_shadow",
+  "registry_id": "registry-shadow-601916",
+  "status": "candidate",
+  "target_head": "direction_head"
+}

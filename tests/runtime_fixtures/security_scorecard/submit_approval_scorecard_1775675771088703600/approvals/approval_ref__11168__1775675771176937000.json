@@ -1,0 +1,29 @@
+{
+  "approval_ref": "approval_ref:11168:1775675771176937000",
+  "decision_id": "601916.SH-2026-04-08",
+  "scene_name": "security_decision_committee",
+  "status": "Pending",
+  "created_at": "2026-04-09T09:30:00+08:00",
+  "decision_ref": "decision_ref:11168:1775675771176894000",
+  "evidence_hash": "sec-7e8b26acbe1edf6a",
+  "governance_hash": "gov-b6bff85afdf7e2203ee4ba7f29a8ff98a4f276c14731662b14b80aa015609758",
+  "min_approvals": 2,
+  "approved_reviewers": [],
+  "approved_signatures": [],
+  "enforce_role_matrix": true,
+  "require_risk_signoff": true,
+  "auto_reject_recommended": false,
+  "auto_reject_reason": null,
+  "auto_reject_gate_names": [],
+  "recovery_action_required": false,
+  "recovery_actions": [],
+  "position_plan_binding": {
+    "position_plan_ref": "plan-601916.SH-2026-04-08",
+    "position_plan_path": "tests\\runtime_fixtures\\security_scorecard\\submit_approval_scorecard_1775675771088703600\\position_plans\\601916.SH-2026-04-08.json",
+    "position_plan_contract_version": "security_position_plan.v2",
+    "position_plan_sha256": "8842940088bb26f615ccdbb2a76b847a33a845a5de088d52038c0bfe37a67c9c",
+    "plan_status": "probe_only",
+    "plan_direction": "Long",
+    "gross_limit_summary": "suggested 5.00% / starter 3.00% / max 5.00%"
+  }
+}
