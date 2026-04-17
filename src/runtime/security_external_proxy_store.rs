@@ -200,6 +200,42 @@ impl SecurityExternalProxyStore {
             .map_err(|error| SecurityExternalProxyStoreError::ReadRows(error.to_string()))
     }
 
+    // 2026-04-17 CST: Added because ETF latest-proxy requests can omit an explicit
+    // as_of_date while still expecting the governed runtime to anchor on the freshest
+    // auditable proxy snapshot.
+    // Reason: only supporting exact-date and on-or-before lookups leaves the no-date
+    // chair/evidence path blind to already-imported proxy history.
+    // Purpose: give upstream evidence resolution one canonical "latest known proxy row"
+    // lookup without duplicating SQL in the ops layer.
+    pub fn load_latest_record(
+        &self,
+        symbol: &str,
+    ) -> Result<Option<SecurityExternalProxyRecordRow>, SecurityExternalProxyStoreError> {
+        let connection = self.open_connection()?;
+        connection
+            .query_row(
+                "SELECT symbol, as_of_date, instrument_subscope, external_proxy_inputs_json, batch_id, record_ref, created_at
+                 FROM security_external_proxy_history
+                 WHERE symbol = ?1
+                 ORDER BY as_of_date DESC, updated_at DESC, created_at DESC
+                 LIMIT 1",
+                params![symbol],
+                |row| {
+                    Ok(SecurityExternalProxyRecordRow {
+                        symbol: row.get(0)?,
+                        as_of_date: row.get(1)?,
+                        instrument_subscope: row.get(2)?,
+                        external_proxy_inputs_json: row.get(3)?,
+                        batch_id: row.get(4)?,
+                        record_ref: row.get(5)?,
+                        created_at: row.get(6)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|error| SecurityExternalProxyStoreError::ReadRows(error.to_string()))
+    }
+
     fn open_connection(&self) -> Result<Connection, SecurityExternalProxyStoreError> {
         if let Some(parent) = self.db_path.parent() {
             fs::create_dir_all(parent).map_err(|error| {

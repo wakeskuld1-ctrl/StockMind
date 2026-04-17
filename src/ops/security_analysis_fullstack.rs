@@ -1,12 +1,15 @@
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::time::Duration;
 use thiserror::Error;
 
 use crate::ops::stock::security_analysis_contextual::{
     SecurityAnalysisContextualError, SecurityAnalysisContextualRequest,
     SecurityAnalysisContextualResult, security_analysis_contextual,
 };
+use crate::ops::stock::security_disclosure_history_backfill::load_historical_disclosure_context;
+use crate::ops::stock::security_fundamental_history_backfill::load_historical_fundamental_context;
 use crate::ops::stock::stock_analysis_data_guard::StockAnalysisDateGuard;
 use crate::ops::stock::technical_consultation_basic::{
     TechnicalConsultationBasicRequest, TechnicalConsultationBasicResult,
@@ -268,15 +271,32 @@ pub fn security_analysis_fullstack(
     // 2026-04-13 CST: 这里先在技术分析后同步装配 ETF 专项事实层，原因是 ETF 后续要和技术面共享同一分析日期与证据版本。
     // 目的：把 ETF 信息厚度直接纳入 fullstack 主对象，而不是留在 briefing 层做隐式补充。
     let etf_context = fetch_etf_context(&request.symbol);
-    let fundamental_context = match fetch_fundamental_context(&request.symbol) {
-        Ok(context) => context,
-        Err(error) => build_unavailable_fundamental_context(error.to_string()),
-    };
-    let disclosure_context =
-        match fetch_disclosure_context(&request.symbol, request.disclosure_limit.max(1)) {
+    // 2026-04-17 CST: Reason=once governed history exists, validation and replay should
+    // read that frozen evidence before touching live providers again. Purpose=restore the
+    // governed-history precedence contract for both fundamentals and disclosures.
+    let fundamental_context = match load_historical_fundamental_context(
+        &request.symbol,
+        request.as_of_date.as_deref(),
+    ) {
+        Ok(Some(context)) => context,
+        Ok(None) | Err(_) => match fetch_fundamental_context(&request.symbol) {
             Ok(context) => context,
-            Err(error) => build_unavailable_disclosure_context(error.to_string()),
-        };
+            Err(error) => build_unavailable_fundamental_context(error.to_string()),
+        },
+    };
+    let disclosure_context = match load_historical_disclosure_context(
+        &request.symbol,
+        request.as_of_date.as_deref(),
+        request.disclosure_limit.max(1),
+    ) {
+        Ok(Some(context)) => context,
+        Ok(None) | Err(_) => {
+            match fetch_disclosure_context(&request.symbol, request.disclosure_limit.max(1)) {
+                Ok(context) => context,
+                Err(error) => build_unavailable_disclosure_context(error.to_string()),
+            }
+        }
+    };
     let cross_border_context =
         build_cross_border_context(request, &technical_context, &etf_context);
     let industry_context = build_industry_context(&technical_context);
@@ -1972,9 +1992,24 @@ fn append_query_params(base: &str, params: &[(&str, String)]) -> String {
     format!("{base}{separator}{query}")
 }
 
+// 2026-04-17 CST: Added because live upstream sockets can stall long enough to
+// make full-suite verification look frozen.
+// Reason: the previous helper had no explicit timeout bound.
+// Purpose: keep analysis/backfill fetch failures short and deterministic.
+fn resolve_http_timeout() -> Duration {
+    const DEFAULT_HTTP_TIMEOUT_SECS: u64 = 8;
+    std::env::var("EXCEL_SKILL_HTTP_TIMEOUT_SECS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .map(Duration::from_secs)
+        .unwrap_or_else(|| Duration::from_secs(DEFAULT_HTTP_TIMEOUT_SECS))
+}
+
 fn http_get_text(url: &str, source_label: &str) -> Result<String, String> {
     match ureq::get(url)
         .set("Accept", "text/html,application/json;q=0.9,*/*;q=0.8")
+        .timeout(resolve_http_timeout())
         .call()
     {
         Ok(response) => response.into_string().map_err(|error| error.to_string()),
@@ -2519,4 +2554,60 @@ fn default_lookback_days() -> usize {
 
 fn default_disclosure_limit() -> usize {
     DEFAULT_DISCLOSURE_LIMIT
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::lock_test_env;
+    use std::io::Read;
+    use std::net::TcpListener;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    fn spawn_nonresponsive_http_server() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("test server should bind");
+        let address = listener
+            .local_addr()
+            .expect("test server should expose local addr");
+        thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buffer = [0_u8; 1024];
+                let _ = stream.read(&mut buffer);
+                thread::sleep(Duration::from_secs(3));
+            }
+        });
+        format!("http://{address}")
+    }
+
+    #[test]
+    fn http_get_text_times_out_when_server_never_finishes_response() {
+        let _env_guard = lock_test_env();
+        let original_timeout = std::env::var("EXCEL_SKILL_HTTP_TIMEOUT_SECS").ok();
+        unsafe {
+            std::env::set_var("EXCEL_SKILL_HTTP_TIMEOUT_SECS", "1");
+        }
+
+        let started_at = Instant::now();
+        let result = http_get_text(&spawn_nonresponsive_http_server(), "financials");
+
+        match original_timeout {
+            Some(value) => unsafe {
+                std::env::set_var("EXCEL_SKILL_HTTP_TIMEOUT_SECS", value);
+            },
+            None => unsafe {
+                std::env::remove_var("EXCEL_SKILL_HTTP_TIMEOUT_SECS");
+            },
+        }
+
+        assert!(
+            result.is_err(),
+            "nonresponsive upstream should fail instead of hanging"
+        );
+        assert!(
+            started_at.elapsed() < Duration::from_millis(2500),
+            "request should time out quickly, got {:?}",
+            started_at.elapsed()
+        );
+    }
 }

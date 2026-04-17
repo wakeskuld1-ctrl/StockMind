@@ -2,6 +2,7 @@ use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use std::time::Duration;
 use thiserror::Error;
 
 use crate::ops::stock::import_stock_price_history::ImportDateRange;
@@ -698,11 +699,26 @@ fn build_sina_url(provider_symbol: &ProviderSymbol, window: &SyncDateWindow) -> 
     )
 }
 
+// 2026-04-17 CST: Added because stalled provider sockets made long stock sync
+// runs look frozen even when the rest of the pipeline was healthy.
+// Reason: the previous GET helper had no bounded timeout.
+// Purpose: keep provider transport failures short and testable.
+fn resolve_http_timeout() -> Duration {
+    const DEFAULT_HTTP_TIMEOUT_SECS: u64 = 8;
+    std::env::var("EXCEL_SKILL_HTTP_TIMEOUT_SECS")
+        .ok()
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .map(Duration::from_secs)
+        .unwrap_or_else(|| Duration::from_secs(DEFAULT_HTTP_TIMEOUT_SECS))
+}
+
 // 2026-03-29 CST: 这里统一执行 GET 请求，原因是腾讯和新浪都走简单 GET；
 // 目的：把状态码、网络异常和 body 读取错误统一翻译成 provider 级中文错误。
 fn http_get_text(provider: SyncProvider, url: &str) -> Result<String, SyncStockPriceHistoryError> {
     match ureq::get(url)
         .set("Accept", "application/json,text/csv;q=0.9,*/*;q=0.8")
+        .timeout(resolve_http_timeout())
         .call()
     {
         Ok(response) => {
@@ -806,4 +822,63 @@ fn default_adjustment() -> String {
 
 fn default_sync_providers() -> Vec<String> {
     vec!["tencent".to_string(), "sina".to_string()]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::lock_test_env;
+    use std::io::Read;
+    use std::net::TcpListener;
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    fn spawn_nonresponsive_http_server() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("test server should bind");
+        let address = listener
+            .local_addr()
+            .expect("test server should expose local addr");
+        thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buffer = [0_u8; 1024];
+                let _ = stream.read(&mut buffer);
+                thread::sleep(Duration::from_secs(3));
+            }
+        });
+        format!("http://{address}")
+    }
+
+    #[test]
+    fn http_get_text_times_out_when_provider_socket_never_returns_body() {
+        let _env_guard = lock_test_env();
+        let original_timeout = std::env::var("EXCEL_SKILL_HTTP_TIMEOUT_SECS").ok();
+        unsafe {
+            std::env::set_var("EXCEL_SKILL_HTTP_TIMEOUT_SECS", "1");
+        }
+
+        let started_at = Instant::now();
+        let result = http_get_text(SyncProvider::Tencent, &spawn_nonresponsive_http_server());
+
+        match original_timeout {
+            Some(value) => unsafe {
+                std::env::set_var("EXCEL_SKILL_HTTP_TIMEOUT_SECS", value);
+            },
+            None => unsafe {
+                std::env::remove_var("EXCEL_SKILL_HTTP_TIMEOUT_SECS");
+            },
+        }
+
+        assert!(
+            matches!(
+                result,
+                Err(SyncStockPriceHistoryError::ProviderTransport { .. })
+            ),
+            "nonresponsive provider should surface as bounded transport failure"
+        );
+        assert!(
+            started_at.elapsed() < Duration::from_millis(2500),
+            "provider request should time out quickly, got {:?}",
+            started_at.elapsed()
+        );
+    }
 }

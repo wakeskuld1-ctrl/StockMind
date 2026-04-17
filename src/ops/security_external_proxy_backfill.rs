@@ -149,6 +149,22 @@ pub fn load_historical_external_proxy_inputs(
     symbol: &str,
     as_of_date: &str,
 ) -> Result<Option<SecurityExternalProxyInputs>, SecurityExternalProxyBackfillError> {
+    let Some((_, inputs)) = load_historical_external_proxy_snapshot(symbol, as_of_date)? else {
+        return Ok(None);
+    };
+    Ok(Some(inputs))
+}
+
+// 2026-04-17 CST: Added because the ETF latest-proxy path now needs both the resolved
+// proxy payload and the effective proxy date when evidence requests omit as_of_date.
+// Reason: returning inputs alone is not enough to realign the full analysis chain onto
+// the governed proxy anchor date.
+// Purpose: expose one shared dated snapshot helper so evidence/chair consumers do not
+// split into separate date-resolution behaviors.
+pub fn load_historical_external_proxy_snapshot(
+    symbol: &str,
+    as_of_date: &str,
+) -> Result<Option<(String, SecurityExternalProxyInputs)>, SecurityExternalProxyBackfillError> {
     let store = SecurityExternalProxyStore::workspace_default()?;
     // 2026-04-12 UTC+08: Fall back to the nearest prior dated proxy snapshot,
     // because future-looking runs often freeze on the latest trading day even when
@@ -161,14 +177,23 @@ pub fn load_historical_external_proxy_inputs(
     else {
         return Ok(None);
     };
-    let inputs =
-        serde_json::from_str::<SecurityExternalProxyInputs>(&row.external_proxy_inputs_json)
-            .map_err(|error| {
-                SecurityExternalProxyBackfillError::Build(format!(
-                    "failed to parse historical external proxy inputs: {error}"
-                ))
-            })?;
-    Ok(Some(inputs))
+    Ok(Some(parse_proxy_snapshot_row(row)?))
+}
+
+// 2026-04-17 CST: Added because no-date ETF requests should still consume the latest
+// governed proxy history instead of behaving as if no proxy data exists.
+// Reason: the previous helper set only supported explicit dates, which broke the
+// latest-run chair path when as_of_date was intentionally omitted.
+// Purpose: give the evidence layer one canonical latest snapshot loader that also
+// reports the effective proxy date it resolved.
+pub fn load_latest_external_proxy_snapshot(
+    symbol: &str,
+) -> Result<Option<(String, SecurityExternalProxyInputs)>, SecurityExternalProxyBackfillError> {
+    let store = SecurityExternalProxyStore::workspace_default()?;
+    let Some(row) = store.load_latest_record(symbol)? else {
+        return Ok(None);
+    };
+    Ok(Some(parse_proxy_snapshot_row(row)?))
 }
 
 // 2026-04-12 CST: Centralize governed ETF proxy hydration here, because the
@@ -181,16 +206,33 @@ pub fn resolve_effective_external_proxy_inputs(
     as_of_date: Option<&str>,
     overrides: Option<SecurityExternalProxyInputs>,
 ) -> Result<Option<SecurityExternalProxyInputs>, SecurityExternalProxyBackfillError> {
-    let historical_proxy_inputs = as_of_date
-        .map(|effective_as_of_date| {
-            load_historical_external_proxy_inputs(symbol, effective_as_of_date)
-        })
-        .transpose()?
-        .flatten();
+    let historical_proxy_inputs = if let Some(effective_as_of_date) = as_of_date {
+        load_historical_external_proxy_inputs(symbol, effective_as_of_date)?
+    } else {
+        load_latest_external_proxy_snapshot(symbol)?
+            .map(|(_, inputs)| inputs)
+    };
     Ok(merge_external_proxy_inputs(
         historical_proxy_inputs,
         overrides,
     ))
+}
+
+// 2026-04-17 CST: Added because all governed snapshot loaders should decode the same
+// stored JSON row shape before they merge overrides or propagate effective dates.
+// Reason: keeping row parsing duplicated across exact-date/latest helpers would make
+// future proxy contract changes drift silently.
+// Purpose: centralize row-to-contract decoding for historical proxy snapshot consumers.
+fn parse_proxy_snapshot_row(
+    row: SecurityExternalProxyRecordRow,
+) -> Result<(String, SecurityExternalProxyInputs), SecurityExternalProxyBackfillError> {
+    let inputs = serde_json::from_str::<SecurityExternalProxyInputs>(&row.external_proxy_inputs_json)
+        .map_err(|error| {
+            SecurityExternalProxyBackfillError::Build(format!(
+                "failed to parse historical external proxy inputs: {error}"
+            ))
+        })?;
+    Ok((row.as_of_date, inputs))
 }
 
 // 2026-04-11 CST: Add a governed result-document loader, because P7 history

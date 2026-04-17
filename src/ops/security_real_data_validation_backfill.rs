@@ -636,6 +636,9 @@ fn with_validation_history_overrides<T>(
     disclosure_history_db_path: &Path,
     callback: impl FnOnce() -> Result<T, SecurityAnalysisFullstackError>,
 ) -> Result<T, SecurityRealDataValidationBackfillError> {
+    #[cfg(test)]
+    let _env_lock = crate::test_support::lock_test_env();
+
     let previous_stock_db = std::env::var_os("EXCEL_SKILL_STOCK_DB");
     let previous_fundamental_history_db = std::env::var_os("EXCEL_SKILL_FUNDAMENTAL_HISTORY_DB");
     let previous_disclosure_history_db = std::env::var_os("EXCEL_SKILL_DISCLOSURE_HISTORY_DB");

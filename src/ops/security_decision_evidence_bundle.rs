@@ -8,15 +8,19 @@ use thiserror::Error;
 use crate::ops::stock::security_analysis_contextual::SecurityAnalysisContextualResult;
 use crate::ops::stock::security_analysis_fullstack::{
     CrossBorderEtfContext, DisclosureContext, EtfContext, FundamentalContext, IndustryContext,
-    IntegratedConclusion, SecurityAnalysisFullstackError, SecurityAnalysisFullstackRequest,
-    SecurityAnalysisFullstackResult, disclosure_has_annual_report_notice,
+    FundamentalMetrics, IntegratedConclusion, SecurityAnalysisFullstackError,
+    SecurityAnalysisFullstackRequest, SecurityAnalysisFullstackResult,
+    disclosure_has_annual_report_notice,
     disclosure_has_buyback_or_increase_notice, disclosure_has_dividend_notice,
     disclosure_has_inquiry_notice, disclosure_has_litigation_notice,
     disclosure_has_preloss_or_loss_notice, disclosure_has_reduction_notice,
     disclosure_has_risk_warning_notice, disclosure_has_termination_notice,
     disclosure_positive_keyword_count, disclosure_risk_keyword_count, security_analysis_fullstack,
 };
-use crate::ops::stock::security_external_proxy_backfill::resolve_effective_external_proxy_inputs;
+use crate::ops::stock::security_external_proxy_backfill::{
+    load_historical_external_proxy_snapshot, load_latest_external_proxy_snapshot,
+    resolve_effective_external_proxy_inputs,
+};
 
 // 2026-04-14 CST: 这里补回外部代理输入正式合同，原因是 ETF/跨市场代理数据链已经在 backfill/runtime 中落盘，
 // 目的：让 committee/snapshot/training 继续消费统一结构，而不是各模块分别自定义一套散乱字段。
@@ -176,11 +180,30 @@ pub enum SecurityDecisionEvidenceBundleError {
 pub fn security_decision_evidence_bundle(
     request: &SecurityDecisionEvidenceBundleRequest,
 ) -> Result<SecurityDecisionEvidenceBundleResult, SecurityDecisionEvidenceBundleError> {
+    let effective_proxy_snapshot = resolve_effective_proxy_snapshot(request)?;
+    // 2026-04-17 CST: Added because no-date ETF requests should inherit the latest
+    // governed proxy date before the full analysis chain is built.
+    // Reason: resolving proxy payloads without resolving the effective analysis date
+    // still lets contextual/fullstack drift to live "today" semantics.
+    // Purpose: keep technical, evidence, committee, scorecard, and chair aligned on
+    // the same governed ETF anchor date.
+    let effective_as_of_date = request
+        .as_of_date
+        .clone()
+        .or_else(|| {
+            if is_etf_symbol(&request.symbol) {
+                effective_proxy_snapshot
+                    .as_ref()
+                    .map(|(resolved_date, _)| resolved_date.clone())
+            } else {
+                None
+            }
+        });
     // 2026-04-14 CST: 这里先把 dated proxy backfill 与请求级 override 合并成有效代理输入，原因是当前 ETF 兼容修补要优先恢复统一事实口径；
     // 目的：即便后续 fullstack 还没显式消费这些字段，证据层也先保留同源可追溯输入，避免继续在更上层散落处理。
     let effective_external_proxy_inputs = resolve_effective_external_proxy_inputs(
         request.symbol.trim(),
-        request.as_of_date.as_deref(),
+        effective_as_of_date.as_deref(),
         request.external_proxy_inputs.clone(),
     )
     .map_err(|error| SecurityDecisionEvidenceBundleError::ExternalProxy(error.to_string()))?;
@@ -190,13 +213,18 @@ pub fn security_decision_evidence_bundle(
         sector_symbol: request.sector_symbol.clone(),
         market_profile: request.market_profile.clone(),
         sector_profile: request.sector_profile.clone(),
-        as_of_date: request.as_of_date.clone(),
+        as_of_date: effective_as_of_date,
         underlying_symbol: request.underlying_symbol.clone(),
         fx_symbol: request.fx_symbol.clone(),
         lookback_days: request.lookback_days,
         disclosure_limit: request.disclosure_limit,
     };
-    let analysis = security_analysis_fullstack(&fullstack_request)?;
+    let mut analysis = security_analysis_fullstack(&fullstack_request)?;
+    hydrate_governed_etf_proxy_information(
+        request,
+        &mut analysis,
+        effective_external_proxy_inputs.as_ref(),
+    );
     Ok(build_evidence_bundle(
         request,
         analysis,
@@ -225,6 +253,79 @@ pub fn build_evidence_bundle_feature_seed(
                 .contextual_conclusion
                 .alignment
                 .clone(),
+        ),
+    );
+    // 2026-04-17 CST: Added because ETF snapshot/training consumers now require
+    // the canonical technical numeric layer on the shared evidence seed.
+    // Reason: the previous seed only froze textual signals, which left formal raw
+    // snapshots without the numeric ETF factors the regression suite expects.
+    // Purpose: keep snapshot, scorecard, and future training readers aligned on
+    // one governed technical-factor contract.
+    insert_optional_numeric_feature(
+        &mut features,
+        "close_vs_sma50",
+        ratio_delta(
+            stock_analysis.indicator_snapshot.close,
+            stock_analysis.indicator_snapshot.sma_50,
+        ),
+    );
+    insert_optional_numeric_feature(
+        &mut features,
+        "close_vs_sma200",
+        ratio_delta(
+            stock_analysis.indicator_snapshot.close,
+            stock_analysis.indicator_snapshot.sma_200,
+        ),
+    );
+    insert_optional_numeric_feature(
+        &mut features,
+        "volume_ratio_20",
+        Some(stock_analysis.indicator_snapshot.volume_ratio_20),
+    );
+    insert_optional_numeric_feature(
+        &mut features,
+        "mfi_14",
+        Some(stock_analysis.indicator_snapshot.mfi_14),
+    );
+    insert_optional_numeric_feature(
+        &mut features,
+        "cci_20",
+        Some(stock_analysis.indicator_snapshot.cci_20),
+    );
+    insert_optional_numeric_feature(
+        &mut features,
+        "williams_r_14",
+        Some(stock_analysis.indicator_snapshot.williams_r_14),
+    );
+    insert_optional_numeric_feature(
+        &mut features,
+        "boll_width_ratio_20",
+        Some(stock_analysis.indicator_snapshot.boll_width_ratio_20),
+    );
+    insert_optional_numeric_feature(
+        &mut features,
+        "rsrs_zscore_18_60",
+        Some(stock_analysis.indicator_snapshot.rsrs_zscore_18_60),
+    );
+    insert_optional_numeric_feature(
+        &mut features,
+        "atr_14",
+        Some(stock_analysis.indicator_snapshot.atr_14),
+    );
+    insert_optional_numeric_feature(
+        &mut features,
+        "support_gap_pct_20",
+        gap_to_level_pct(
+            stock_analysis.indicator_snapshot.support_level_20,
+            stock_analysis.indicator_snapshot.close,
+        ),
+    );
+    insert_optional_numeric_feature(
+        &mut features,
+        "resistance_gap_pct_20",
+        gap_to_level_pct(
+            stock_analysis.indicator_snapshot.resistance_level_20,
+            stock_analysis.indicator_snapshot.close,
         ),
     );
     features.insert(
@@ -833,6 +934,195 @@ fn build_evidence_quality(
     }
 }
 
+// 2026-04-17 CST: Added because ETF proxy date resolution now needs to happen before
+// fullstack analysis is invoked.
+// Reason: otherwise the evidence layer can hydrate the right proxy payload but still
+// keep a mismatched live analysis_date.
+// Purpose: expose one effective snapshot resolver that works for exact-date, nearest-prior,
+// and no-date latest ETF proxy requests.
+fn resolve_effective_proxy_snapshot(
+    request: &SecurityDecisionEvidenceBundleRequest,
+) -> Result<Option<(String, SecurityExternalProxyInputs)>, SecurityDecisionEvidenceBundleError> {
+    let snapshot = if let Some(as_of_date) = request.as_of_date.as_deref() {
+        load_historical_external_proxy_snapshot(request.symbol.trim(), as_of_date)
+    } else {
+        load_latest_external_proxy_snapshot(request.symbol.trim())
+    }
+    .map_err(|error| SecurityDecisionEvidenceBundleError::ExternalProxy(error.to_string()))?;
+    Ok(snapshot)
+}
+
+// 2026-04-17 CST: Added because ETF runtime/evidence consumers now need one normalized
+// subscope vocabulary across old and new artifact labels.
+// Reason: treasury/gold/equity ETF fixtures already use the newer names, while legacy
+// helpers still emit bond/commodity aliases.
+// Purpose: keep evidence substitution and scorecard gating aligned on one canonical label set.
+pub fn normalize_etf_instrument_subscope(
+    instrument_subscope: Option<&str>,
+) -> Option<&'static str> {
+    let normalized = instrument_subscope?.trim().to_ascii_lowercase();
+    if normalized.contains("cross_border") || normalized.contains("overseas") {
+        Some("cross_border_etf")
+    } else if normalized.contains("treasury") || normalized.contains("bond") {
+        Some("treasury_etf")
+    } else if normalized.contains("gold") || normalized.contains("commodity") {
+        Some("gold_etf")
+    } else if normalized.contains("equity") {
+        Some("equity_etf")
+    } else {
+        Some("equity_etf")
+    }
+}
+
+// 2026-04-17 CST: Added because governed ETF proxy families should formally substitute
+// for stock-style financial/disclosure contexts when those contexts are not meaningful.
+// Reason: treasury and gold ETF requests currently remain degraded even when the proxy
+// family is complete and auditable.
+// Purpose: project complete ETF proxy evidence into the formal evidence bundle instead of
+// forcing single-stock information requirements onto ETF chains.
+fn hydrate_governed_etf_proxy_information(
+    request: &SecurityDecisionEvidenceBundleRequest,
+    analysis: &mut SecurityAnalysisFullstackResult,
+    external_proxy_inputs: Option<&SecurityExternalProxyInputs>,
+) {
+    if !is_etf_symbol(&request.symbol) {
+        return;
+    }
+    let Some(external_proxy_inputs) = external_proxy_inputs else {
+        return;
+    };
+    let instrument_subscope = normalize_etf_instrument_subscope(
+        resolve_etf_subscope(
+            &request.symbol,
+            request
+                .sector_profile
+                .as_deref()
+                .or(request.market_profile.as_deref()),
+            analysis
+                .etf_context
+                .asset_scope
+                .as_deref()
+                .or(request.sector_profile.as_deref()),
+        ),
+    );
+    if !governed_etf_proxy_family_complete(instrument_subscope, external_proxy_inputs) {
+        return;
+    }
+
+    if analysis.etf_context.status != "available" {
+        analysis.etf_context = build_governed_etf_proxy_etf_context(instrument_subscope);
+    }
+    if analysis.fundamental_context.status != "available" {
+        analysis.fundamental_context =
+            build_governed_etf_proxy_fundamental_context(instrument_subscope, &analysis.analysis_date);
+    }
+    if analysis.disclosure_context.status != "available" {
+        analysis.disclosure_context =
+            build_governed_etf_proxy_disclosure_context(instrument_subscope, &analysis.analysis_date);
+    }
+}
+
+// 2026-04-17 CST: Added because ETF runtime scoring still needs the ETF-wide
+// differentiating family to be non-null even when public ETF facts are unavailable.
+// Reason: proxy-complete treasury/gold ETF requests were still degrading to
+// feature_incomplete because `etf_asset_scope` stayed null.
+// Purpose: project one minimal ETF context from governed proxy completeness so the
+// evidence seed exposes the required ETF-wide family consistently.
+fn build_governed_etf_proxy_etf_context(instrument_subscope: Option<&str>) -> EtfContext {
+    let asset_scope = Some(instrument_subscope.unwrap_or("equity_etf").to_string());
+    EtfContext {
+        status: "available".to_string(),
+        source: "governed_etf_proxy_information".to_string(),
+        fund_name: None,
+        benchmark: None,
+        asset_scope: asset_scope.clone(),
+        latest_scale: None,
+        latest_share: None,
+        premium_discount_rate_pct: None,
+        headline: format!(
+            "Governed ETF proxy information supplied the minimum ETF context for `{}`.",
+            instrument_subscope.unwrap_or("equity_etf")
+        ),
+        structure_risk_flags: vec![],
+        research_gaps: vec![],
+    }
+}
+
+// 2026-04-17 CST: Added because ETF proxy-backed evidence needs an explicit formal
+// source tag once it replaces stock-only financial availability.
+// Reason: silently marking the context available without a source change would make
+// later audits ambiguous.
+// Purpose: produce one auditable fundamental context for complete governed ETF proxy families.
+fn build_governed_etf_proxy_fundamental_context(
+    instrument_subscope: Option<&str>,
+    analysis_date: &str,
+) -> FundamentalContext {
+    FundamentalContext {
+        status: "available".to_string(),
+        source: "governed_etf_proxy_information".to_string(),
+        latest_report_period: Some(analysis_date.to_string()),
+        report_notice_date: Some(analysis_date.to_string()),
+        headline: format!(
+            "ETF proxy-backed structural evidence is complete for `{}` on {}.",
+            instrument_subscope.unwrap_or("equity_etf"),
+            analysis_date
+        ),
+        profit_signal: "proxy_complete".to_string(),
+        report_metrics: FundamentalMetrics {
+            revenue: None,
+            revenue_yoy_pct: None,
+            net_profit: None,
+            net_profit_yoy_pct: None,
+            roe_pct: None,
+        },
+        narrative: vec![
+            "Governed ETF proxy history replaced stock-only financial availability.".to_string(),
+        ],
+        risk_flags: vec![],
+    }
+}
+
+// 2026-04-17 CST: Added because ETF proxy-backed completeness must also unblock the
+// disclosure-side evidence contract for non-stock instruments.
+// Reason: leaving disclosure unavailable would keep fully-governed ETF evidence
+// permanently degraded even after proxy hydration succeeds.
+// Purpose: expose one minimal formal disclosure context sourced from governed ETF proxies.
+fn build_governed_etf_proxy_disclosure_context(
+    instrument_subscope: Option<&str>,
+    analysis_date: &str,
+) -> DisclosureContext {
+    DisclosureContext {
+        status: "available".to_string(),
+        source: "governed_etf_proxy_information".to_string(),
+        announcement_count: 0,
+        headline: format!(
+            "ETF proxy-backed event surface is sufficient for `{}` on {}.",
+            instrument_subscope.unwrap_or("equity_etf"),
+            analysis_date
+        ),
+        keyword_summary: vec!["governed_etf_proxy_complete".to_string()],
+        recent_announcements: vec![],
+        risk_flags: vec![],
+    }
+}
+
+// 2026-04-17 CST: Added because ETF proxy substitution must follow the same required
+// family contract that runtime scorecard gating uses.
+// Reason: otherwise evidence completeness and scoring validity could drift on the same ETF.
+// Purpose: declare ETF proxy completeness only when every required family field is present.
+fn governed_etf_proxy_family_complete(
+    instrument_subscope: Option<&str>,
+    external_proxy_inputs: &SecurityExternalProxyInputs,
+) -> bool {
+    let payload = serde_json::to_value(external_proxy_inputs)
+        .ok()
+        .and_then(|value| value.as_object().cloned())
+        .unwrap_or_default();
+    required_etf_feature_family(instrument_subscope)
+        .iter()
+        .all(|feature_name| matches!(payload.get(*feature_name), Some(value) if !value.is_null()))
+}
+
 // 2026-04-09 CST: 这里生成证据哈希，原因是新治理链要求 committee / snapshot / chair 都围绕同一份冻结证据演进，
 // 目的：给后续回放、审计和对齐校验提供稳定证据版本锚点。
 fn build_evidence_hash(
@@ -885,10 +1175,18 @@ pub fn resolve_etf_subscope(
     }
     let market_profile = market_profile.unwrap_or_default().to_ascii_lowercase();
     let asset_scope = asset_scope.unwrap_or_default().to_ascii_lowercase();
-    if asset_scope.contains("commodity") || market_profile.contains("commodity") {
-        Some("commodity_etf")
-    } else if asset_scope.contains("bond") || market_profile.contains("bond") {
-        Some("bond_etf")
+    if asset_scope.contains("gold")
+        || asset_scope.contains("commodity")
+        || market_profile.contains("gold")
+        || market_profile.contains("commodity")
+    {
+        Some("gold_etf")
+    } else if asset_scope.contains("treasury")
+        || asset_scope.contains("bond")
+        || market_profile.contains("treasury")
+        || market_profile.contains("bond")
+    {
+        Some("treasury_etf")
     } else if asset_scope.contains("cross_border")
         || asset_scope.contains("overseas")
         || market_profile.contains("overseas")
@@ -1077,14 +1375,14 @@ pub fn derive_valuation_status(
 // 2026-04-14 CST: 这里补 ETF 特征族门禁函数，原因是当前 scorecard runtime 要判断不同 ETF 子池至少具备哪些特征；
 // 目的：让 ETF 模型兼容门禁先恢复成显式合同，而不是在编译失败期间完全失去约束。
 pub fn required_etf_feature_family(instrument_subscope: Option<&str>) -> &'static [&'static str] {
-    match instrument_subscope.unwrap_or("equity_etf") {
-        "commodity_etf" => &[
+    match normalize_etf_instrument_subscope(instrument_subscope).unwrap_or("equity_etf") {
+        "gold_etf" => &[
             "gold_spot_proxy_status",
             "gold_spot_proxy_return_5d",
             "real_rate_proxy_status",
             "real_rate_proxy_delta_bp_5d",
         ],
-        "bond_etf" => &[
+        "treasury_etf" => &[
             "yield_curve_proxy_status",
             "yield_curve_slope_delta_bp_5d",
             "funding_liquidity_proxy_status",
@@ -1125,6 +1423,33 @@ fn normalized_numeric_feature(value: Option<f64>) -> Value {
     // 2026-04-10 CST: 这里把缺失 numeric 特征回填成稳定数字，原因是用户要求做成统一标准而不是下游各自兜底；
     // 目的：保证对训练和评分暴露的 numeric feature 永远保持 numeric 类型，减少 null 漂移带来的契约断裂。
     json!(value.unwrap_or(0.0))
+}
+
+// 2026-04-17 CST: Added because the canonical evidence seed now needs a shared
+// ratio helper for derived technical numeric factors.
+// Reason: repeating ad-hoc percentage math across snapshot and training layers
+// would quickly drift once ETF factor families evolve again.
+// Purpose: keep close-vs-average style factors zero-safe and contract-stable.
+fn ratio_delta(numerator: f64, denominator: f64) -> Option<f64> {
+    if denominator.abs() <= f64::EPSILON {
+        None
+    } else {
+        Some((numerator - denominator) / denominator.abs())
+    }
+}
+
+// 2026-04-17 CST: Added because support/resistance gap factors should share one
+// stable normalization baseline across all feature consumers.
+// Reason: the feature snapshot regression locks presence today, and future
+// training needs the same gap semantics instead of one-off local formulas.
+// Purpose: expose key-level distance features as reusable percent gaps from the
+// current price anchor.
+fn gap_to_level_pct(target_level: f64, anchor_price: f64) -> Option<f64> {
+    if anchor_price.abs() <= f64::EPSILON {
+        None
+    } else {
+        Some((target_level - anchor_price) / anchor_price.abs())
+    }
 }
 
 fn insert_optional_string_feature(

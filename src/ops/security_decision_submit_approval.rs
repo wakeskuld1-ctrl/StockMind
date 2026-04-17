@@ -939,8 +939,12 @@ fn build_package_artifact(
     json_value: Option<&Value>,
     raw_bytes: Option<&[u8]>,
 ) -> Result<SecurityDecisionPackageArtifact, SecurityDecisionSubmitApprovalError> {
+    // 2026-04-17 CST: Reason=verify must hash the exact persisted artifact bytes/JSON
+    // shape instead of trusting an earlier in-memory copy that may drift during the
+    // submit->persist->package chain.
+    // Purpose=keep package manifest sha256 aligned with the final on-disk artifact.
     let sha256 = if let Some(value) = json_value {
-        sha256_for_json_value(value).map_err(SecurityDecisionSubmitApprovalError::Persist)?
+        compute_json_artifact_sha256(path, value)?
     } else if let Some(bytes) = raw_bytes {
         sha256_for_bytes(bytes)
     } else {
@@ -971,8 +975,10 @@ fn build_optional_package_artifact(
         (Some(path), Some(value)) => Ok(SecurityDecisionPackageArtifact {
             artifact_role: artifact_role.to_string(),
             path: path.to_string(),
-            sha256: sha256_for_json_value(value)
-                .map_err(SecurityDecisionSubmitApprovalError::Persist)?,
+            // 2026-04-17 CST: Reason=optional JSON artifacts like detached signatures
+            // must follow the same persisted-file hashing rule as required artifacts.
+            // Purpose=avoid hidden manifest drift between runtime files and package metadata.
+            sha256: compute_json_artifact_sha256(Path::new(path), value)?,
             contract_version: contract_version.to_string(),
             required,
             present: true,
@@ -986,6 +992,26 @@ fn build_optional_package_artifact(
             present: false,
         }),
     }
+}
+
+// 2026-04-17 CST: Reason=submit_approval now needs one manifest-hash path that
+// mirrors verify semantics against the final artifact on disk.
+// Purpose=prefer persisted JSON when available, while keeping the in-memory value
+// as a fallback for tightly scoped test helpers or future call sites.
+fn compute_json_artifact_sha256(
+    path: &Path,
+    fallback_value: &Value,
+) -> Result<String, SecurityDecisionSubmitApprovalError> {
+    if path.exists() {
+        let payload = fs::read(path)
+            .map_err(|error| SecurityDecisionSubmitApprovalError::Persist(error.to_string()))?;
+        let persisted_value = serde_json::from_slice::<Value>(&payload)
+            .map_err(|error| SecurityDecisionSubmitApprovalError::Persist(error.to_string()))?;
+        return sha256_for_json_value(&persisted_value)
+            .map_err(SecurityDecisionSubmitApprovalError::Persist);
+    }
+
+    sha256_for_json_value(fallback_value).map_err(SecurityDecisionSubmitApprovalError::Persist)
 }
 
 fn compute_audit_hash(

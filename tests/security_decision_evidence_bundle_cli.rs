@@ -152,7 +152,14 @@ fn security_decision_evidence_bundle_reports_analysis_date_and_data_gaps() {
         "args": {
             "symbol": "601916.SH",
             "market_profile": "a_share_core",
-            "sector_profile": "a_share_bank"
+            "sector_profile": "a_share_bank",
+            // 2026-04-17 CST: Pin the evidence-bundle fixture to the local
+            // history horizon, because this test validates degraded evidence
+            // semantics rather than the "today + sync attempt" date-guard
+            // path.
+            // Purpose: keep the analysis_date assertion deterministic and stop
+            // current-day sync behavior from drifting this regression case.
+            "as_of_date": "2025-08-08"
         }
     });
 
@@ -165,7 +172,23 @@ fn security_decision_evidence_bundle_reports_analysis_date_and_data_gaps() {
                 format!("{server}/financials"),
             ),
             (
+                "EXCEL_SKILL_OFFICIAL_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
+                "EXCEL_SKILL_SINA_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
                 "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+            (
+                "EXCEL_SKILL_OFFICIAL_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+            (
+                "EXCEL_SKILL_SINA_ANNOUNCEMENT_URL_BASE",
                 format!("{server}/announcements"),
             ),
         ],

@@ -222,27 +222,20 @@ fn stock_root_keeps_only_the_frozen_module_manifest() {
 }
 
 #[test]
-fn ops_root_keeps_only_foundation_and_stock_as_formal_boundaries() {
-    // 2026-04-16 CST: Added because hidden boundary drift can also happen one level
-    // above stock.rs if src/ops/mod.rs starts exposing a third formal business root.
-    // Purpose: keep `crate::ops::*` limited to the two already-approved top-level
-    // boundaries instead of reintroducing an ungoverned middle surface.
+fn ops_root_keeps_only_stock_as_formal_boundary_in_split_repo() {
+    // 2026-04-17 CST: Updated because StockMind is now a standalone stock-only repo.
+    // Reason: the split snapshot intentionally drops the old foundation boundary instead
+    // of preserving a dormant top-level module that no longer ships here.
+    // Purpose: keep `crate::ops::*` limited to the single approved stock root.
     let source = fs::read_to_string("src/ops/mod.rs").expect("read src/ops/mod.rs");
     let normalized = normalize_newlines(&source);
     let top_level_modules = declared_modules(&normalized, "pub mod ");
 
-    let expected_top_level_modules: BTreeSet<String> = ["foundation", "stock"]
-        .into_iter()
-        .map(String::from)
-        .collect();
+    let expected_top_level_modules: BTreeSet<String> = ["stock"].into_iter().map(String::from).collect();
 
     assert_eq!(
         top_level_modules, expected_top_level_modules,
-        "Ops-root drift detected in src/ops/mod.rs: only `foundation` and `stock` may remain as formal top-level boundaries. Review {MANIFEST_PLAN_DOC}, {SPLIT_MANIFEST_DOC}, and {HANDOFF_DOC} before exposing another ops root."
-    );
-    assert!(
-        normalized.contains("pub use foundation::"),
-        "Ops-root drift detected in src/ops/mod.rs: foundation re-export surface marker is missing. Review {SPLIT_MANIFEST_DOC} before redesigning the top-level ops root."
+        "Ops-root drift detected in src/ops/mod.rs: the standalone repo should expose only the `stock` top-level boundary. Review {MANIFEST_PLAN_DOC}, {SPLIT_MANIFEST_DOC}, and {HANDOFF_DOC} before exposing another ops root."
     );
     assert!(
         !normalized.contains("pub use stock::"),
@@ -251,7 +244,7 @@ fn ops_root_keeps_only_foundation_and_stock_as_formal_boundaries() {
 }
 
 #[test]
-fn unscoped_ops_files_do_not_hide_stock_to_foundation_or_hold_zone_bridges() {
+fn unscoped_ops_files_do_not_hide_stock_to_shared_or_runtime_bridges() {
     // 2026-04-16 CST: Added because a future session could avoid the stock_ /
     // security_ naming rules by introducing a neutral-looking helper file under
     // src/ops and using it as an indirect bridge.
@@ -259,16 +252,11 @@ fn unscoped_ops_files_do_not_hide_stock_to_foundation_or_hold_zone_bridges() {
     // references with foundation analytics or shared/runtime hold-zone references.
     // 2026-04-16 CST: Added because the formal-boundary manifest gate should use
     // the real approved surfaces as its source of truth.
-    // Purpose: only scan files that are outside both frozen manifests.
+    // Purpose: only scan files that are outside the frozen stock manifest.
     let mut approved_stock_paths = manifest_relative_paths(&normalize_newlines(
         &fs::read_to_string("src/ops/stock.rs").expect("read src/ops/stock.rs"),
     ));
     approved_stock_paths.insert("stock.rs".to_string());
-
-    let mut approved_foundation_paths = manifest_relative_paths(&normalize_newlines(
-        &fs::read_to_string("src/ops/foundation.rs").expect("read src/ops/foundation.rs"),
-    ));
-    approved_foundation_paths.insert("foundation.rs".to_string());
 
     let stock_markers = [
         "crate::ops::stock::",
@@ -296,10 +284,7 @@ fn unscoped_ops_files_do_not_hide_stock_to_foundation_or_hold_zone_bridges() {
             .unwrap_or_else(|_| panic!("strip prefix for {}", path.display()))
             .to_string_lossy()
             .replace('\\', "/");
-        if relative_path == "mod.rs"
-            || approved_stock_paths.contains(&relative_path)
-            || approved_foundation_paths.contains(&relative_path)
-        {
+        if relative_path == "mod.rs" || approved_stock_paths.contains(&relative_path) {
             continue;
         }
 
@@ -315,7 +300,7 @@ fn unscoped_ops_files_do_not_hide_stock_to_foundation_or_hold_zone_bridges() {
 
         assert!(
             !(references_stock && crosses_forbidden_boundary),
-            "Hidden-bridge drift detected in {}: unscoped ops files must not mix stock references with foundation/shared/runtime markers. Review {MANIFEST_PLAN_DOC}, {GATE_V2_PLAN_DOC}, and {HANDOFF_DOC} before introducing a helper bridge here.",
+            "Hidden-bridge drift detected in {}: unscoped ops files must not mix stock references with generic analytics or shared/runtime markers. Review {MANIFEST_PLAN_DOC}, {GATE_V2_PLAN_DOC}, and {HANDOFF_DOC} before introducing a helper bridge here.",
             path.display(),
         );
     }

@@ -25,7 +25,6 @@ fn stock_entry_and_grouped_shells_do_not_reach_foundation_or_hold_zone() {
         "src/ops/stock_governance_and_positioning.rs",
         "src/ops/stock_execution_and_position_management.rs",
         "src/ops/stock_post_trade.rs",
-        "src/ops/stock_modeling_and_training.rs",
         "src/ops/stock_research_sidecar.rs",
     ];
 
@@ -94,10 +93,6 @@ fn shared_and_runtime_hold_zone_files_remain_present_and_shared() {
         &fs::read_to_string("src/tools/catalog.rs").expect("read src/tools/catalog.rs"),
     );
     assert!(
-        catalog.contains("pub const FOUNDATION_TOOL_NAMES: &[&str] = &["),
-        "Hold-zone drift detected in src/tools/catalog.rs: foundation tool surface marker is missing. Review {SPLIT_MANIFEST_DOC} before changing shared catalog ownership."
-    );
-    assert!(
         catalog.contains("pub const STOCK_TOOL_NAMES: &[&str] = &["),
         "Hold-zone drift detected in src/tools/catalog.rs: stock tool surface marker is missing. Review {SPLIT_MANIFEST_DOC} before changing shared catalog ownership."
     );
@@ -106,12 +101,12 @@ fn shared_and_runtime_hold_zone_files_remain_present_and_shared() {
         &fs::read_to_string("src/tools/contracts.rs").expect("read src/tools/contracts.rs"),
     );
     assert!(
-        contracts.contains("crate::ops::foundation::knowledge_bundle::KnowledgeBundle"),
-        "Hold-zone drift detected in src/tools/contracts.rs: the current shared foundation-side contract marker is missing. Review {SPLIT_MANIFEST_DOC} before reclassifying this file."
-    );
-    assert!(
         contracts.contains("crate::ops::stock::security_decision_briefing::PositionPlan"),
         "Hold-zone drift detected in src/tools/contracts.rs: the current shared stock-side contract marker is missing. Review {SPLIT_MANIFEST_DOC} before reclassifying this file."
+    );
+    assert!(
+        !contracts.contains("crate::ops::foundation::knowledge_bundle::KnowledgeBundle"),
+        "Hold-zone drift detected in src/tools/contracts.rs: the standalone repo must not retain foundation-side contract markers. Review {SPLIT_MANIFEST_DOC} before reclassifying this file."
     );
 
     let runtime_mod = normalize_newlines(

@@ -165,6 +165,16 @@ impl SecurityExecutionStore {
             context.load_latest_open_execution_records(account_id)
         })
     }
+
+    // 2026-04-17 CST: Reason=lifecycle follow-up tools need a stable ref-based
+    // lookup path after execution_record persists its governed output.
+    // Purpose=let post_trade_review and later lifecycle consumers reopen one record by id.
+    pub fn load_execution_record(
+        &self,
+        execution_record_id: &str,
+    ) -> Result<Option<SecurityExecutionRecordDocument>, SecurityExecutionStoreError> {
+        self.with_repository_context(|context| context.load_execution_record(execution_record_id))
+    }
 }
 
 #[cfg(test)]

@@ -9,6 +9,12 @@ pub use super::import_stock_price_history;
 pub use super::security_disclosure_history_backfill;
 pub use super::security_disclosure_history_live_backfill;
 pub use super::security_external_proxy_backfill;
+// 2026-04-17 CST: Added because StockMind phase-1 boundary closeout promotes the
+// governed file import bridge onto the same public data-pipeline surface as other
+// history backfill tools.
+// Purpose: keep import-based proxy history preparation discoverable through the
+// grouped stock data pipeline instead of leaving it as a hidden flat module.
+pub use super::security_external_proxy_history_import;
 pub use super::security_fundamental_history_backfill;
 pub use super::security_fundamental_history_live_backfill;
 pub use super::stock_analysis_data_guard;

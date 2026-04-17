@@ -17,38 +17,63 @@ use crate::common::{
 const READY_SCORECARD_ARTIFACT_NAME: &str =
     "a_share_equity_10d_direction_head__candidate_2026_04_09T17_30_00_08_00.json";
 
-fn resolve_ready_scorecard_model_path() -> String {
-    // 2026-04-16 CST: Changed because the ready fixture directory suffix is generated
-    // and can drift across sessions, while submit_approval tests still need one stable
-    // way to find the governed ready scorecard artifact.
-    // Reason: a hard-coded fixture directory broke the ready approval regression even
-    // though equivalent ready artifacts still existed under newer local-memory snapshots.
-    // Purpose: keep approval tests bound to an existing ready artifact without freezing
-    // one ephemeral local-memory folder name into the formal regression suite.
-    let fixture_root = PathBuf::from("tests")
-        .join("runtime_fixtures")
-        .join("local_memory");
-    let mut candidates: Vec<PathBuf> = fs::read_dir(&fixture_root)
-        .expect("local_memory fixture root should exist")
-        .filter_map(|entry| entry.ok())
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.file_name()
+// 2026-04-17 CST: Added because ready submit-approval regressions now reuse
+// artifact copies written under multiple fixture roots instead of one old
+// local-memory training snapshot.
+// Reason: the previous resolver hard-coded one drift-prone directory family and
+// broke as soon as those historical ready snapshots were cleaned or renamed.
+// Purpose: keep ready-case approval tests bound to any current governed ready
+// artifact fixture without freezing one ephemeral runtime folder name.
+fn collect_ready_scorecard_artifact_candidates(root: &Path) -> Vec<PathBuf> {
+    let mut stack = vec![root.to_path_buf()];
+    let mut matches = Vec::new();
+
+    while let Some(path) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&path) else {
+            continue;
+        };
+        for entry in entries.filter_map(|entry| entry.ok()) {
+            let entry_path = entry.path();
+            if entry_path.is_dir() {
+                stack.push(entry_path);
+                continue;
+            }
+            if entry_path
+                .file_name()
                 .and_then(|name| name.to_str())
-                .map(|name| name.starts_with("security_scorecard_training_ready_"))
-                .unwrap_or(false)
-        })
+                .is_some_and(|name| name == READY_SCORECARD_ARTIFACT_NAME)
+            {
+                matches.push(entry_path);
+            }
+        }
+    }
+
+    matches
+}
+
+fn resolve_ready_scorecard_model_path() -> String {
+    // 2026-04-17 CST: Changed because ready artifacts now live in both historical
+    // local-memory snapshots and newer submit-approval fixture copies.
+    // Reason: submit_approval regressions should keep working even when one fixture
+    // family is rotated away, as long as one governed ready artifact still exists.
+    // Purpose: search the real fixture roots in priority order and pick the newest
+    // readable ready artifact for the test to clone.
+    let fixture_roots = [
+        PathBuf::from("tests")
+            .join("runtime_fixtures")
+            .join("security_decision_submit_approval"),
+        PathBuf::from("tests")
+            .join("runtime_fixtures")
+            .join("local_memory"),
+    ];
+    let mut candidates: Vec<PathBuf> = fixture_roots
+        .iter()
+        .flat_map(|root| collect_ready_scorecard_artifact_candidates(root))
         .collect();
-    candidates.sort();
-    candidates.reverse();
+    candidates.sort_by(|left, right| right.cmp(left));
 
     let artifact_path = candidates
         .into_iter()
-        .map(|path| {
-            path.join("scorecard_training_runtime")
-                .join("scorecard_artifacts")
-                .join(READY_SCORECARD_ARTIFACT_NAME)
-        })
         .find(|path| path.exists())
         .expect("ready scorecard artifact fixture should exist");
 

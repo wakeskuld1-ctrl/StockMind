@@ -5,6 +5,8 @@
 pub mod ops;
 pub mod runtime;
 pub mod runtime_paths;
+#[cfg(test)]
+pub(crate) mod test_support;
 pub mod tools;
 
 use tools::contracts::ToolResponse;

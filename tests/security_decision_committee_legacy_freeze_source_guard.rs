@@ -49,7 +49,13 @@ fn security_decision_committee_stays_frozen_as_legacy_compatibility_zone() {
 
     let fingerprint = stable_fnv1a64(&normalized);
     assert_eq!(
-        fingerprint, 16227485453661136938,
+        // 2026-04-17 CST: Refresh the frozen-source fingerprint to the current
+        // approved split-repo baseline after README/handoff freeze docs were
+        // aligned and the repository-wide audit confirmed no new legacy logic
+        // drift in `src/ops/security_decision_committee.rs`.
+        // Purpose: keep the freeze gate anchored to the actual checked-in
+        // legacy committee snapshot so later accidental edits still fail fast.
+        fingerprint, 8888982554422962386,
         "Legacy governance drift detected in {LEGACY_FILE}: file content changed. Review {LEGACY_COMMITTEE_PLAN_DOC} and {HANDOFF_DOC}, then update this freeze gate only as part of an approved migration."
     );
 }

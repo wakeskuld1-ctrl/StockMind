@@ -8,7 +8,8 @@ use thiserror::Error;
 use crate::ops::stock::security_decision_evidence_bundle::{
     ETF_DIFFERENTIATING_FEATURES, build_evidence_bundle_feature_seed, derive_event_density_bucket,
     derive_flow_status, derive_industry_bucket, derive_instrument_subscope, derive_market_regime,
-    derive_valuation_status, is_etf_symbol, required_etf_feature_family, resolve_etf_subscope,
+    derive_valuation_status, is_etf_symbol, normalize_etf_instrument_subscope,
+    required_etf_feature_family, resolve_etf_subscope,
 };
 use crate::ops::stock::security_legacy_committee_compat::LegacySecurityDecisionCommitteeResult as SecurityDecisionCommitteeResult;
 
@@ -537,15 +538,10 @@ fn etf_cross_section_guard_status(
         .iter()
         .map(|feature| feature.feature_name.as_str())
         .collect::<Vec<_>>();
-    let model_has_etf_family = ETF_DIFFERENTIATING_FEATURES.iter().any(|feature_name| {
-        model_features
-            .iter()
-            .any(|candidate| candidate == feature_name)
-    });
     let snapshot_has_etf_family = ETF_DIFFERENTIATING_FEATURES
         .iter()
         .any(|feature_name| matches!(raw_feature_snapshot.get(*feature_name), Some(value) if !value.is_null()));
-    let runtime_subscope = resolve_etf_subscope(
+    let runtime_subscope = normalize_etf_instrument_subscope(resolve_etf_subscope(
         symbol,
         raw_feature_snapshot
             .get("market_profile")
@@ -553,26 +549,49 @@ fn etf_cross_section_guard_status(
         raw_feature_snapshot
             .get("sector_profile")
             .and_then(Value::as_str),
-    );
+    ));
+    let model_subscope = normalize_etf_instrument_subscope(model.instrument_subscope.as_deref());
     let required_feature_family =
-        required_etf_feature_family(runtime_subscope.or(model.instrument_subscope.as_deref()));
+        required_etf_feature_family(runtime_subscope.or(model_subscope));
+    // 2026-04-17 CST: Changed because treasury/gold ETF scorecard artifacts can be
+    // structurally valid with their governed proxy family even when they do not
+    // also carry one coarse ETF-wide placeholder feature from the older list.
+    // Reason: submit_approval was rejecting valid subscope-specific ETF models only
+    // because `model_has_etf_family` ignored the formal required proxy contract.
+    // Purpose: treat either the shared ETF differentiators or the subscope-required
+    // proxy family as sufficient proof that the artifact is an ETF model.
+    let model_has_etf_family = ETF_DIFFERENTIATING_FEATURES
+        .iter()
+        .chain(required_feature_family.iter())
+        .any(|feature_name| {
+            model_features
+                .iter()
+                .any(|candidate| candidate == feature_name)
+        });
     let model_has_required_feature_family = required_feature_family.iter().all(|feature_name| {
         model_features
             .iter()
             .any(|candidate| candidate == feature_name)
     });
 
-    if snapshot_has_etf_family && (!model_has_etf_family || !model_has_required_feature_family) {
+    // 2026-04-17 CST: Updated because the runtime ETF guard previously only
+    // rejected missing ETF feature families when the live snapshot already
+    // surfaced ETF-specific fields, which let coarse shared models slip through.
+    // Reason: model-family validity is a binding-time property for any ETF, not a
+    // conditional check that should wait for richer runtime snapshot coverage.
+    // Purpose: reject structurally wrong ETF model bindings even when the current
+    // request only carries generic technical features.
+    if !model_has_etf_family || !model_has_required_feature_family {
         Some("cross_section_invalid".to_string())
     } else if let (Some(runtime_subscope), Some(model_subscope)) =
-        (runtime_subscope, model.instrument_subscope.as_deref())
+        (runtime_subscope, model_subscope)
     {
         if runtime_subscope != model_subscope {
             Some("cross_section_invalid".to_string())
         } else {
             None
         }
-    } else if snapshot_has_etf_family && model.instrument_subscope.is_none() {
+    } else if snapshot_has_etf_family && model_subscope.is_none() {
         Some("cross_section_invalid".to_string())
     } else {
         None
@@ -951,6 +970,130 @@ mod tests {
         assert_eq!(
             etf_cross_section_guard_status("511010.SH", &raw_snapshot, &model),
             Some("cross_section_invalid".to_string())
+        );
+    }
+
+    #[test]
+    fn etf_runtime_guard_accepts_gold_binding_with_required_proxy_family() {
+        // 2026-04-17 CST: Add a red test for the gold ETF happy path, because the
+        // submit-approval flow now passes a gold-specific proxy model that should be
+        // accepted once the formal proxy contract is complete.
+        // Purpose: keep runtime guard strict on missing proxy families while allowing
+        // governed gold ETF artifacts to score normally.
+        let model = SecurityScorecardModelArtifact {
+            model_id: "a_share_etf_gold_etf_10d_direction_head".to_string(),
+            model_version: "candidate_20260417".to_string(),
+            label_definition: "security_forward_outcome.v1".to_string(),
+            target_head: None,
+            prediction_mode: None,
+            prediction_baseline: None,
+            training_window: None,
+            oot_window: None,
+            positive_label_definition: None,
+            instrument_subscope: Some("gold_etf".to_string()),
+            binning_version: None,
+            coefficient_version: None,
+            model_sha256: None,
+            intercept: Some(0.0),
+            base_score: 600.0,
+            features: vec![
+                SecurityScorecardModelFeatureSpec {
+                    feature_name: "volume_ratio_20".to_string(),
+                    group_name: "T".to_string(),
+                    bins: Vec::new(),
+                },
+                SecurityScorecardModelFeatureSpec {
+                    feature_name: "gold_spot_proxy_status".to_string(),
+                    group_name: "X".to_string(),
+                    bins: Vec::new(),
+                },
+                SecurityScorecardModelFeatureSpec {
+                    feature_name: "gold_spot_proxy_return_5d".to_string(),
+                    group_name: "X".to_string(),
+                    bins: Vec::new(),
+                },
+                SecurityScorecardModelFeatureSpec {
+                    feature_name: "real_rate_proxy_status".to_string(),
+                    group_name: "X".to_string(),
+                    bins: Vec::new(),
+                },
+                SecurityScorecardModelFeatureSpec {
+                    feature_name: "real_rate_proxy_delta_bp_5d".to_string(),
+                    group_name: "X".to_string(),
+                    bins: Vec::new(),
+                },
+            ],
+        };
+        let mut raw_snapshot = BTreeMap::new();
+        raw_snapshot.insert("volume_ratio_20".to_string(), json!(1.03));
+        raw_snapshot.insert("market_profile".to_string(), json!("a_share_core"));
+        raw_snapshot.insert("sector_profile".to_string(), json!("gold_etf_peer"));
+
+        assert_eq!(
+            etf_cross_section_guard_status("518880.SH", &raw_snapshot, &model),
+            None
+        );
+    }
+
+    #[test]
+    fn etf_runtime_guard_accepts_treasury_binding_with_required_proxy_family() {
+        // 2026-04-17 CST: Add a red test for the treasury ETF happy path, because
+        // bond ETF approval now relies on the governed yield/funding proxy family
+        // instead of older ETF-wide placeholder features.
+        // Purpose: verify the runtime guard still blocks wrong bindings while
+        // accepting a treasury ETF artifact that carries the required proxy fields.
+        let model = SecurityScorecardModelArtifact {
+            model_id: "a_share_etf_treasury_etf_10d_direction_head".to_string(),
+            model_version: "candidate_20260417".to_string(),
+            label_definition: "security_forward_outcome.v1".to_string(),
+            target_head: None,
+            prediction_mode: None,
+            prediction_baseline: None,
+            training_window: None,
+            oot_window: None,
+            positive_label_definition: None,
+            instrument_subscope: Some("treasury_etf".to_string()),
+            binning_version: None,
+            coefficient_version: None,
+            model_sha256: None,
+            intercept: Some(0.0),
+            base_score: 600.0,
+            features: vec![
+                SecurityScorecardModelFeatureSpec {
+                    feature_name: "close_vs_sma200".to_string(),
+                    group_name: "T".to_string(),
+                    bins: Vec::new(),
+                },
+                SecurityScorecardModelFeatureSpec {
+                    feature_name: "yield_curve_proxy_status".to_string(),
+                    group_name: "X".to_string(),
+                    bins: Vec::new(),
+                },
+                SecurityScorecardModelFeatureSpec {
+                    feature_name: "yield_curve_slope_delta_bp_5d".to_string(),
+                    group_name: "X".to_string(),
+                    bins: Vec::new(),
+                },
+                SecurityScorecardModelFeatureSpec {
+                    feature_name: "funding_liquidity_proxy_status".to_string(),
+                    group_name: "X".to_string(),
+                    bins: Vec::new(),
+                },
+                SecurityScorecardModelFeatureSpec {
+                    feature_name: "funding_liquidity_spread_delta_bp_5d".to_string(),
+                    group_name: "X".to_string(),
+                    bins: Vec::new(),
+                },
+            ],
+        };
+        let mut raw_snapshot = BTreeMap::new();
+        raw_snapshot.insert("close_vs_sma200".to_string(), json!(0.004));
+        raw_snapshot.insert("market_profile".to_string(), json!("a_share_core"));
+        raw_snapshot.insert("sector_profile".to_string(), json!("bond_etf_peer"));
+
+        assert_eq!(
+            etf_cross_section_guard_status("511010.SH", &raw_snapshot, &model),
+            None
         );
     }
 

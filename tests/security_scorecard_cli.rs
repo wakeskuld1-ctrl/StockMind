@@ -1,5 +1,6 @@
 mod common;
 
+use chrono::{Duration, NaiveDate};
 use serde_json::{Value, json};
 use std::fs;
 use std::io::{Read, Write};
@@ -8,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::common::run_cli_with_json_runtime_and_envs;
+use crate::common::{create_test_runtime_db, run_cli_with_json_runtime_and_envs};
 
 fn create_test_approval_root(prefix: &str) -> PathBuf {
     let unique_suffix = SystemTime::now()
@@ -23,8 +24,21 @@ fn create_test_approval_root(prefix: &str) -> PathBuf {
     root
 }
 
-fn live_601916_runtime_db() -> PathBuf {
-    PathBuf::from("tests/runtime_fixtures/local_memory/live_601916_20260408/stock_history.db")
+// 2026-04-17 CST: Reason=this suite previously depended on one shared live fixture db
+// whose row set drifted under repeated local runs. Purpose=seed an isolated runtime db
+// with deterministic history so the formal scorecard contract test stops depending on
+// mutable cross-test state.
+fn seeded_runtime_db(prefix: &str) -> PathBuf {
+    let runtime_db_path = create_test_runtime_db(prefix);
+    let stock_csv = create_stock_history_csv(prefix, "stock.csv", &build_history_rows(260, 3.05));
+    let market_csv =
+        create_stock_history_csv(prefix, "market.csv", &build_history_rows(260, 3200.0));
+    let sector_csv =
+        create_stock_history_csv(prefix, "sector.csv", &build_history_rows(260, 980.0));
+    import_history_csv(&runtime_db_path, &stock_csv, "601916.SH");
+    import_history_csv(&runtime_db_path, &market_csv, "510300.SH");
+    import_history_csv(&runtime_db_path, &sector_csv, "512800.SH");
+    runtime_db_path
 }
 
 fn spawn_http_route_server(routes: Vec<(&str, &str, &str, &str)>) -> String {
@@ -86,11 +100,72 @@ fn spawn_http_route_server(routes: Vec<(&str, &str, &str, &str)>) -> String {
     address
 }
 
+fn create_stock_history_csv(prefix: &str, file_name: &str, rows: &[String]) -> PathBuf {
+    let unique_suffix = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock should be after unix epoch")
+        .as_nanos();
+    let fixture_dir = PathBuf::from("tests")
+        .join("runtime_fixtures")
+        .join("security_scorecard")
+        .join(format!("{prefix}_history_{unique_suffix}"));
+    fs::create_dir_all(&fixture_dir).expect("security scorecard history fixture dir should exist");
+
+    let csv_path = fixture_dir.join(file_name);
+    fs::write(&csv_path, rows.join("\n")).expect("security scorecard csv should be written");
+    csv_path
+}
+
+fn import_history_csv(runtime_db_path: &Path, csv_path: &Path, symbol: &str) {
+    let request = json!({
+        "tool": "import_stock_price_history",
+        "args": {
+            "csv_path": csv_path.to_string_lossy(),
+            "symbol": symbol,
+            "source": "security_scorecard_fixture"
+        }
+    });
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path.to_path_buf(),
+        &[],
+    );
+    assert_eq!(output["status"], "ok");
+}
+
+fn build_history_rows(day_count: usize, start_close: f64) -> Vec<String> {
+    let mut rows = vec!["trade_date,open,high,low,close,adj_close,volume".to_string()];
+    let end_date = NaiveDate::from_ymd_opt(2026, 4, 8).expect("end date should be valid");
+    let start_date = end_date - Duration::days(day_count.saturating_sub(1) as i64);
+    let mut close = start_close;
+
+    for offset in 0..day_count {
+        let trade_date = start_date + Duration::days(offset as i64);
+        let open = close - 0.02;
+        let high = close + 0.05;
+        let low = close - 0.06;
+        let volume = 900_000 + offset as i64 * 2_500;
+        rows.push(format!(
+            "{},{:.2},{:.2},{:.2},{:.2},{:.2},{}",
+            trade_date.format("%Y-%m-%d"),
+            open,
+            high,
+            low,
+            close,
+            close,
+            volume
+        ));
+        close += 0.01;
+    }
+
+    rows
+}
+
 #[test]
 fn submit_approval_persists_formal_scorecard_even_without_model_artifact() {
     // 2026-04-09 CST: 这里先锁定评分卡正式对象合同红测，原因是用户明确要求评分卡不能再用手工主观分冒充正式结果；
     // 目的：要求主链即便拿不到训练模型，也必须落一份正式 scorecard 对象，并显式声明 model_unavailable，而不是继续沉默退化。
-    let runtime_db_path = live_601916_runtime_db();
+    let runtime_db_path = seeded_runtime_db("submit_approval_scorecard");
     let approval_root = create_test_approval_root("submit_approval_scorecard");
     let server = spawn_http_route_server(vec![
         (

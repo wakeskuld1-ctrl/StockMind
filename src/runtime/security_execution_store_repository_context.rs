@@ -6,7 +6,8 @@ use crate::runtime::security_execution_store_adjustment_event_repository::{
     load_security_adjustment_event, upsert_security_adjustment_event,
 };
 use crate::runtime::security_execution_store_execution_record_repository::{
-    load_latest_open_security_execution_records, upsert_security_execution_record,
+    load_latest_open_security_execution_records, load_security_execution_record,
+    upsert_security_execution_record,
 };
 use crate::runtime::security_execution_store_position_plan_repository::{
     load_security_position_plan_record, upsert_security_position_plan_record,
@@ -68,6 +69,13 @@ impl<'connection> SecurityExecutionStoreRepositoryContext<'connection> {
         account_id: &str,
     ) -> Result<Vec<SecurityExecutionRecordDocument>, SecurityExecutionStoreError> {
         load_latest_open_security_execution_records(self.connection, account_id)
+    }
+
+    pub(crate) fn load_execution_record(
+        &self,
+        execution_record_id: &str,
+    ) -> Result<Option<SecurityExecutionRecordDocument>, SecurityExecutionStoreError> {
+        load_security_execution_record(self.connection, execution_record_id)
     }
 }
 
@@ -207,6 +215,64 @@ mod tests {
                 .load_latest_open_execution_records("acct-ctx-1")
                 .expect("execution records should load"),
             vec![record]
+        );
+        assert_eq!(
+            context
+                .load_execution_record("record-ctx-1")
+                .expect("execution record should load by ref"),
+            Some(SecurityExecutionRecordDocument {
+                execution_record_id: "record-ctx-1".to_string(),
+                contract_version: "security_execution_record.v1".to_string(),
+                document_type: "security_execution_record".to_string(),
+                generated_at: "2026-04-15T10:00:00+08:00".to_string(),
+                symbol: "601916.SH".to_string(),
+                analysis_date: "2026-04-15".to_string(),
+                account_id: Some("acct-ctx-1".to_string()),
+                sector_tag: Some("bank".to_string()),
+                position_state: "open".to_string(),
+                portfolio_position_plan_ref: Some("portfolio-plan-ctx-1".to_string()),
+                execution_journal_ref: "journal-ctx-1".to_string(),
+                position_plan_ref: "plan-ctx-1".to_string(),
+                snapshot_ref: "snapshot-ctx-1".to_string(),
+                outcome_ref: "outcome-ctx-1".to_string(),
+                planned_entry_date: "2026-04-14".to_string(),
+                planned_entry_price: 10.0,
+                planned_position_pct: 0.05,
+                planned_max_position_pct: 0.12,
+                actual_entry_date: "2026-04-15".to_string(),
+                actual_entry_price: 10.1,
+                actual_position_pct: 0.08,
+                current_position_pct: 0.08,
+                actual_exit_date: String::new(),
+                actual_exit_price: 0.0,
+                exit_reason: "position_still_open".to_string(),
+                holding_days: 1,
+                planned_forward_return: 0.06,
+                actual_return: 0.0,
+                entry_slippage_pct: 0.01,
+                position_size_gap_pct: 0.03,
+                planned_tranche_action: Some("entry_tranche".to_string()),
+                planned_tranche_pct: Some(0.05),
+                planned_peak_position_pct: Some(0.12),
+                actual_tranche_action: Some("entry_tranche".to_string()),
+                actual_tranche_pct: Some(0.08),
+                actual_peak_position_pct: Some(0.08),
+                tranche_count_drift: Some(0),
+                account_budget_alignment: Some("aligned".to_string()),
+                execution_return_gap: -0.06,
+                execution_quality: "open_position_pending".to_string(),
+                price_as_of_date: None,
+                resolved_trade_date: None,
+                current_price: None,
+                share_adjustment_factor: None,
+                cumulative_cash_dividend_per_share: None,
+                dividend_adjusted_cost_basis: None,
+                holding_total_return_pct: None,
+                breakeven_price: None,
+                corporate_action_summary: None,
+                execution_record_notes: vec!["fixture".to_string()],
+                attribution_summary: "fixture".to_string(),
+            })
         );
     }
 }

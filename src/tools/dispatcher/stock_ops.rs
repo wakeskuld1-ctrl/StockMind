@@ -1,3 +1,6 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+
 use serde_json::{Value, json};
 
 use crate::ops::stock::stock_data_pipeline::import_stock_price_history::{
@@ -51,7 +54,7 @@ use crate::ops::stock::stock_pre_trade::security_decision_evidence_bundle::{
     SecurityDecisionEvidenceBundleRequest, security_decision_evidence_bundle,
 };
 use crate::ops::stock::stock_governance_and_positioning::security_decision_package::{
-    SecurityDecisionPackageRequest, security_decision_package,
+    SecurityDecisionPackageDocument, SecurityDecisionPackageRequest, security_decision_package,
 };
 use crate::ops::stock::stock_governance_and_positioning::security_decision_package_revision::{
     SecurityDecisionPackageRevisionRequest, security_decision_package_revision,
@@ -65,6 +68,9 @@ use crate::ops::stock::stock_governance_and_positioning::security_decision_verif
 use crate::ops::stock::stock_data_pipeline::security_disclosure_history_live_backfill::{
     SecurityDisclosureHistoryLiveBackfillRequest, security_disclosure_history_live_backfill,
 };
+use crate::ops::stock::stock_data_pipeline::security_disclosure_history_backfill::{
+    SecurityDisclosureHistoryBackfillRequest, security_disclosure_history_backfill,
+};
 use crate::ops::stock::stock_pre_trade::security_etf_resonance_trust_pack::{
     SecurityEtfResonanceTrustPackRequest, security_etf_resonance_trust_pack,
 };
@@ -77,6 +83,9 @@ use crate::ops::stock::stock_execution_and_position_management::security_executi
 use crate::ops::stock::stock_data_pipeline::security_external_proxy_backfill::{
     SecurityExternalProxyBackfillRequest, security_external_proxy_backfill,
 };
+use crate::ops::stock::stock_data_pipeline::security_external_proxy_history_import::{
+    SecurityExternalProxyHistoryImportRequest, security_external_proxy_history_import,
+};
 use crate::ops::stock::stock_modeling_and_training::security_feature_snapshot::{
     SecurityFeatureSnapshotRequest, security_feature_snapshot,
 };
@@ -88,6 +97,9 @@ use crate::ops::stock::stock_modeling_and_training::security_master_scorecard::{
 };
 use crate::ops::stock::stock_data_pipeline::security_fundamental_history_live_backfill::{
     SecurityFundamentalHistoryLiveBackfillRequest, security_fundamental_history_live_backfill,
+};
+use crate::ops::stock::stock_data_pipeline::security_fundamental_history_backfill::{
+    SecurityFundamentalHistoryBackfillRequest, security_fundamental_history_backfill,
 };
 use crate::ops::stock::stock_pre_trade::security_independent_advice::{
     SecurityIndependentAdviceRequest, security_independent_advice,
@@ -115,11 +127,20 @@ use crate::ops::stock::stock_modeling_and_training::security_scorecard_refit_run
 use crate::ops::stock::stock_modeling_and_training::security_scorecard_training::{
     SecurityScorecardTrainingRequest, security_scorecard_training,
 };
+use crate::ops::stock::stock_modeling_and_training::security_model_promotion::{
+    SecurityModelPromotionRequest, security_model_promotion,
+};
 use crate::ops::stock::stock_research_sidecar::signal_outcome_research::{
     BackfillSecuritySignalOutcomesRequest, RecordSecuritySignalSnapshotRequest,
     SignalOutcomeResearchSummaryRequest, StudySecuritySignalAnalogsRequest,
     backfill_security_signal_outcomes, record_security_signal_snapshot,
     signal_outcome_research_summary, study_security_signal_analogs,
+};
+use crate::ops::stock::stock_research_sidecar::security_history_expansion::{
+    SecurityHistoryExpansionRequest, security_history_expansion,
+};
+use crate::ops::stock::stock_research_sidecar::security_shadow_evaluation::{
+    SecurityShadowEvaluationRequest, security_shadow_evaluation,
 };
 use crate::ops::stock::stock_data_pipeline::stock_training_data_backfill::{
     StockTrainingDataBackfillRequest, stock_training_data_backfill,
@@ -187,6 +208,22 @@ pub(super) fn dispatch_security_fundamental_history_live_backfill(args: Value) -
     }
 }
 
+pub(super) fn dispatch_security_fundamental_history_backfill(args: Value) -> ToolResponse {
+    // 2026-04-17 CST: Added because StockMind phase-1 public-surface closeout now
+    // exposes governed historical fundamentals on the formal dispatcher, matching the
+    // copied stock boundary and CLI contract tests.
+    // Purpose: keep data-pipeline backfill discoverability and routing consistent.
+    let request = match serde_json::from_value::<SecurityFundamentalHistoryBackfillRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_fundamental_history_backfill(&request) {
+        Ok(result) => ToolResponse::ok(json!(result)),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
 pub(super) fn dispatch_security_disclosure_history_live_backfill(args: Value) -> ToolResponse {
     // 2026-04-14 CST: Added because plan A+ also needs announcement history to be available on the
     // same stock dispatcher surface used by CLI and later batch backfill orchestration.
@@ -198,6 +235,21 @@ pub(super) fn dispatch_security_disclosure_history_live_backfill(args: Value) ->
     };
 
     match security_disclosure_history_live_backfill(&request) {
+        Ok(result) => ToolResponse::ok(json!(result)),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_disclosure_history_backfill(args: Value) -> ToolResponse {
+    // 2026-04-17 CST: Added because phase-1 boundary closeout restores the governed
+    // historical disclosure batch route to the public stock dispatcher.
+    // Purpose: align CLI discovery, dispatcher routing, and copied stock modules.
+    let request = match serde_json::from_value::<SecurityDisclosureHistoryBackfillRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_disclosure_history_backfill(&request) {
         Ok(result) => ToolResponse::ok(json!(result)),
         Err(error) => ToolResponse::error(error.to_string()),
     }
@@ -260,6 +312,23 @@ pub(super) fn dispatch_security_real_data_validation_backfill(args: Value) -> To
     };
 
     match security_real_data_validation_backfill(&request) {
+        Ok(result) => ToolResponse::ok(json!(result)),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_external_proxy_history_import(args: Value) -> ToolResponse {
+    // 2026-04-17 CST: Added because StockMind now publishes the governed file-based
+    // proxy-history import tool on the same public dispatcher as the rest of the
+    // stock data pipeline.
+    // Purpose: remove the split between exported module presence and dispatcher access.
+    let request =
+        match serde_json::from_value::<SecurityExternalProxyHistoryImportRequest>(args) {
+            Ok(request) => request,
+            Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+        };
+
+    match security_external_proxy_history_import(&request) {
         Ok(result) => ToolResponse::ok(json!(result)),
         Err(error) => ToolResponse::error(error.to_string()),
     }
@@ -705,15 +774,209 @@ pub(super) fn dispatch_security_chair_resolution(args: Value) -> ToolResponse {
 }
 
 pub(super) fn dispatch_security_record_post_meeting_conclusion(args: Value) -> ToolResponse {
-    let request = match serde_json::from_value::<SecurityPostMeetingConclusionRequest>(args) {
-        Ok(request) => request,
-        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    if args.get("package_path").is_none() {
+        let request = match serde_json::from_value::<SecurityPostMeetingConclusionRequest>(args) {
+            Ok(request) => request,
+            Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+        };
+
+        return match security_record_post_meeting_conclusion(&request) {
+            Ok(result) => ToolResponse::ok(json!(result)),
+            Err(error) => ToolResponse::error(error.to_string()),
+        };
+    }
+
+    let package_path = match args.get("package_path").and_then(Value::as_str) {
+        Some(value) if !value.trim().is_empty() => value.trim().to_string(),
+        _ => return ToolResponse::error("request parsing failed: package_path is required"),
+    };
+    let final_disposition = match args.get("final_disposition").and_then(Value::as_str) {
+        Some(value) if !value.trim().is_empty() => value.trim().to_string(),
+        _ => return ToolResponse::error("request parsing failed: final_disposition is required"),
+    };
+    let disposition_reason = match args.get("disposition_reason").and_then(Value::as_str) {
+        Some(value) if !value.trim().is_empty() => value.trim().to_string(),
+        _ => return ToolResponse::error("request parsing failed: disposition_reason is required"),
+    };
+    let reviewer_notes = args
+        .get("reviewer_notes")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let reviewer = args
+        .get("reviewer")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown_reviewer")
+        .trim()
+        .to_string();
+    let reviewer_role = args
+        .get("reviewer_role")
+        .and_then(Value::as_str)
+        .unwrap_or("UnknownRole")
+        .trim()
+        .to_string();
+    let revision_reason = args
+        .get("revision_reason")
+        .and_then(Value::as_str)
+        .unwrap_or("post_meeting_conclusion_recorded")
+        .trim()
+        .to_string();
+    let reverify_after_revision = args
+        .get("reverify_after_revision")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let generated_at = args
+        .get("generated_at")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+    let approval_brief_signing_key_secret = args
+        .get("approval_brief_signing_key_secret")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string());
+    let approval_brief_signing_key_secret_env = args
+        .get("approval_brief_signing_key_secret_env")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.to_string());
+    let key_reasons = args
+        .get("key_reasons")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let required_follow_ups = args
+        .get("required_follow_ups")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(|value| value.to_string())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    // 2026-04-17 CST: Reason=the record_post_meeting entry is the orchestration surface
+    // that starts from an existing decision package, not the lighter symbol-only chair
+    // replay request. Purpose=load the governed package first so the recorded conclusion
+    // inherits the frozen decision identity before package revision runs.
+    let package = match load_decision_package_document(&package_path) {
+        Ok(package) => package,
+        Err(error) => return ToolResponse::error(error),
+    };
+    let post_meeting_conclusion = build_security_post_meeting_conclusion(
+        SecurityPostMeetingConclusionBuildInput {
+            generated_at,
+            scene_name: package.scene_name.clone(),
+            decision_id: package.decision_id.clone(),
+            decision_ref: package.decision_ref.clone(),
+            approval_ref: package.approval_ref.clone(),
+            symbol: package.symbol.clone(),
+            analysis_date: package.analysis_date.clone(),
+            source_package_path: package_path.clone(),
+            source_package_version: package.package_version,
+            source_brief_ref: package.object_graph.approval_brief_ref.clone(),
+            source_brief_path: package.object_graph.approval_brief_path.clone(),
+            final_disposition,
+            disposition_reason,
+            key_reasons,
+            required_follow_ups,
+            reviewer_notes,
+            reviewer,
+            reviewer_role,
+            revision_reason: revision_reason.clone(),
+        },
+    );
+    let post_meeting_conclusion_path =
+        match resolve_post_meeting_conclusion_path(Path::new(&package_path), &package.decision_id) {
+            Ok(path) => path,
+            Err(error) => return ToolResponse::error(error),
+        };
+    if let Err(error) =
+        persist_json_pretty(&post_meeting_conclusion_path, &post_meeting_conclusion)
+    {
+        return ToolResponse::error(error);
+    }
+
+    let revision_result = match security_decision_package_revision(
+        &SecurityDecisionPackageRevisionRequest {
+            package_path: package_path.clone(),
+            revision_reason,
+            reverify_after_revision,
+            condition_review_path: None,
+            execution_record_path: None,
+            post_trade_review_path: None,
+            approval_brief_signing_key_secret,
+            approval_brief_signing_key_secret_env,
+        },
+    ) {
+        Ok(result) => result,
+        Err(error) => return ToolResponse::error(error.to_string()),
     };
 
-    match security_record_post_meeting_conclusion(&request) {
-        Ok(result) => ToolResponse::ok(json!(result)),
-        Err(error) => ToolResponse::error(error.to_string()),
-    }
+    ToolResponse::ok(json!({
+        "post_meeting_conclusion": post_meeting_conclusion,
+        "post_meeting_conclusion_path": post_meeting_conclusion_path.to_string_lossy().to_string(),
+        "decision_package": revision_result.decision_package,
+        "decision_package_path": revision_result.decision_package_path,
+        "package_version": revision_result.package_version,
+        "previous_package_path": revision_result.previous_package_path,
+        "revision_reason": revision_result.revision_reason,
+        "trigger_event_summary": revision_result.trigger_event_summary,
+        "verification_report_path": revision_result.verification_report_path,
+    }))
+}
+
+// 2026-04-17 CST: Reason=record_post_meeting now starts from an existing package file
+// rather than a raw chair request. Purpose=centralize package loading and keep dispatcher
+// error messages stable for the orchestration entry.
+fn load_decision_package_document(package_path: &str) -> Result<SecurityDecisionPackageDocument, String> {
+    serde_json::from_slice::<SecurityDecisionPackageDocument>(
+        &fs::read(package_path).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())
+}
+
+// 2026-04-17 CST: Reason=the recorded post-meeting artifact needs one deterministic
+// governed path beside the existing scenes_runtime bundle. Purpose=keep the new record
+// path stable for later revision/verify wiring instead of scattering ad-hoc filenames.
+fn resolve_post_meeting_conclusion_path(
+    package_path: &Path,
+    decision_id: &str,
+) -> Result<PathBuf, String> {
+    let runtime_root = package_path
+        .parent()
+        .and_then(Path::parent)
+        .ok_or_else(|| "failed to resolve runtime root from package_path".to_string())?;
+    let post_meeting_dir = runtime_root.join("post_meeting_conclusions");
+    fs::create_dir_all(&post_meeting_dir).map_err(|error| error.to_string())?;
+    Ok(post_meeting_dir.join(format!("{decision_id}.json")))
+}
+
+// 2026-04-17 CST: Reason=the dispatcher now persists a standalone post-meeting artifact
+// before package revision runs. Purpose=write one readable JSON document without duplicating
+// persistence snippets inside the orchestration body.
+fn persist_json_pretty<T: serde::Serialize>(path: &Path, value: &T) -> Result<(), String> {
+    fs::write(
+        path,
+        serde_json::to_vec_pretty(value).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())
 }
 
 pub(super) fn dispatch_security_decision_package(args: Value) -> ToolResponse {
@@ -818,6 +1081,21 @@ pub(super) fn dispatch_security_scorecard_training(args: Value) -> ToolResponse 
     }
 }
 
+pub(super) fn dispatch_security_model_promotion(args: Value) -> ToolResponse {
+    // 2026-04-17 CST: Added because the standalone repo now treats governed model
+    // promotion as a public lifecycle tool instead of leaving it exported-but-unrouted.
+    // Purpose: close the public tool-surface gap for promotion governance.
+    let request = match serde_json::from_value::<SecurityModelPromotionRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_model_promotion(&request) {
+        Ok(result) => ToolResponse::ok(json!(result)),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
 pub(super) fn dispatch_register_resonance_factor(args: Value) -> ToolResponse {
     // 2026-04-02 CST：这里接入因子注册入口，原因是方案 3 已确认先做“平台底层”，而不是只做一次性分析输出；
     // 目的：让新共振想法可以先注册为正式因子，再落序列、跑评估和进入分析主链。
@@ -897,6 +1175,36 @@ pub(super) fn dispatch_security_analysis_resonance(args: Value) -> ToolResponse 
     };
 
     match security_analysis_resonance(&request) {
+        Ok(result) => ToolResponse::ok(json!(result)),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_history_expansion(args: Value) -> ToolResponse {
+    // 2026-04-17 CST: Added because historical proxy coverage expansion is part of
+    // the copied StockMind research sidecar surface and should remain publicly callable.
+    // Purpose: align research-sidecar discovery with dispatcher reality.
+    let request = match serde_json::from_value::<SecurityHistoryExpansionRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_history_expansion(&request) {
+        Ok(result) => ToolResponse::ok(json!(result)),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_shadow_evaluation(args: Value) -> ToolResponse {
+    // 2026-04-17 CST: Added because phase-1 public-surface closeout promotes shadow
+    // governance review into the same discoverable research tool surface as history expansion.
+    // Purpose: keep lifecycle governance prerequisites callable from the standalone repo.
+    let request = match serde_json::from_value::<SecurityShadowEvaluationRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_shadow_evaluation(&request) {
         Ok(result) => ToolResponse::ok(json!(result)),
         Err(error) => ToolResponse::error(error.to_string()),
     }

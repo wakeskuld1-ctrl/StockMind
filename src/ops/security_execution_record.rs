@@ -1,7 +1,11 @@
+use std::fs;
+
 use chrono::{NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use thiserror::Error;
 
+use crate::ops::stock::security_decision_package::SecurityDecisionPackageDocument;
 use crate::ops::stock::security_decision_briefing::PositionPlan;
 use crate::ops::stock::security_execution_journal::{
     SecurityExecutionJournalDocument, SecurityExecutionJournalError,
@@ -10,6 +14,7 @@ use crate::ops::stock::security_execution_journal::{
 };
 use crate::ops::stock::security_execution_record_assembler::SecurityExecutionRecordAssembler;
 use crate::ops::stock::security_forward_outcome::SecurityForwardOutcomeDocument;
+use crate::ops::stock::security_scorecard::SecurityScorecardDocument;
 use crate::ops::stock::security_open_position_corporate_action_summary::OpenPositionCorporateActionSummaryError;
 use crate::ops::stock::security_portfolio_position_plan::SecurityPortfolioPositionPlanDocument;
 use crate::ops::stock::security_position_plan::SecurityPositionPlanResult;
@@ -18,6 +23,7 @@ use crate::runtime::security_execution_store::{
     SecurityExecutionStore, SecurityExecutionStoreError,
 };
 use crate::runtime::stock_history_store::{StockHistoryStore, StockHistoryStoreError};
+use crate::runtime_paths::workspace_runtime_dir;
 use crate::tools::contracts::SecurityPositionPlanRecordResult;
 
 #[cfg(test)]
@@ -33,6 +39,24 @@ use crate::ops::stock::security_portfolio_position_plan::PortfolioAllocationReco
 pub struct SecurityExecutionRecordRequest {
     pub symbol: String,
     #[serde(default)]
+    pub analysis_date: Option<String>,
+    #[serde(default)]
+    pub decision_ref: Option<String>,
+    #[serde(default)]
+    pub approval_ref: Option<String>,
+    #[serde(default)]
+    pub position_plan_ref: Option<String>,
+    #[serde(default)]
+    pub condition_review_ref: Option<String>,
+    #[serde(default)]
+    pub execution_action: Option<String>,
+    #[serde(default)]
+    pub execution_status: Option<String>,
+    #[serde(default)]
+    pub executed_gross_pct: Option<f64>,
+    #[serde(default)]
+    pub execution_summary: Option<String>,
+    #[serde(default)]
     pub account_id: Option<String>,
     #[serde(default)]
     pub sector_tag: Option<String>,
@@ -40,7 +64,9 @@ pub struct SecurityExecutionRecordRequest {
     pub market_symbol: Option<String>,
     #[serde(default)]
     pub sector_symbol: Option<String>,
+    #[serde(default)]
     pub market_regime: String,
+    #[serde(default)]
     pub sector_template: String,
     #[serde(default)]
     pub market_profile: Option<String>,
@@ -232,10 +258,30 @@ pub enum SecurityExecutionRecordError {
     Build(String),
 }
 
+#[derive(Debug, Clone)]
+struct LifecycleExecutionRequestContext {
+    analysis_date: String,
+    market_regime: String,
+    sector_template: String,
+    market_profile: Option<String>,
+    sector_profile: Option<String>,
+    position_plan_ref: String,
+}
+
+#[derive(Debug, Clone)]
+struct LifecycleExecutionOverlay {
+    analysis_date: String,
+    position_plan_ref: String,
+    execution_record_id: String,
+    execution_summary: Option<String>,
+    condition_review_ref: Option<String>,
+}
+
 pub fn security_execution_record(
     request: &SecurityExecutionRecordRequest,
 ) -> Result<SecurityExecutionRecordResult, SecurityExecutionRecordError> {
-    let execution_journal_request = build_execution_journal_request(request);
+    let (effective_request, lifecycle_overlay) = adapt_execution_record_request(request)?;
+    let execution_journal_request = build_execution_journal_request(&effective_request);
     let execution_journal_result = security_execution_journal(&execution_journal_request)?;
     let forward_outcome_result = SecurityExecutionRecordOutcomeBinding {
         snapshot: execution_journal_result
@@ -251,12 +297,15 @@ pub fn security_execution_record(
             .all_outcomes
             .clone(),
     };
-    let execution_record = build_security_execution_record(
+    let mut execution_record = build_security_execution_record(
         &execution_journal_result.position_plan_result,
         &forward_outcome_result,
         &execution_journal_result.execution_journal,
-        request,
+        &effective_request,
     )?;
+    if let Some(overlay) = lifecycle_overlay.as_ref() {
+        apply_lifecycle_execution_overlay(&mut execution_record, overlay);
+    }
     // 2026-04-10 CST: Persist the formal execution record because plan B needs later account tools
     // to recover open-position state automatically.
     // Purpose: give account snapshots and planning a single runtime fact source instead of
@@ -276,6 +325,189 @@ pub fn security_execution_record(
         forward_outcome_result,
         execution_record,
     })
+}
+
+// 2026-04-17 CST: Reason=lifecycle validation now enters execution_record through
+// the governed lifecycle contract instead of the older trade-analysis contract.
+// Purpose=derive the legacy execution inputs from the frozen approval package so the
+// detailed execution stack can stay intact behind one compatibility layer.
+fn adapt_execution_record_request(
+    request: &SecurityExecutionRecordRequest,
+) -> Result<
+    (
+        SecurityExecutionRecordRequest,
+        Option<LifecycleExecutionOverlay>,
+    ),
+    SecurityExecutionRecordError,
+> {
+    let Some(context) = resolve_lifecycle_execution_request_context(request)? else {
+        return Ok((request.clone(), None));
+    };
+
+    let store = StockHistoryStore::workspace_default()?;
+    let trade_anchor_date =
+        resolve_lifecycle_trade_anchor(&store, &request.symbol, request.review_horizon_days)?;
+    let actual_entry_price =
+        load_planned_entry_price(&store, &request.symbol, &trade_anchor_date)?;
+    let actual_position_pct = request.executed_gross_pct.unwrap_or(0.0);
+    if actual_position_pct <= 0.0 {
+        return Err(SecurityExecutionRecordError::Build(
+            "executed_gross_pct must be positive when lifecycle execution fields are used"
+                .to_string(),
+        ));
+    }
+
+    let mut effective_request = request.clone();
+    effective_request.market_regime = context.market_regime.clone();
+    effective_request.sector_template = context.sector_template.clone();
+    effective_request.market_profile = effective_request
+        .market_profile
+        .clone()
+        .or(context.market_profile.clone());
+    effective_request.sector_profile = effective_request
+        .sector_profile
+        .clone()
+        .or(context.sector_profile.clone());
+    effective_request.market_symbol = effective_request.market_symbol.clone().or_else(|| {
+        resolve_market_symbol_from_profile(effective_request.market_profile.as_deref())
+    });
+    effective_request.sector_symbol = effective_request.sector_symbol.clone().or_else(|| {
+        resolve_sector_symbol_from_profile(
+            &request.symbol,
+            effective_request.sector_profile.as_deref(),
+        )
+    });
+    effective_request.as_of_date = Some(trade_anchor_date.clone());
+    effective_request.actual_entry_date = trade_anchor_date.clone();
+    effective_request.actual_entry_price = actual_entry_price;
+    effective_request.actual_position_pct = actual_position_pct;
+    effective_request.actual_exit_date = String::new();
+    effective_request.actual_exit_price = 0.0;
+    effective_request.exit_reason = "position_still_open".to_string();
+    effective_request.execution_trades = vec![SecurityExecutionTradeInput {
+        trade_date: trade_anchor_date,
+        side: "buy".to_string(),
+        price: actual_entry_price,
+        position_pct_delta: actual_position_pct,
+        reason: request.execution_action.clone(),
+        notes: Vec::new(),
+    }];
+    if effective_request.execution_journal_notes.is_empty() {
+        effective_request.execution_journal_notes = request
+            .execution_summary
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| vec![value.to_string()])
+            .unwrap_or_default();
+    }
+
+    Ok((
+        effective_request,
+        Some(LifecycleExecutionOverlay {
+            analysis_date: context.analysis_date.clone(),
+            position_plan_ref: context.position_plan_ref.clone(),
+            execution_record_id: format!(
+                "execution-record-{}-{}",
+                context.position_plan_ref, context.analysis_date
+            ),
+            execution_summary: request.execution_summary.clone(),
+            condition_review_ref: request.condition_review_ref.clone(),
+        }),
+    ))
+}
+
+fn resolve_lifecycle_execution_request_context(
+    request: &SecurityExecutionRecordRequest,
+) -> Result<Option<LifecycleExecutionRequestContext>, SecurityExecutionRecordError> {
+    let lifecycle_requested = request
+        .position_plan_ref
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_some()
+        && request
+            .execution_action
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_some()
+        && request.market_regime.trim().is_empty();
+    if !lifecycle_requested {
+        return Ok(None);
+    }
+
+    let package = load_runtime_package_context(
+        &request.symbol,
+        request.decision_ref.as_deref(),
+        request.approval_ref.as_deref(),
+        request.position_plan_ref.as_deref(),
+    )?;
+    let scorecard = load_runtime_scorecard(&package)?;
+    Ok(Some(LifecycleExecutionRequestContext {
+        analysis_date: package.analysis_date.clone(),
+        market_regime: scorecard
+            .raw_feature_snapshot
+            .get("market_regime")
+            .and_then(Value::as_str)
+            .unwrap_or("a_share")
+            .to_string(),
+        sector_template: scorecard
+            .raw_feature_snapshot
+            .get("industry_bucket")
+            .and_then(Value::as_str)
+            .unwrap_or("general")
+            .to_string(),
+        market_profile: scorecard
+            .raw_feature_snapshot
+            .get("market_profile")
+            .and_then(Value::as_str)
+            .map(|value| value.to_string()),
+        sector_profile: scorecard
+            .raw_feature_snapshot
+            .get("sector_profile")
+            .and_then(Value::as_str)
+            .map(|value| value.to_string()),
+        position_plan_ref: request
+            .position_plan_ref
+            .as_deref()
+            .unwrap_or_default()
+            .trim()
+            .to_string(),
+    }))
+}
+
+// 2026-04-17 CST: Reason=package revision validates lifecycle execution docs against
+// the formal approval-chain refs, not the older derived planning ids.
+// Purpose=project the rebuilt execution record back onto the governed lifecycle contract.
+fn apply_lifecycle_execution_overlay(
+    execution_record: &mut SecurityExecutionRecordDocument,
+    overlay: &LifecycleExecutionOverlay,
+) {
+    execution_record.execution_record_id = overlay.execution_record_id.clone();
+    execution_record.analysis_date = overlay.analysis_date.clone();
+    execution_record.position_plan_ref = overlay.position_plan_ref.clone();
+    if let Some(summary) = overlay
+        .execution_summary
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        execution_record.execution_record_notes.push(format!(
+            "lifecycle execution summary: {summary}"
+        ));
+        execution_record.attribution_summary = summary.to_string();
+    }
+    if let Some(condition_review_ref) = overlay
+        .condition_review_ref
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        execution_record
+            .execution_record_notes
+            .push(format!("condition review ref: {condition_review_ref}"));
+    }
 }
 
 // 2026-04-09 CST: Expose the execution-record builder because review, package, and audit still
@@ -301,6 +533,131 @@ pub fn build_security_execution_record(
         request,
     )
     .assemble()
+}
+
+// 2026-04-17 CST: Reason=lifecycle compatibility needs one authoritative package lookup
+// against the shared runtime directory before it can derive legacy execution inputs.
+// Purpose=bind lifecycle execution and review flows to the same approved package/scorecard state.
+pub(crate) fn load_runtime_package_context(
+    symbol: &str,
+    decision_ref: Option<&str>,
+    approval_ref: Option<&str>,
+    position_plan_ref: Option<&str>,
+) -> Result<SecurityDecisionPackageDocument, SecurityExecutionRecordError> {
+    let package_dir = workspace_runtime_dir()
+        .map_err(SecurityExecutionRecordError::Build)?
+        .join("scenes_runtime")
+        .join("decision_packages");
+    let entries = fs::read_dir(&package_dir).map_err(|error| {
+        SecurityExecutionRecordError::Build(format!(
+            "failed to read runtime decision_packages at `{}`: {error}",
+            package_dir.display()
+        ))
+    })?;
+
+    for entry in entries {
+        let entry = entry.map_err(|error| {
+            SecurityExecutionRecordError::Build(format!(
+                "failed to read runtime decision package entry: {error}"
+            ))
+        })?;
+        let path = entry.path();
+        if path.extension().and_then(|value| value.to_str()) != Some("json") {
+            continue;
+        }
+        let payload = fs::read(&path).map_err(|error| {
+            SecurityExecutionRecordError::Build(format!(
+                "failed to read runtime decision package `{}`: {error}",
+                path.display()
+            ))
+        })?;
+        let package = serde_json::from_slice::<SecurityDecisionPackageDocument>(&payload)
+            .map_err(|error| {
+                SecurityExecutionRecordError::Build(format!(
+                    "failed to parse runtime decision package `{}`: {error}",
+                    path.display()
+                ))
+            })?;
+        let symbol_matched = package.symbol == symbol;
+        let decision_matched = decision_ref
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| package.decision_ref == value)
+            .unwrap_or(true);
+        let approval_matched = approval_ref
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| package.approval_ref == value)
+            .unwrap_or(true);
+        let position_plan_matched = position_plan_ref
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| package.object_graph.position_plan_ref == value)
+            .unwrap_or(true);
+        if symbol_matched && decision_matched && approval_matched && position_plan_matched {
+            return Ok(package);
+        }
+    }
+
+    Err(SecurityExecutionRecordError::Build(format!(
+        "failed to resolve runtime decision package for symbol `{symbol}`"
+    )))
+}
+
+pub(crate) fn load_runtime_scorecard(
+    package: &SecurityDecisionPackageDocument,
+) -> Result<SecurityScorecardDocument, SecurityExecutionRecordError> {
+    let payload = fs::read(&package.object_graph.scorecard_path).map_err(|error| {
+        SecurityExecutionRecordError::Build(format!(
+            "failed to read runtime scorecard `{}`: {error}",
+            package.object_graph.scorecard_path
+        ))
+    })?;
+    serde_json::from_slice::<SecurityScorecardDocument>(&payload).map_err(|error| {
+        SecurityExecutionRecordError::Build(format!(
+            "failed to parse runtime scorecard `{}`: {error}",
+            package.object_graph.scorecard_path
+        ))
+    })
+}
+
+fn resolve_lifecycle_trade_anchor(
+    store: &StockHistoryStore,
+    symbol: &str,
+    review_horizon_days: usize,
+) -> Result<String, SecurityExecutionRecordError> {
+    let required_window = review_horizon_days.max(1).saturating_add(1);
+    let rows = store.load_recent_rows(symbol, None, required_window)?;
+    let anchor = rows.first().ok_or_else(|| {
+        SecurityExecutionRecordError::Build(format!(
+            "insufficient local history to derive lifecycle trade anchor for `{symbol}`"
+        ))
+    })?;
+    Ok(anchor.trade_date.clone())
+}
+
+pub(crate) fn resolve_market_symbol_from_profile(market_profile: Option<&str>) -> Option<String> {
+    match market_profile {
+        Some("a_share_core") => Some("510300.SH".to_string()),
+        _ => None,
+    }
+}
+
+pub(crate) fn resolve_sector_symbol_from_profile(
+    primary_symbol: &str,
+    sector_profile: Option<&str>,
+) -> Option<String> {
+    match sector_profile {
+        Some("a_share_bank") | Some("equity_etf") | Some("equity_etf_peer") => {
+            Some("512800.SH".to_string())
+        }
+        Some("treasury_etf") | Some("bond_etf_peer") => Some("511060.SH".to_string()),
+        Some("gold_etf") | Some("gold_etf_peer") => Some("518800.SH".to_string()),
+        Some("cross_border_etf") | Some("cross_border_etf_peer") => {
+            Some(primary_symbol.to_string())
+        }
+        _ => None,
+    }
 }
 
 // 2026-04-15 CST: Added because the execution-record path needs one canonical projection from the
@@ -612,6 +969,18 @@ mod tests {
     fn execution_request_fixture() -> SecurityExecutionRecordRequest {
         SecurityExecutionRecordRequest {
             symbol: "601916.SH".to_string(),
+            // 2026-04-17 CST: Reason=lifecycle-compatible request fields became part of the
+            // formal execution request contract. Purpose=keep the local fixture compiling
+            // while this unit still exercises the legacy non-lifecycle path.
+            analysis_date: None,
+            decision_ref: None,
+            approval_ref: None,
+            position_plan_ref: None,
+            condition_review_ref: None,
+            execution_action: None,
+            execution_status: None,
+            executed_gross_pct: None,
+            execution_summary: None,
             account_id: Some("acct-1".to_string()),
             sector_tag: Some("bank".to_string()),
             market_symbol: None,
@@ -669,6 +1038,7 @@ mod tests {
     }
 
     fn with_stock_runtime<T>(store: &StockHistoryStore, run: impl FnOnce() -> T) -> T {
+        let _env_lock = crate::test_support::lock_test_env();
         let original_stock_db = std::env::var("EXCEL_SKILL_STOCK_DB").ok();
         let original_runtime_dir = std::env::var("EXCEL_SKILL_RUNTIME_DIR").ok();
         let original_runtime_db = std::env::var("EXCEL_SKILL_RUNTIME_DB").ok();

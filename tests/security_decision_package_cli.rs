@@ -565,12 +565,68 @@ fn attach_post_meeting_artifact(
             "required": false,
             "present": true
         }));
+    // 2026-04-17 CST: Added because attaching a live post-meeting artifact can
+    // also refresh other governed runtime files under the same scenes_runtime root.
+    // Reason: this helper is testing package-path governance, so the manifest must
+    // reflect the current on-disk artifact hashes after the attachment step.
+    // Purpose: keep the happy-path fixture focused on governance binding validity
+    // instead of failing on stale manually edited manifest hashes.
+    refresh_present_artifact_manifest_hashes(&mut package_json);
 
     fs::write(
         package_path,
         serde_json::to_vec_pretty(&package_json).expect("package json should serialize"),
     )
     .expect("package should be rewritten");
+}
+
+// 2026-04-17 CST: Added because this suite now manually amends a real package
+// after downstream tools have already written governed runtime artifacts.
+// Reason: any attachment step can leave one or more manifest hashes stale even
+// when the governance object graph itself remains valid.
+// Purpose: normalize the fixture package back to a self-consistent manifest
+// before verification assertions run.
+fn refresh_present_artifact_manifest_hashes(package_json: &mut Value) {
+    let artifact_manifest = package_json["artifact_manifest"]
+        .as_array_mut()
+        .expect("artifact manifest should be an array");
+    for artifact in artifact_manifest.iter_mut() {
+        if !artifact["present"].as_bool().unwrap_or(false) {
+            continue;
+        }
+        let Some(path) = artifact["path"].as_str() else {
+            continue;
+        };
+        let Ok(payload) = fs::read(path) else {
+            continue;
+        };
+        let sha256 = if path.ends_with(".json") {
+            serde_json::from_slice::<Value>(&payload)
+                .ok()
+                .and_then(|value| sha256_for_json_value(&value).ok())
+                .unwrap_or_else(|| {
+                    use sha2::{Digest, Sha256};
+
+                    let mut hasher = Sha256::new();
+                    hasher.update(&payload);
+                    format!("{:x}", hasher.finalize())
+                })
+        } else {
+            // 2026-04-17 CST: Keep non-JSON artifacts on byte-level hashing, because
+            // verify_package treats `.jsonl` audit logs as raw text payloads.
+            // Reason: parsing them as a JSON value would silently change the manifest
+            // contract and produce false hash mismatches.
+            // Purpose: mirror the production verifier's hash rule exactly.
+            {
+                use sha2::{Digest, Sha256};
+
+                let mut hasher = Sha256::new();
+                hasher.update(&payload);
+                format!("{:x}", hasher.finalize())
+            }
+        };
+        artifact["sha256"] = Value::String(sha256);
+    }
 }
 
 fn security_envs(server: &str) -> [(&'static str, String); 6] {

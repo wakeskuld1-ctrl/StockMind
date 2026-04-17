@@ -77,11 +77,46 @@ pub(crate) fn load_latest_open_security_execution_records(
     Ok(records)
 }
 
+// 2026-04-17 CST: Reason=lifecycle review tools now need to reopen one governed
+// execution record by ref instead of rebuilding everything from ad hoc caller state.
+// Purpose=keep lifecycle follow-up tools anchored on the persisted execution fact.
+pub(crate) fn load_security_execution_record(
+    connection: &Connection,
+    execution_record_id: &str,
+) -> Result<Option<SecurityExecutionRecordDocument>, SecurityExecutionStoreError> {
+    let mut statement = connection
+        .prepare(
+            "SELECT payload_json
+             FROM security_execution_records
+             WHERE execution_record_id = ?1
+             LIMIT 1",
+        )
+        .map_err(|error| SecurityExecutionStoreError::ReadExecutionRecord(error.to_string()))?;
+    let mut rows = statement
+        .query(params![execution_record_id])
+        .map_err(|error| SecurityExecutionStoreError::ReadExecutionRecord(error.to_string()))?;
+    let Some(row) = rows
+        .next()
+        .map_err(|error| SecurityExecutionStoreError::ReadExecutionRecord(error.to_string()))?
+    else {
+        return Ok(None);
+    };
+    let payload: String = row
+        .get(0)
+        .map_err(|error| SecurityExecutionStoreError::ReadExecutionRecord(error.to_string()))?;
+    let record = serde_json::from_str::<SecurityExecutionRecordDocument>(&payload)
+        .map_err(|error| SecurityExecutionStoreError::DeserializePayload(error.to_string()))?;
+    Ok(Some(record))
+}
+
 #[cfg(test)]
 mod tests {
     use rusqlite::Connection;
 
-    use super::{load_latest_open_security_execution_records, upsert_security_execution_record};
+    use super::{
+        load_latest_open_security_execution_records, load_security_execution_record,
+        upsert_security_execution_record,
+    };
     use crate::ops::stock::security_execution_record::SecurityExecutionRecordDocument;
     use crate::runtime::security_execution_store_schema::bootstrap_security_execution_schema;
 
@@ -148,7 +183,13 @@ mod tests {
             .expect("execution record should persist");
         let loaded = load_latest_open_security_execution_records(&connection, "acct-1")
             .expect("execution records should load");
+        let loaded_by_ref = load_security_execution_record(&connection, "record-1")
+            .expect("execution record should load by ref");
 
-        assert_eq!(loaded, vec![record]);
+        // 2026-04-17 CST: Reason=the repository test now checks both list and point lookup
+        // against the same fixture instance. Purpose=avoid moving the record before the
+        // second assertion while keeping both round-trip checks intact.
+        assert_eq!(loaded, vec![record.clone()]);
+        assert_eq!(loaded_by_ref, Some(record));
     }
 }

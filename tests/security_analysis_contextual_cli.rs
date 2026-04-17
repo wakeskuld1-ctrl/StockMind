@@ -8,6 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::common::{create_test_runtime_db, run_cli_with_json, run_cli_with_json_and_runtime};
 
+const FIXTURE_AS_OF_DATE: &str = "2025-08-08";
+
 // 2026-04-01 CST: 这里补新上层综合 Tool 的专属 CSV 夹具助手，原因是 contextual Tool 需要一次导入个股、大盘代理和板块代理三套日线；
 // 目的：让测试继续走真实 `CSV -> SQLite -> Tool` 主链，而不是手工拼装多源上下文 JSON。
 fn create_stock_history_csv(prefix: &str, file_name: &str, rows: &[String]) -> PathBuf {
@@ -54,7 +56,11 @@ fn security_analysis_contextual_reports_headwind_when_stock_and_environment_conf
         "args": {
             "symbol": "601916.SH",
             "market_symbol": "510300.SH",
-            "sector_symbol": "512800.SH"
+            "sector_symbol": "512800.SH",
+            // 2026-04-17 CST: Added because this integration suite is built on
+            // local CSV fixtures and must not drift into live sync on later dates.
+            // Purpose: keep contextual assertions pinned to the governed fixture window.
+            "as_of_date": FIXTURE_AS_OF_DATE
         }
     });
 
@@ -116,7 +122,11 @@ fn security_analysis_contextual_uses_proxy_profiles_when_symbols_are_omitted() {
         "args": {
             "symbol": "601916.SH",
             "market_profile": "a_share_core",
-            "sector_profile": "a_share_bank"
+            "sector_profile": "a_share_bank",
+            // 2026-04-17 CST: Added because profile-based proxy resolution should
+            // still read the same local fixture slice instead of syncing to "today".
+            // Purpose: make profile-resolution assertions deterministic across dates.
+            "as_of_date": FIXTURE_AS_OF_DATE
         }
     });
 
@@ -209,8 +219,14 @@ fn build_confirmed_breakout_rows(day_count: usize, start_close: f64) -> Vec<Stri
         };
 
         let open = close;
-        let high = next_close.max(open) + 1.0;
-        let low = next_close.min(open) - 0.86;
+        // 2026-04-17 CST: Updated because the new decision chain confirms breakout
+        // against recent high-derived key levels instead of only close-to-close drift.
+        // Purpose: make this fixture close decisively above prior resistance rather than
+        // hiding the move under oversized upper shadows that only produce `range_wait`.
+        let high = next_close.max(open)
+            + if offset < day_count - 20 { 0.28 } else { 0.14 };
+        let low = next_close.min(open)
+            - if offset < day_count - 20 { 0.24 } else { 0.12 };
         let adj_close = next_close;
         rows.push(format!(
             "{},{open:.2},{high:.2},{low:.2},{next_close:.2},{adj_close:.2},{volume}",
@@ -276,8 +292,14 @@ fn build_confirmed_breakdown_rows(day_count: usize, start_close: f64) -> Vec<Str
         };
 
         let open = close;
-        let high = next_close.max(open) + 0.88;
-        let low = next_close.min(open) - 1.02;
+        // 2026-04-17 CST: Updated because the stricter breakdown chain now checks
+        // support using low-derived key levels, so this fixture must finish below the
+        // prior floor instead of leaving oversized lower shadows that blur the signal.
+        // Purpose: keep contextual headwind/tailwind tests anchored to real breakdown samples.
+        let high = next_close.max(open)
+            + if offset < day_count - 20 { 0.24 } else { 0.12 };
+        let low = next_close.min(open)
+            - if offset < day_count - 20 { 0.28 } else { 0.14 };
         let adj_close = next_close;
         rows.push(format!(
             "{},{open:.2},{high:.2},{low:.2},{next_close:.2},{adj_close:.2},{volume}",
@@ -333,7 +355,11 @@ fn security_analysis_contextual_reports_tailwind_when_stock_market_sector_align(
         "args": {
             "symbol": "601916.SH",
             "market_symbol": "510300.SH",
-            "sector_symbol": "512800.SH"
+            "sector_symbol": "512800.SH",
+            // 2026-04-17 CST: Added because this tailwind regression should stay
+            // anchored to the synthetic breakout fixture rather than live market drift.
+            // Purpose: preserve a stable local proof for contextual alignment logic.
+            "as_of_date": FIXTURE_AS_OF_DATE
         }
     });
 
@@ -402,7 +428,11 @@ fn security_analysis_contextual_keeps_mixed_when_stock_is_range_wait() {
         "args": {
             "symbol": "601916.SH",
             "market_symbol": "510300.SH",
-            "sector_symbol": "512800.SH"
+            "sector_symbol": "512800.SH",
+            // 2026-04-17 CST: Added because the mixed-case fixture should be evaluated
+            // inside its own local sample window and not upgraded by live sync drift.
+            // Purpose: keep the range-wait regression pinned to the intended fixture date.
+            "as_of_date": FIXTURE_AS_OF_DATE
         }
     });
 

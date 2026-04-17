@@ -47,10 +47,13 @@ fn online_and_lifecycle_subgroups_keep_module_ownership_separate() {
     );
 
     for required_online_marker in [
-        "pub use super::security_feature_snapshot;",
-        "pub use super::security_forward_outcome;",
-        "pub use super::security_scorecard;",
-        "pub use super::security_master_scorecard;",
+        // 2026-04-17 CST: Updated because the subgroup is a thin shell over the
+        // stock boundary, so the compile-true ownership path remains `super::super`.
+        // Purpose: guard the real re-export shape instead of forcing a broken local path.
+        "pub use super::super::security_feature_snapshot;",
+        "pub use super::super::security_forward_outcome;",
+        "pub use super::super::security_scorecard;",
+        "pub use super::super::security_master_scorecard;",
     ] {
         assert!(
             online_source.contains(required_online_marker),
@@ -72,10 +75,13 @@ fn online_and_lifecycle_subgroups_keep_module_ownership_separate() {
     }
 
     for required_lifecycle_marker in [
-        "pub use super::security_scorecard_model_registry;",
-        "pub use super::security_scorecard_refit_run;",
-        "pub use super::security_scorecard_training;",
-        "pub use super::security_model_promotion;",
+        // 2026-04-17 CST: Updated because lifecycle follows the same compile-true
+        // thin-shell rule and must re-export from the parent stock boundary.
+        // Purpose: stop the guard from enforcing an invalid subgroup-local path.
+        "pub use super::super::security_scorecard_model_registry;",
+        "pub use super::super::security_scorecard_refit_run;",
+        "pub use super::super::security_scorecard_training;",
+        "pub use super::super::security_model_promotion;",
     ] {
         assert!(
             lifecycle_source.contains(required_lifecycle_marker),

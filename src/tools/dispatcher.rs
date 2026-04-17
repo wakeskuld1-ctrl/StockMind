@@ -14,11 +14,20 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         "security_fundamental_history_live_backfill" => {
             stock_ops::dispatch_security_fundamental_history_live_backfill(request.args)
         }
+        "security_fundamental_history_backfill" => {
+            stock_ops::dispatch_security_fundamental_history_backfill(request.args)
+        }
         "security_disclosure_history_live_backfill" => {
             stock_ops::dispatch_security_disclosure_history_live_backfill(request.args)
         }
+        "security_disclosure_history_backfill" => {
+            stock_ops::dispatch_security_disclosure_history_backfill(request.args)
+        }
         "security_external_proxy_backfill" => {
             stock_ops::dispatch_security_external_proxy_backfill(request.args)
+        }
+        "security_external_proxy_history_import" => {
+            stock_ops::dispatch_security_external_proxy_history_import(request.args)
         }
         "stock_training_data_backfill" => {
             stock_ops::dispatch_stock_training_data_backfill(request.args)
@@ -120,6 +129,9 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         "security_scorecard_training" => {
             stock_ops::dispatch_security_scorecard_training(request.args)
         }
+        "security_model_promotion" => {
+            stock_ops::dispatch_security_model_promotion(request.args)
+        }
         "register_resonance_factor" => {
             stock_ops::dispatch_register_resonance_factor(request.args)
         }
@@ -137,6 +149,12 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         }
         "security_analysis_resonance" => {
             stock_ops::dispatch_security_analysis_resonance(request.args)
+        }
+        "security_history_expansion" => {
+            stock_ops::dispatch_security_history_expansion(request.args)
+        }
+        "security_shadow_evaluation" => {
+            stock_ops::dispatch_security_shadow_evaluation(request.args)
         }
         "record_security_signal_snapshot" => {
             stock_ops::dispatch_record_security_signal_snapshot(request.args)

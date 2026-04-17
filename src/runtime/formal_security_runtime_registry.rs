@@ -144,6 +144,7 @@ mod tests {
 
     #[test]
     fn execution_store_db_path_prefers_direct_env_override() {
+        let _env_lock = crate::test_support::lock_test_env();
         let _guard = RuntimeEnvGuard::capture(&[
             "EXCEL_SKILL_SECURITY_EXECUTION_DB",
             "EXCEL_SKILL_RUNTIME_DIR",
@@ -169,6 +170,7 @@ mod tests {
 
     #[test]
     fn execution_store_db_path_falls_back_to_runtime_root() {
+        let _env_lock = crate::test_support::lock_test_env();
         let _guard = RuntimeEnvGuard::capture(&[
             "EXCEL_SKILL_SECURITY_EXECUTION_DB",
             "EXCEL_SKILL_RUNTIME_DIR",
@@ -191,6 +193,7 @@ mod tests {
 
     #[test]
     fn execution_store_runtime_dir_uses_execution_db_parent_when_overridden() {
+        let _env_lock = crate::test_support::lock_test_env();
         let _guard = RuntimeEnvGuard::capture(&[
             "EXCEL_SKILL_SECURITY_EXECUTION_DB",
             "EXCEL_SKILL_RUNTIME_DIR",
@@ -213,6 +216,7 @@ mod tests {
 
     #[test]
     fn governed_runtime_store_db_paths_prefer_direct_env_overrides() {
+        let _env_lock = crate::test_support::lock_test_env();
         let _guard = RuntimeEnvGuard::capture(&[
             "EXCEL_SKILL_STOCK_DB",
             "EXCEL_SKILL_EXTERNAL_PROXY_DB",
@@ -287,6 +291,7 @@ mod tests {
 
     #[test]
     fn governed_runtime_store_db_paths_fall_back_to_shared_runtime_root() {
+        let _env_lock = crate::test_support::lock_test_env();
         let _guard = RuntimeEnvGuard::capture(&[
             "EXCEL_SKILL_STOCK_DB",
             "EXCEL_SKILL_EXTERNAL_PROXY_DB",
