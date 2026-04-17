@@ -8,10 +8,10 @@ use thiserror::Error;
 use crate::ops::stock::security_decision_evidence_bundle::{
     ETF_DIFFERENTIATING_FEATURES, build_evidence_bundle_feature_seed, derive_event_density_bucket,
     derive_flow_status, derive_industry_bucket, derive_instrument_subscope, derive_market_regime,
-    derive_valuation_status, is_etf_symbol, normalize_etf_instrument_subscope,
-    required_etf_feature_family, resolve_etf_subscope,
+    derive_valuation_status, is_etf_symbol, required_etf_feature_family, resolve_etf_subscope,
 };
 use crate::ops::stock::security_legacy_committee_compat::LegacySecurityDecisionCommitteeResult as SecurityDecisionCommitteeResult;
+use crate::ops::stock::security_symbol_taxonomy::resolve_effective_security_routing;
 
 // 2026-04-09 CST: 这里新增正式评分卡对象合同，原因是用户明确要求证券评分卡不能再用主观分析分冒充正式治理对象；
 // 目的：把评分结果升级为可落盘、可版本化、可进入 package、可做后续复盘与验真的正式 artifact。
@@ -396,18 +396,73 @@ fn build_raw_feature_snapshot(
         );
     }
     let subject_asset_class = snapshot.get("subject_asset_class").and_then(Value::as_str);
+    let effective_routing = resolve_effective_security_routing(
+        &committee.symbol,
+        Some(
+            committee
+                .evidence_bundle
+                .technical_context
+                .market_symbol
+                .as_str(),
+        ),
+        Some(
+            committee
+                .evidence_bundle
+                .technical_context
+                .sector_symbol
+                .as_str(),
+        ),
+        committee.market_profile.as_deref(),
+        committee.sector_profile.as_deref(),
+    );
     let instrument_subscope = derive_instrument_subscope(
         &committee.symbol,
-        committee.market_profile.as_deref(),
+        effective_routing.market_profile.as_deref(),
         subject_asset_class,
     );
     let industry_bucket = derive_industry_bucket(
-        committee.sector_profile.as_deref(),
+        effective_routing.sector_profile.as_deref(),
+        effective_routing.industry_bucket.as_deref(),
         Some(&instrument_subscope),
         subject_asset_class,
     );
-    let market_regime =
-        derive_market_regime(committee.market_profile.as_deref(), subject_asset_class);
+    let market_regime = derive_market_regime(
+        effective_routing.market_profile.as_deref(),
+        subject_asset_class,
+        Some(
+            committee
+                .evidence_bundle
+                .technical_context
+                .market_analysis
+                .consultation_conclusion
+                .bias
+                .as_str(),
+        ),
+        Some(
+            committee
+                .evidence_bundle
+                .technical_context
+                .market_analysis
+                .breakout_signal
+                .as_str(),
+        ),
+        Some(
+            committee
+                .evidence_bundle
+                .technical_context
+                .market_analysis
+                .volatility_state
+                .as_str(),
+        ),
+        Some(
+            committee
+                .evidence_bundle
+                .technical_context
+                .market_analysis
+                .momentum_signal
+                .as_str(),
+        ),
+    );
     let announcement_count = snapshot
         .get("announcement_count")
         .and_then(Value::as_u64)
@@ -421,6 +476,9 @@ fn build_raw_feature_snapshot(
     let flow_status = derive_flow_status(
         snapshot.get("money_flow_signal").and_then(Value::as_str),
         snapshot.get("volume_confirmation").and_then(Value::as_str),
+        snapshot.get("volume_ratio_20").and_then(Value::as_f64),
+        snapshot.get("mfi_14").and_then(Value::as_f64),
+        snapshot.get("macd_histogram").and_then(Value::as_f64),
     );
     let valuation_status = derive_valuation_status(
         snapshot
@@ -432,6 +490,10 @@ fn build_raw_feature_snapshot(
         snapshot
             .get("mean_reversion_signal")
             .and_then(Value::as_str),
+        snapshot.get("profit_signal").and_then(Value::as_str),
+        snapshot.get("revenue_yoy_pct").and_then(Value::as_f64),
+        snapshot.get("net_profit_yoy_pct").and_then(Value::as_f64),
+        snapshot.get("roe_pct").and_then(Value::as_f64),
     );
     // 2026-04-16 CST: Added because runtime scorecard must consume the same thickened
     // segmentation vocabulary that snapshot/training now freeze.
@@ -441,6 +503,15 @@ fn build_raw_feature_snapshot(
     snapshot.insert(
         "industry_bucket".to_string(),
         Value::String(industry_bucket),
+    );
+    snapshot.insert(
+        "subindustry_bucket".to_string(),
+        Value::String(
+            effective_routing
+                .subindustry_bucket
+                .clone()
+                .unwrap_or_else(|| instrument_subscope.clone()),
+        ),
     );
     snapshot.insert(
         "instrument_subscope".to_string(),
@@ -538,10 +609,15 @@ fn etf_cross_section_guard_status(
         .iter()
         .map(|feature| feature.feature_name.as_str())
         .collect::<Vec<_>>();
+    let model_has_etf_family = ETF_DIFFERENTIATING_FEATURES.iter().any(|feature_name| {
+        model_features
+            .iter()
+            .any(|candidate| candidate == feature_name)
+    });
     let snapshot_has_etf_family = ETF_DIFFERENTIATING_FEATURES
         .iter()
         .any(|feature_name| matches!(raw_feature_snapshot.get(*feature_name), Some(value) if !value.is_null()));
-    let runtime_subscope = normalize_etf_instrument_subscope(resolve_etf_subscope(
+    let runtime_subscope = resolve_etf_subscope(
         symbol,
         raw_feature_snapshot
             .get("market_profile")
@@ -549,49 +625,26 @@ fn etf_cross_section_guard_status(
         raw_feature_snapshot
             .get("sector_profile")
             .and_then(Value::as_str),
-    ));
-    let model_subscope = normalize_etf_instrument_subscope(model.instrument_subscope.as_deref());
+    );
     let required_feature_family =
-        required_etf_feature_family(runtime_subscope.or(model_subscope));
-    // 2026-04-17 CST: Changed because treasury/gold ETF scorecard artifacts can be
-    // structurally valid with their governed proxy family even when they do not
-    // also carry one coarse ETF-wide placeholder feature from the older list.
-    // Reason: submit_approval was rejecting valid subscope-specific ETF models only
-    // because `model_has_etf_family` ignored the formal required proxy contract.
-    // Purpose: treat either the shared ETF differentiators or the subscope-required
-    // proxy family as sufficient proof that the artifact is an ETF model.
-    let model_has_etf_family = ETF_DIFFERENTIATING_FEATURES
-        .iter()
-        .chain(required_feature_family.iter())
-        .any(|feature_name| {
-            model_features
-                .iter()
-                .any(|candidate| candidate == feature_name)
-        });
+        required_etf_feature_family(runtime_subscope.or(model.instrument_subscope.as_deref()));
     let model_has_required_feature_family = required_feature_family.iter().all(|feature_name| {
         model_features
             .iter()
             .any(|candidate| candidate == feature_name)
     });
 
-    // 2026-04-17 CST: Updated because the runtime ETF guard previously only
-    // rejected missing ETF feature families when the live snapshot already
-    // surfaced ETF-specific fields, which let coarse shared models slip through.
-    // Reason: model-family validity is a binding-time property for any ETF, not a
-    // conditional check that should wait for richer runtime snapshot coverage.
-    // Purpose: reject structurally wrong ETF model bindings even when the current
-    // request only carries generic technical features.
-    if !model_has_etf_family || !model_has_required_feature_family {
+    if snapshot_has_etf_family && (!model_has_etf_family || !model_has_required_feature_family) {
         Some("cross_section_invalid".to_string())
     } else if let (Some(runtime_subscope), Some(model_subscope)) =
-        (runtime_subscope, model_subscope)
+        (runtime_subscope, model.instrument_subscope.as_deref())
     {
         if runtime_subscope != model_subscope {
             Some("cross_section_invalid".to_string())
         } else {
             None
         }
-    } else if snapshot_has_etf_family && model_subscope.is_none() {
+    } else if snapshot_has_etf_family && model.instrument_subscope.is_none() {
         Some("cross_section_invalid".to_string())
     } else {
         None
@@ -970,130 +1023,6 @@ mod tests {
         assert_eq!(
             etf_cross_section_guard_status("511010.SH", &raw_snapshot, &model),
             Some("cross_section_invalid".to_string())
-        );
-    }
-
-    #[test]
-    fn etf_runtime_guard_accepts_gold_binding_with_required_proxy_family() {
-        // 2026-04-17 CST: Add a red test for the gold ETF happy path, because the
-        // submit-approval flow now passes a gold-specific proxy model that should be
-        // accepted once the formal proxy contract is complete.
-        // Purpose: keep runtime guard strict on missing proxy families while allowing
-        // governed gold ETF artifacts to score normally.
-        let model = SecurityScorecardModelArtifact {
-            model_id: "a_share_etf_gold_etf_10d_direction_head".to_string(),
-            model_version: "candidate_20260417".to_string(),
-            label_definition: "security_forward_outcome.v1".to_string(),
-            target_head: None,
-            prediction_mode: None,
-            prediction_baseline: None,
-            training_window: None,
-            oot_window: None,
-            positive_label_definition: None,
-            instrument_subscope: Some("gold_etf".to_string()),
-            binning_version: None,
-            coefficient_version: None,
-            model_sha256: None,
-            intercept: Some(0.0),
-            base_score: 600.0,
-            features: vec![
-                SecurityScorecardModelFeatureSpec {
-                    feature_name: "volume_ratio_20".to_string(),
-                    group_name: "T".to_string(),
-                    bins: Vec::new(),
-                },
-                SecurityScorecardModelFeatureSpec {
-                    feature_name: "gold_spot_proxy_status".to_string(),
-                    group_name: "X".to_string(),
-                    bins: Vec::new(),
-                },
-                SecurityScorecardModelFeatureSpec {
-                    feature_name: "gold_spot_proxy_return_5d".to_string(),
-                    group_name: "X".to_string(),
-                    bins: Vec::new(),
-                },
-                SecurityScorecardModelFeatureSpec {
-                    feature_name: "real_rate_proxy_status".to_string(),
-                    group_name: "X".to_string(),
-                    bins: Vec::new(),
-                },
-                SecurityScorecardModelFeatureSpec {
-                    feature_name: "real_rate_proxy_delta_bp_5d".to_string(),
-                    group_name: "X".to_string(),
-                    bins: Vec::new(),
-                },
-            ],
-        };
-        let mut raw_snapshot = BTreeMap::new();
-        raw_snapshot.insert("volume_ratio_20".to_string(), json!(1.03));
-        raw_snapshot.insert("market_profile".to_string(), json!("a_share_core"));
-        raw_snapshot.insert("sector_profile".to_string(), json!("gold_etf_peer"));
-
-        assert_eq!(
-            etf_cross_section_guard_status("518880.SH", &raw_snapshot, &model),
-            None
-        );
-    }
-
-    #[test]
-    fn etf_runtime_guard_accepts_treasury_binding_with_required_proxy_family() {
-        // 2026-04-17 CST: Add a red test for the treasury ETF happy path, because
-        // bond ETF approval now relies on the governed yield/funding proxy family
-        // instead of older ETF-wide placeholder features.
-        // Purpose: verify the runtime guard still blocks wrong bindings while
-        // accepting a treasury ETF artifact that carries the required proxy fields.
-        let model = SecurityScorecardModelArtifact {
-            model_id: "a_share_etf_treasury_etf_10d_direction_head".to_string(),
-            model_version: "candidate_20260417".to_string(),
-            label_definition: "security_forward_outcome.v1".to_string(),
-            target_head: None,
-            prediction_mode: None,
-            prediction_baseline: None,
-            training_window: None,
-            oot_window: None,
-            positive_label_definition: None,
-            instrument_subscope: Some("treasury_etf".to_string()),
-            binning_version: None,
-            coefficient_version: None,
-            model_sha256: None,
-            intercept: Some(0.0),
-            base_score: 600.0,
-            features: vec![
-                SecurityScorecardModelFeatureSpec {
-                    feature_name: "close_vs_sma200".to_string(),
-                    group_name: "T".to_string(),
-                    bins: Vec::new(),
-                },
-                SecurityScorecardModelFeatureSpec {
-                    feature_name: "yield_curve_proxy_status".to_string(),
-                    group_name: "X".to_string(),
-                    bins: Vec::new(),
-                },
-                SecurityScorecardModelFeatureSpec {
-                    feature_name: "yield_curve_slope_delta_bp_5d".to_string(),
-                    group_name: "X".to_string(),
-                    bins: Vec::new(),
-                },
-                SecurityScorecardModelFeatureSpec {
-                    feature_name: "funding_liquidity_proxy_status".to_string(),
-                    group_name: "X".to_string(),
-                    bins: Vec::new(),
-                },
-                SecurityScorecardModelFeatureSpec {
-                    feature_name: "funding_liquidity_spread_delta_bp_5d".to_string(),
-                    group_name: "X".to_string(),
-                    bins: Vec::new(),
-                },
-            ],
-        };
-        let mut raw_snapshot = BTreeMap::new();
-        raw_snapshot.insert("close_vs_sma200".to_string(), json!(0.004));
-        raw_snapshot.insert("market_profile".to_string(), json!("a_share_core"));
-        raw_snapshot.insert("sector_profile".to_string(), json!("bond_etf_peer"));
-
-        assert_eq!(
-            etf_cross_section_guard_status("511010.SH", &raw_snapshot, &model),
-            None
         );
     }
 

@@ -20,6 +20,7 @@ use crate::ops::stock::security_scorecard_refit_run::{
     SecurityScorecardRefitError, SecurityScorecardRefitRequest, SecurityScorecardRefitRun,
     security_scorecard_refit,
 };
+use crate::ops::stock::security_symbol_taxonomy::resolve_effective_security_routing;
 use crate::runtime::stock_history_store::{StockHistoryStore, StockHistoryStoreError};
 
 // 2026-04-09 CST: 这里新增正式训练入口请求合同，原因是 Task 5 需要把离线训练从临时脚本提升为可治理的一等 Tool；
@@ -64,6 +65,7 @@ pub struct SecurityScorecardTrainingRequest {
 pub struct SecurityScorecardTrainingResult {
     pub artifact: SecurityScorecardModelArtifact,
     pub artifact_path: String,
+    pub training_diagnostic_report_path: String,
     pub refit_run: SecurityScorecardRefitRun,
     pub model_registry: SecurityScorecardModelRegistry,
     pub refit_run_path: String,
@@ -95,6 +97,13 @@ struct TrainingDateRange {
 
 #[derive(Debug, Clone, PartialEq)]
 struct TrainingSample {
+    // 2026-04-17 CST: Added because the new diagnostic layer needs chronological folds and
+    // per-symbol slice visibility without changing the prediction contract.
+    // Reason: split-only samples were enough for the old minimal trainer but not for walk-forward
+    // and drift inspection.
+    // Purpose: keep diagnostics grounded in real symbol/date lineage.
+    symbol: String,
+    as_of_date: NaiveDate,
     split_name: String,
     label: f64,
     feature_values: BTreeMap<String, TrainingFeatureValue>,
@@ -134,6 +143,13 @@ struct FeatureBinModel {
     min_inclusive: Option<f64>,
     max_exclusive: Option<f64>,
     woe: f64,
+    // 2026-04-17 CST: Added because the governed diagnostic report must explain support, IV,
+    // and semantically backward bins instead of only publishing final WOE values.
+    // Reason: the previous bin contract was too thin to explain overfitting.
+    // Purpose: retain enough training-time evidence for diagnostics while preserving prediction behavior.
+    positive_count: f64,
+    negative_count: f64,
+    sample_count: f64,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -143,6 +159,16 @@ struct TrainedLogisticModel {
 }
 
 const UNSEEN_CATEGORICAL_BIN_LABEL: &str = "__unseen__";
+
+#[derive(Debug, Clone, PartialEq)]
+struct EncodedDiagnosticSample {
+    symbol: String,
+    as_of_date: NaiveDate,
+    split_name: String,
+    label: f64,
+    predicted_probability: f64,
+    encoded_features: Vec<f64>,
+}
 
 // 2026-04-09 CST: 这里实现 Task 5 的最小正式训练入口，原因是我们需要先把训练主链跑通，再继续做回算重估和晋级治理；
 // 目的：以最小的“样本采集 -> 分箱 -> WOE -> logistic -> artifact -> refit”闭环承接现有 scorecard 体系。
@@ -192,7 +218,39 @@ pub fn security_scorecard_training(
     ));
     persist_json(&artifact_path, &artifact)?;
 
-    let metrics_summary_json = build_metrics_summary(&samples, &feature_models, &trained_model);
+    // 2026-04-17 CST: Added because the user explicitly asked to inspect process metrics instead
+    // of only split accuracy before discussing further model work.
+    // Reason: training output must now explain drift, correlation, fold stability, and feature dominance.
+    // Purpose: persist one governed diagnostic report alongside the artifact without changing model semantics.
+    let training_diagnostic_report_json = build_training_diagnostic_report(
+        request,
+        &samples,
+        &feature_configs,
+        &feature_models,
+        &trained_model,
+    )?;
+    let training_diagnostic_report_path =
+        runtime_root
+            .join("scorecard_training_diagnostics")
+            .join(format!(
+                "{}__{}.json",
+                sanitize_identifier(&artifact.model_id),
+                sanitize_identifier(&artifact.model_version)
+            ));
+    persist_json(
+        &training_diagnostic_report_path,
+        &training_diagnostic_report_json,
+    )?;
+
+    let metrics_summary_json = build_metrics_summary(
+        &samples,
+        &feature_models,
+        &trained_model,
+        training_diagnostic_report_json
+            .get("summary")
+            .cloned()
+            .unwrap_or_else(|| json!({})),
+    );
     let refit_result = security_scorecard_refit(&SecurityScorecardRefitRequest {
         created_at: request.created_at.clone(),
         refit_runtime_root: Some(runtime_root.to_string_lossy().to_string()),
@@ -226,6 +284,9 @@ pub fn security_scorecard_training(
     Ok(SecurityScorecardTrainingResult {
         artifact,
         artifact_path: artifact_path.to_string_lossy().to_string(),
+        training_diagnostic_report_path: training_diagnostic_report_path
+            .to_string_lossy()
+            .to_string(),
         refit_run: refit_result.refit_run,
         model_registry: refit_result.model_registry,
         refit_run_path: refit_result.refit_run_path,
@@ -299,6 +360,11 @@ fn training_feature_configs() -> Vec<TrainingFeatureConfig> {
             kind: TrainingFeatureKind::Categorical,
         },
         TrainingFeatureConfig {
+            feature_name: "subindustry_bucket",
+            group_name: "M",
+            kind: TrainingFeatureKind::Categorical,
+        },
+        TrainingFeatureConfig {
             feature_name: "instrument_subscope",
             group_name: "M",
             kind: TrainingFeatureKind::Categorical,
@@ -366,6 +432,21 @@ fn training_feature_configs() -> Vec<TrainingFeatureConfig> {
             kind: TrainingFeatureKind::Categorical,
         },
         TrainingFeatureConfig {
+            feature_name: "volume_ratio_20",
+            group_name: "Q",
+            kind: TrainingFeatureKind::Numeric,
+        },
+        TrainingFeatureConfig {
+            feature_name: "mfi_14",
+            group_name: "Q",
+            kind: TrainingFeatureKind::Numeric,
+        },
+        TrainingFeatureConfig {
+            feature_name: "macd_histogram",
+            group_name: "Q",
+            kind: TrainingFeatureKind::Numeric,
+        },
+        TrainingFeatureConfig {
             feature_name: "disclosure_risk_keyword_count",
             group_name: "E",
             kind: TrainingFeatureKind::Numeric,
@@ -374,6 +455,29 @@ fn training_feature_configs() -> Vec<TrainingFeatureConfig> {
             feature_name: "has_risk_warning_notice",
             group_name: "E",
             kind: TrainingFeatureKind::Categorical,
+        },
+        // 2026-04-17 CST: Added because disclosure event-side signals now have a governed weighted
+        // surface and should not rely only on sparse booleans during the next retraining pass.
+        // Purpose: promote the first explainable event-scoring family into the formal training contract.
+        TrainingFeatureConfig {
+            feature_name: "hard_risk_score",
+            group_name: "E",
+            kind: TrainingFeatureKind::Numeric,
+        },
+        TrainingFeatureConfig {
+            feature_name: "negative_attention_score",
+            group_name: "E",
+            kind: TrainingFeatureKind::Numeric,
+        },
+        TrainingFeatureConfig {
+            feature_name: "positive_support_score",
+            group_name: "E",
+            kind: TrainingFeatureKind::Numeric,
+        },
+        TrainingFeatureConfig {
+            feature_name: "event_net_impact_score",
+            group_name: "E",
+            kind: TrainingFeatureKind::Numeric,
         },
         TrainingFeatureConfig {
             feature_name: "data_gap_count",
@@ -398,6 +502,26 @@ fn training_feature_configs() -> Vec<TrainingFeatureConfig> {
         TrainingFeatureConfig {
             feature_name: "roe_pct",
             group_name: "F",
+            kind: TrainingFeatureKind::Numeric,
+        },
+        TrainingFeatureConfig {
+            feature_name: "fundamental_quality_bucket",
+            group_name: "F",
+            kind: TrainingFeatureKind::Categorical,
+        },
+        TrainingFeatureConfig {
+            feature_name: "shareholder_return_status",
+            group_name: "E",
+            kind: TrainingFeatureKind::Categorical,
+        },
+        TrainingFeatureConfig {
+            feature_name: "rsi_14",
+            group_name: "V",
+            kind: TrainingFeatureKind::Numeric,
+        },
+        TrainingFeatureConfig {
+            feature_name: "atr_ratio_14",
+            group_name: "V",
             kind: TrainingFeatureKind::Numeric,
         },
         TrainingFeatureConfig {
@@ -445,6 +569,13 @@ fn collect_samples(
     let mut samples = Vec::new();
 
     for symbol in &request.symbol_list {
+        let effective_routing = resolve_effective_security_routing(
+            symbol,
+            request.market_symbol.as_deref(),
+            request.sector_symbol.as_deref(),
+            request.market_profile.as_deref(),
+            request.sector_profile.as_deref(),
+        );
         for (split_name, range, target_count) in [
             ("train", train_range, 2_usize),
             ("valid", valid_range, 1_usize),
@@ -455,10 +586,10 @@ fn collect_samples(
             for as_of_date in selected_dates {
                 let outcome_result = security_forward_outcome(&SecurityForwardOutcomeRequest {
                     symbol: symbol.clone(),
-                    market_symbol: request.market_symbol.clone(),
-                    sector_symbol: request.sector_symbol.clone(),
-                    market_profile: request.market_profile.clone(),
-                    sector_profile: request.sector_profile.clone(),
+                    market_symbol: effective_routing.market_symbol.clone(),
+                    sector_symbol: effective_routing.sector_symbol.clone(),
+                    market_profile: effective_routing.market_profile.clone(),
+                    sector_profile: effective_routing.sector_profile.clone(),
                     as_of_date: Some(as_of_date.clone()),
                     lookback_days: request.lookback_days,
                     disclosure_limit: request.disclosure_limit,
@@ -485,6 +616,14 @@ fn collect_samples(
                     feature_configs,
                 )?;
                 samples.push(TrainingSample {
+                    symbol: symbol.clone(),
+                    as_of_date: NaiveDate::parse_from_str(&as_of_date, "%Y-%m-%d").map_err(
+                        |error| {
+                            SecurityScorecardTrainingError::Build(format!(
+                                "invalid as_of_date `{as_of_date}` for {symbol}: {error}"
+                            ))
+                        },
+                    )?,
                     split_name: split_name.to_string(),
                     label: if outcome.positive_return { 1.0 } else { 0.0 },
                     feature_values,
@@ -679,15 +818,18 @@ fn build_categorical_bins(
                     total_positive,
                     total_negative,
                 ),
+                positive_count,
+                negative_count,
+                sample_count: positive_count + negative_count,
             },
         )
         .collect::<Vec<_>>();
-    // 2026-04-17 CST: Added because the sibling-repo training fix established one governed
-    // unseen-category contract that StockMind should preserve as well.
-    // Reason: train-only categorical bins are too thin once later evaluation touches values that
-    // never appeared in the fit split.
-    // Purpose: append one explicit neutral fallback bin instead of silently leaving the artifact
-    // without a stable landing point for unseen categorical values.
+    // 2026-04-17 CST: Added because diagnostic encoding now touches valid/test rows after
+    // train-only categorical binning has completed.
+    // Reason: real reruns can introduce train-unseen categorical values and previously crashed
+    // after artifact persistence.
+    // Purpose: append one explicit neutral fallback bin so unseen categorical values stay
+    // inspectable without aborting the governed training run.
     bins.push(build_unseen_categorical_bin());
     Ok(bins)
 }
@@ -768,6 +910,9 @@ fn build_numeric_bins(
                 total_positive,
                 total_negative,
             ),
+            positive_count: bucket_counts[index].0,
+            negative_count: bucket_counts[index].1,
+            sample_count: bucket_counts[index].0 + bucket_counts[index].1,
         })
         .collect())
 }
@@ -794,6 +939,9 @@ fn build_numeric_intervals(thresholds: &[f64]) -> Vec<FeatureBinModel> {
             min_inclusive: None,
             max_exclusive: None,
             woe: 0.0,
+            positive_count: 0.0,
+            negative_count: 0.0,
+            sample_count: 0.0,
         }];
     }
 
@@ -806,6 +954,9 @@ fn build_numeric_intervals(thresholds: &[f64]) -> Vec<FeatureBinModel> {
             min_inclusive: lower,
             max_exclusive: Some(*threshold),
             woe: 0.0,
+            positive_count: 0.0,
+            negative_count: 0.0,
+            sample_count: 0.0,
         });
         lower = Some(*threshold);
     }
@@ -815,6 +966,9 @@ fn build_numeric_intervals(thresholds: &[f64]) -> Vec<FeatureBinModel> {
         min_inclusive: lower,
         max_exclusive: None,
         woe: 0.0,
+        positive_count: 0.0,
+        negative_count: 0.0,
+        sample_count: 0.0,
     });
     bins
 }
@@ -835,6 +989,24 @@ fn compute_woe(
     let positive_rate = (positive_count + smooth) / (total_positive + smooth * 2.0);
     let negative_rate = (negative_count + smooth) / (total_negative + smooth * 2.0);
     (positive_rate / negative_rate).ln()
+}
+
+fn build_unseen_categorical_bin() -> FeatureBinModel {
+    FeatureBinModel {
+        bin_label: UNSEEN_CATEGORICAL_BIN_LABEL.to_string(),
+        match_values: Vec::new(),
+        min_inclusive: None,
+        max_exclusive: None,
+        // 2026-04-17 CST: Added because unseen categorical values should not inherit directional
+        // bias from class imbalance when the trainer has never observed that category in train.
+        // Reason: a smoothed pseudo-count WOE would still fabricate signal for unknown states.
+        // Purpose: keep the fallback bin neutral while making the contract explicit in artifacts
+        // and diagnostics.
+        woe: 0.0,
+        positive_count: 0.0,
+        negative_count: 0.0,
+        sample_count: 0.0,
+    }
 }
 
 fn encode_samples(
@@ -910,20 +1082,6 @@ fn resolve_feature_woe(
     }
 }
 
-fn build_unseen_categorical_bin() -> FeatureBinModel {
-    FeatureBinModel {
-        bin_label: UNSEEN_CATEGORICAL_BIN_LABEL.to_string(),
-        match_values: vec![],
-        min_inclusive: None,
-        max_exclusive: None,
-        // 2026-04-17 CST: Added because the fallback must keep inference numerically stable
-        // without inventing unsupported direction for categories never observed in train.
-        // Purpose: use a neutral WOE so later scoring can continue while keeping the artifact
-        // contract explicit and inspectable.
-        woe: 0.0,
-    }
-}
-
 // 2026-04-09 CST: 这里使用最小批量梯度下降拟合 logistic，原因是 Task 5 首版只要求纯 Rust 的轻量闭环，不提前引入额外训练框架；
 // 目的：先稳定产出可回放的 coefficient artifact，为后续更复杂的 walk-forward 和晋级治理打底。
 fn train_logistic_model(encoded_train_rows: &[(Vec<f64>, f64)]) -> TrainedLogisticModel {
@@ -963,6 +1121,836 @@ fn train_logistic_model(encoded_train_rows: &[(Vec<f64>, f64)]) -> TrainedLogist
         intercept: beta[0],
         coefficients: beta.into_iter().skip(1).collect(),
     }
+}
+
+// 2026-04-17 CST: Added because the current training output must explain process metrics before
+// any model-family upgrade is considered.
+// Reason: the user explicitly asked for feature correlation, coefficient exposure, drift, and
+// walk-forward stability instead of one aggregate accuracy number.
+// Purpose: build one governed diagnostic report that stays local to the training chain.
+fn build_training_diagnostic_report(
+    request: &SecurityScorecardTrainingRequest,
+    samples: &[TrainingSample],
+    feature_configs: &[TrainingFeatureConfig],
+    feature_models: &[FeatureModel],
+    trained_model: &TrainedLogisticModel,
+) -> Result<Value, SecurityScorecardTrainingError> {
+    let sample_refs = samples.iter().collect::<Vec<_>>();
+    let encoded_samples = encode_diagnostic_samples(&sample_refs, feature_models, trained_model)?;
+    let feature_coverage_summary =
+        build_feature_coverage_summary(samples, feature_models, trained_model);
+    let feature_influence_summary = build_feature_influence_summary(feature_models, trained_model);
+    let correlation_summary = build_correlation_summary(feature_models, &encoded_samples);
+    let drift_summary = build_drift_summary(feature_models, &encoded_samples);
+    let walk_forward_summary = build_walk_forward_summary(feature_configs, samples)?;
+    let segment_slice_summary =
+        build_segment_slice_summary(samples, feature_models, trained_model)?;
+    let readiness_assessment = build_readiness_assessment(
+        samples,
+        feature_models,
+        &correlation_summary,
+        &feature_influence_summary,
+        &walk_forward_summary,
+    );
+    let summary = json!({
+        "feature_coverage_summary": feature_coverage_summary.clone(),
+        "feature_influence_summary": feature_influence_summary.clone(),
+        "correlation_summary": correlation_summary.clone(),
+        "drift_summary": drift_summary.clone(),
+        "walk_forward_summary": walk_forward_summary.clone(),
+        "segment_slice_summary": segment_slice_summary.clone(),
+        "readiness_assessment": readiness_assessment.clone(),
+    });
+
+    Ok(json!({
+        "contract_version": "security_scorecard_training_diagnostic_report.v1",
+        "document_type": "security_scorecard_training_diagnostic_report",
+        "created_at": request.created_at,
+        "model_id": format!(
+            "{}_{}_{}d_{}",
+            request.market_scope.to_lowercase(),
+            request.instrument_scope.to_lowercase(),
+            request.horizon_days,
+            request.target_head
+        ),
+        "model_version": format!("candidate_{}", sanitize_identifier(&request.created_at)),
+        "training_window": request.train_range,
+        "validation_window": request.valid_range,
+        "oot_window": request.test_range,
+        "feature_coverage_summary": feature_coverage_summary,
+        "feature_influence_summary": feature_influence_summary,
+        "correlation_summary": correlation_summary,
+        "drift_summary": drift_summary,
+        "walk_forward_summary": walk_forward_summary,
+        "segment_slice_summary": segment_slice_summary,
+        "readiness_assessment": readiness_assessment,
+        "summary": summary,
+    }))
+}
+
+// 2026-04-17 CST: Added because correlation, drift, and walk-forward all need one consistent
+// encoded feature surface instead of recomputing ad hoc per diagnostic.
+// Reason: the old trainer only exposed encoded rows during fitting.
+// Purpose: retain one inspectable encoded sample view without changing predictions.
+fn encode_diagnostic_samples(
+    samples: &[&TrainingSample],
+    feature_models: &[FeatureModel],
+    trained_model: &TrainedLogisticModel,
+) -> Result<Vec<EncodedDiagnosticSample>, SecurityScorecardTrainingError> {
+    samples
+        .iter()
+        .map(|sample| {
+            let mut encoded_features = Vec::with_capacity(feature_models.len());
+            for feature_model in feature_models {
+                encoded_features.push(resolve_feature_woe(feature_model, sample)?);
+            }
+            Ok(EncodedDiagnosticSample {
+                symbol: sample.symbol.clone(),
+                as_of_date: sample.as_of_date,
+                split_name: sample.split_name.clone(),
+                label: sample.label,
+                predicted_probability: predict_probability(sample, feature_models, trained_model)?,
+                encoded_features,
+            })
+        })
+        .collect()
+}
+
+fn build_feature_coverage_summary(
+    samples: &[TrainingSample],
+    feature_models: &[FeatureModel],
+    trained_model: &TrainedLogisticModel,
+) -> Value {
+    let train_sample_count = samples_for_split(samples, "train").len() as f64;
+    let train_positive = feature_models
+        .first()
+        .map(|feature_model| {
+            feature_model
+                .bins
+                .iter()
+                .map(|bin| bin.positive_count)
+                .sum::<f64>()
+        })
+        .unwrap_or(0.0);
+    let train_negative = feature_models
+        .first()
+        .map(|feature_model| {
+            feature_model
+                .bins
+                .iter()
+                .map(|bin| bin.negative_count)
+                .sum::<f64>()
+        })
+        .unwrap_or(0.0);
+
+    let features = feature_models
+        .iter()
+        .enumerate()
+        .map(|(index, feature_model)| {
+            let coefficient = trained_model
+                .coefficients
+                .get(index)
+                .copied()
+                .unwrap_or(0.0);
+            let missing_count = samples
+                .iter()
+                .filter(|sample| {
+                    matches!(
+                        sample.feature_values.get(&feature_model.feature_name),
+                        Some(TrainingFeatureValue::Category(value)) if value == "__missing__"
+                    )
+                })
+                .count();
+            let distinct_observed_values = samples
+                .iter()
+                .filter_map(|sample| sample.feature_values.get(&feature_model.feature_name))
+                .map(feature_value_as_key)
+                .map(|value| (value, true))
+                .collect::<BTreeMap<_, _>>()
+                .len();
+            let dominant_bin_share_train = feature_model
+                .bins
+                .iter()
+                .map(|bin| bin.sample_count)
+                .fold(0.0_f64, f64::max)
+                / train_sample_count.max(1.0);
+            let information_value = feature_model
+                .bins
+                .iter()
+                .map(|bin| compute_information_value(bin, train_positive, train_negative))
+                .sum::<f64>();
+
+            json!({
+                "feature_name": feature_model.feature_name,
+                "group_name": feature_model.group_name,
+                "kind": feature_kind_name(&feature_model.kind),
+                "coefficient": coefficient,
+                "absolute_coefficient": coefficient.abs(),
+                "distinct_observed_values": distinct_observed_values,
+                "missing_count": missing_count,
+                "missing_rate": missing_count as f64 / samples.len().max(1) as f64,
+                "train_bin_count": feature_model.bins.len(),
+                "dominant_bin_share_train": dominant_bin_share_train,
+                "information_value": information_value,
+            })
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "feature_count": feature_models.len(),
+        "train_sample_count": train_sample_count,
+        "features": features,
+    })
+}
+
+fn build_feature_influence_summary(
+    feature_models: &[FeatureModel],
+    trained_model: &TrainedLogisticModel,
+) -> Value {
+    let feature_coefficients = feature_models
+        .iter()
+        .enumerate()
+        .map(|(index, feature_model)| {
+            let coefficient = trained_model
+                .coefficients
+                .get(index)
+                .copied()
+                .unwrap_or(0.0);
+            json!({
+                "feature_name": feature_model.feature_name,
+                "group_name": feature_model.group_name,
+                "coefficient": coefficient,
+                "absolute_coefficient": coefficient.abs(),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    let mut bin_contributions = Vec::new();
+    for (index, feature_model) in feature_models.iter().enumerate() {
+        let coefficient = trained_model
+            .coefficients
+            .get(index)
+            .copied()
+            .unwrap_or(0.0);
+        let total_support = feature_model
+            .bins
+            .iter()
+            .map(|bin| bin.sample_count)
+            .sum::<f64>()
+            .max(1.0);
+        for bin in &feature_model.bins {
+            bin_contributions.push(json!({
+                "feature_name": feature_model.feature_name,
+                "group_name": feature_model.group_name,
+                "bin_label": bin.bin_label,
+                "coefficient": coefficient,
+                "woe": bin.woe,
+                "logit_contribution": coefficient * bin.woe,
+                "support_share_train": bin.sample_count / total_support,
+                "sample_count_train": bin.sample_count,
+            }));
+        }
+    }
+    let mut top_positive_bins = bin_contributions.clone();
+    top_positive_bins.sort_by(|left, right| {
+        value_f64(right, "logit_contribution").total_cmp(&value_f64(left, "logit_contribution"))
+    });
+    top_positive_bins.truncate(12);
+
+    let mut top_negative_bins = bin_contributions;
+    top_negative_bins.sort_by(|left, right| {
+        value_f64(left, "logit_contribution").total_cmp(&value_f64(right, "logit_contribution"))
+    });
+    top_negative_bins.truncate(12);
+
+    let counterintuitive_bins = build_counterintuitive_bin_warnings(feature_models, trained_model);
+
+    json!({
+        "feature_coefficients": feature_coefficients,
+        "top_positive_bins": top_positive_bins,
+        "top_negative_bins": top_negative_bins,
+        "counterintuitive_bins": counterintuitive_bins,
+    })
+}
+
+fn build_counterintuitive_bin_warnings(
+    feature_models: &[FeatureModel],
+    trained_model: &TrainedLogisticModel,
+) -> Vec<Value> {
+    let mut warnings = Vec::new();
+    for (index, feature_model) in feature_models.iter().enumerate() {
+        let coefficient = trained_model
+            .coefficients
+            .get(index)
+            .copied()
+            .unwrap_or(0.0);
+        let bins = &feature_model.bins;
+        if bins.is_empty() {
+            continue;
+        }
+        match feature_model.feature_name.as_str() {
+            "hard_risk_score"
+            | "negative_attention_score"
+            | "disclosure_risk_keyword_count"
+            | "data_gap_count"
+            | "risk_note_count" => {
+                if let Some(bin) = bins.last() {
+                    let contribution = coefficient * bin.woe;
+                    if contribution > 0.0 {
+                        warnings.push(json!({
+                            "feature_name": feature_model.feature_name,
+                            "bin_label": bin.bin_label,
+                            "expected_direction": "highest_bin_should_reduce_logit",
+                            "observed_logit_contribution": contribution,
+                        }));
+                    }
+                }
+            }
+            "positive_support_score" => {
+                if let Some(bin) = bins.last() {
+                    let contribution = coefficient * bin.woe;
+                    if contribution < 0.0 {
+                        warnings.push(json!({
+                            "feature_name": feature_model.feature_name,
+                            "bin_label": bin.bin_label,
+                            "expected_direction": "highest_bin_should_raise_logit",
+                            "observed_logit_contribution": contribution,
+                        }));
+                    }
+                }
+            }
+            "event_net_impact_score" => {
+                if let Some(lowest_bin) = bins.first() {
+                    let contribution = coefficient * lowest_bin.woe;
+                    if contribution > 0.0 {
+                        warnings.push(json!({
+                            "feature_name": feature_model.feature_name,
+                            "bin_label": lowest_bin.bin_label,
+                            "expected_direction": "lowest_bin_should_reduce_logit",
+                            "observed_logit_contribution": contribution,
+                        }));
+                    }
+                }
+                if let Some(highest_bin) = bins.last() {
+                    let contribution = coefficient * highest_bin.woe;
+                    if contribution < 0.0 {
+                        warnings.push(json!({
+                            "feature_name": feature_model.feature_name,
+                            "bin_label": highest_bin.bin_label,
+                            "expected_direction": "highest_bin_should_raise_logit",
+                            "observed_logit_contribution": contribution,
+                        }));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    warnings
+}
+
+fn build_correlation_summary(
+    feature_models: &[FeatureModel],
+    encoded_samples: &[EncodedDiagnosticSample],
+) -> Value {
+    let mut high_pairs = Vec::new();
+    let mut max_abs_correlation = 0.0_f64;
+    let mut zero_variance_features = Vec::new();
+
+    let feature_columns = feature_models
+        .iter()
+        .enumerate()
+        .map(|(index, feature_model)| {
+            let values = encoded_samples
+                .iter()
+                .filter_map(|sample| sample.encoded_features.get(index).copied())
+                .collect::<Vec<_>>();
+            (feature_model.feature_name.clone(), values)
+        })
+        .collect::<Vec<_>>();
+
+    let variances = feature_columns
+        .iter()
+        .map(|(feature_name, values)| {
+            let variance = compute_variance(values);
+            if variance <= 1e-12 {
+                zero_variance_features.push(feature_name.clone());
+            }
+            variance
+        })
+        .collect::<Vec<_>>();
+
+    for left_index in 0..feature_columns.len() {
+        for right_index in (left_index + 1)..feature_columns.len() {
+            if variances[left_index] <= 1e-12 || variances[right_index] <= 1e-12 {
+                continue;
+            }
+            let correlation = compute_pearson_correlation(
+                &feature_columns[left_index].1,
+                &feature_columns[right_index].1,
+            );
+            let absolute = correlation.abs();
+            max_abs_correlation = max_abs_correlation.max(absolute);
+            if absolute >= 0.85 {
+                high_pairs.push(json!({
+                    "left_feature": feature_columns[left_index].0,
+                    "right_feature": feature_columns[right_index].0,
+                    "correlation": correlation,
+                    "absolute_correlation": absolute,
+                }));
+            }
+        }
+    }
+    high_pairs.sort_by(|left, right| {
+        value_f64(right, "absolute_correlation").total_cmp(&value_f64(left, "absolute_correlation"))
+    });
+    high_pairs.truncate(15);
+
+    json!({
+        "encoding_basis": "woe_encoded_all_samples",
+        "sample_count": encoded_samples.len(),
+        "pair_count": feature_models.len() * feature_models.len().saturating_sub(1) / 2,
+        "high_correlation_pair_count": high_pairs.len(),
+        "max_absolute_correlation": max_abs_correlation,
+        "zero_variance_features": zero_variance_features,
+        "high_correlation_pairs": high_pairs,
+    })
+}
+
+fn build_drift_summary(
+    feature_models: &[FeatureModel],
+    encoded_samples: &[EncodedDiagnosticSample],
+) -> Value {
+    json!({
+        "encoding_basis": "mean_abs_woe_shift",
+        "train_valid": build_split_shift_summary("train", "valid", feature_models, encoded_samples),
+        "valid_test": build_split_shift_summary("valid", "test", feature_models, encoded_samples),
+    })
+}
+
+fn build_split_shift_summary(
+    left_split: &str,
+    right_split: &str,
+    feature_models: &[FeatureModel],
+    encoded_samples: &[EncodedDiagnosticSample],
+) -> Value {
+    let left_samples = encoded_samples
+        .iter()
+        .filter(|sample| sample.split_name == left_split)
+        .collect::<Vec<_>>();
+    let right_samples = encoded_samples
+        .iter()
+        .filter(|sample| sample.split_name == right_split)
+        .collect::<Vec<_>>();
+    if left_samples.is_empty() || right_samples.is_empty() {
+        return json!({
+            "left_split": left_split,
+            "right_split": right_split,
+            "status": "insufficient_samples",
+            "feature_shifts": [],
+        });
+    }
+
+    let mut feature_shifts = feature_models
+        .iter()
+        .enumerate()
+        .map(|(index, feature_model)| {
+            let left_mean = mean_of(
+                &left_samples
+                    .iter()
+                    .filter_map(|sample| sample.encoded_features.get(index).copied())
+                    .collect::<Vec<_>>(),
+            );
+            let right_mean = mean_of(
+                &right_samples
+                    .iter()
+                    .filter_map(|sample| sample.encoded_features.get(index).copied())
+                    .collect::<Vec<_>>(),
+            );
+            json!({
+                "feature_name": feature_model.feature_name,
+                "group_name": feature_model.group_name,
+                "left_mean": left_mean,
+                "right_mean": right_mean,
+                "absolute_mean_shift": (left_mean - right_mean).abs(),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    feature_shifts.sort_by(|left, right| {
+        value_f64(right, "absolute_mean_shift").total_cmp(&value_f64(left, "absolute_mean_shift"))
+    });
+
+    let average_shift = feature_shifts
+        .iter()
+        .map(|entry| value_f64(entry, "absolute_mean_shift"))
+        .sum::<f64>()
+        / feature_shifts.len().max(1) as f64;
+    let max_shift = feature_shifts
+        .iter()
+        .map(|entry| value_f64(entry, "absolute_mean_shift"))
+        .fold(0.0_f64, f64::max);
+
+    feature_shifts.truncate(12);
+    json!({
+        "left_split": left_split,
+        "right_split": right_split,
+        "status": "ok",
+        "average_absolute_mean_shift": average_shift,
+        "max_absolute_mean_shift": max_shift,
+        "feature_shifts": feature_shifts,
+    })
+}
+
+fn build_walk_forward_summary(
+    feature_configs: &[TrainingFeatureConfig],
+    samples: &[TrainingSample],
+) -> Result<Value, SecurityScorecardTrainingError> {
+    let mut ordered_samples = samples.iter().collect::<Vec<_>>();
+    ordered_samples.sort_by(|left, right| {
+        left.as_of_date
+            .cmp(&right.as_of_date)
+            .then_with(|| left.symbol.cmp(&right.symbol))
+    });
+
+    if ordered_samples.len() < 6 {
+        return Ok(json!({
+            "status": "insufficient_samples",
+            "sample_count": ordered_samples.len(),
+            "fold_count": 0,
+            "executed_folds": [],
+            "skipped_folds": [],
+        }));
+    }
+
+    let validation_window_size = (ordered_samples.len() / 4).max(1);
+    let minimum_train_count = (ordered_samples.len() / 2)
+        .max(4)
+        .min(ordered_samples.len().saturating_sub(validation_window_size));
+    let mut folds = Vec::new();
+    let mut skipped_folds = Vec::new();
+    let mut train_end = minimum_train_count;
+    let mut fold_index = 1_usize;
+
+    while train_end < ordered_samples.len() {
+        let valid_end = (train_end + validation_window_size).min(ordered_samples.len());
+        let train_fold = ordered_samples[..train_end].to_vec();
+        let valid_fold = ordered_samples[train_end..valid_end].to_vec();
+        if valid_fold.is_empty() {
+            break;
+        }
+        let train_positive_count = train_fold
+            .iter()
+            .filter(|sample| sample.label >= 0.5)
+            .count();
+        let train_negative_count = train_fold.len().saturating_sub(train_positive_count);
+        if train_positive_count == 0 || train_negative_count == 0 {
+            skipped_folds.push(json!({
+                "fold_index": fold_index,
+                "reason": "train_fold_missing_class_balance",
+                "train_sample_count": train_fold.len(),
+                "validation_sample_count": valid_fold.len(),
+            }));
+            train_end = valid_end;
+            fold_index += 1;
+            continue;
+        }
+
+        let fold_feature_models = build_feature_models(&train_fold, feature_configs)?;
+        let fold_train_matrix = encode_samples(&train_fold, &fold_feature_models)?;
+        let fold_model = train_logistic_model(&fold_train_matrix);
+        let validation_metrics =
+            evaluate_sample_refs(&valid_fold, &fold_feature_models, &fold_model);
+        folds.push(json!({
+            "fold_index": fold_index,
+            "train_sample_count": train_fold.len(),
+            "validation_sample_count": valid_fold.len(),
+            "train_end_date": train_fold
+                .last()
+                .map(|sample| sample.as_of_date.to_string())
+                .unwrap_or_default(),
+            "validation_start_date": valid_fold
+                .first()
+                .map(|sample| sample.as_of_date.to_string())
+                .unwrap_or_default(),
+            "validation_end_date": valid_fold
+                .last()
+                .map(|sample| sample.as_of_date.to_string())
+                .unwrap_or_default(),
+            "validation_accuracy": validation_metrics["accuracy"],
+            "validation_positive_rate": validation_metrics["positive_rate"],
+        }));
+        train_end = valid_end;
+        fold_index += 1;
+    }
+
+    let fold_accuracies = folds
+        .iter()
+        .filter_map(|fold| fold.get("validation_accuracy").and_then(Value::as_f64))
+        .collect::<Vec<_>>();
+    Ok(json!({
+        "status": if folds.is_empty() { "insufficient_executed_folds" } else { "ok" },
+        "sample_count": ordered_samples.len(),
+        "minimum_train_count": minimum_train_count,
+        "validation_window_size": validation_window_size,
+        "fold_count": folds.len(),
+        "executed_folds": folds,
+        "skipped_folds": skipped_folds,
+        "mean_validation_accuracy": mean_of(&fold_accuracies),
+        "min_validation_accuracy": fold_accuracies.iter().copied().fold(1.0_f64, f64::min),
+        "max_validation_accuracy": fold_accuracies.iter().copied().fold(0.0_f64, f64::max),
+    }))
+}
+
+fn build_segment_slice_summary(
+    samples: &[TrainingSample],
+    feature_models: &[FeatureModel],
+    trained_model: &TrainedLogisticModel,
+) -> Result<Value, SecurityScorecardTrainingError> {
+    let test_samples = samples_for_split(samples, "test");
+    let dimensions = ["integrated_stance", "market_regime", "industry_bucket"]
+        .iter()
+        .map(|feature_name| {
+            Ok(json!({
+                "feature_name": feature_name,
+                "slices": build_segment_slices_for_feature(
+                    *feature_name,
+                    &test_samples,
+                    feature_models,
+                    trained_model,
+                )?,
+            }))
+        })
+        .collect::<Result<Vec<_>, SecurityScorecardTrainingError>>()?;
+
+    Ok(json!({
+        "split_name": "test",
+        "dimension_count": dimensions.len(),
+        "dimensions": dimensions,
+    }))
+}
+
+fn build_segment_slices_for_feature(
+    feature_name: &str,
+    samples: &[&TrainingSample],
+    feature_models: &[FeatureModel],
+    trained_model: &TrainedLogisticModel,
+) -> Result<Vec<Value>, SecurityScorecardTrainingError> {
+    let mut grouped = BTreeMap::<String, Vec<&TrainingSample>>::new();
+    for sample in samples {
+        let slice_value = sample
+            .feature_values
+            .get(feature_name)
+            .map(feature_value_as_key)
+            .unwrap_or_else(|| "__missing__".to_string());
+        grouped.entry(slice_value).or_default().push(*sample);
+    }
+
+    grouped
+        .into_iter()
+        .map(|(slice_name, slice_samples)| {
+            let predicted_probabilities = slice_samples
+                .iter()
+                .map(|sample| predict_probability(sample, feature_models, trained_model))
+                .collect::<Result<Vec<_>, _>>()?;
+            let metrics = evaluate_sample_refs(&slice_samples, feature_models, trained_model);
+            Ok(json!({
+                "slice_name": slice_name,
+                "sample_count": slice_samples.len(),
+                "accuracy": metrics["accuracy"],
+                "positive_rate": metrics["positive_rate"],
+                "average_predicted_probability": mean_of(&predicted_probabilities),
+            }))
+        })
+        .collect()
+}
+
+fn build_readiness_assessment(
+    samples: &[TrainingSample],
+    feature_models: &[FeatureModel],
+    correlation_summary: &Value,
+    feature_influence_summary: &Value,
+    walk_forward_summary: &Value,
+) -> Value {
+    let train_samples = samples_for_split(samples, "train");
+    let valid_samples = samples_for_split(samples, "valid");
+    let test_samples = samples_for_split(samples, "test");
+    let high_correlation_pair_count =
+        value_u64(correlation_summary, "high_correlation_pair_count") as usize;
+    let counterintuitive_bin_count = feature_influence_summary
+        .get("counterintuitive_bins")
+        .and_then(Value::as_array)
+        .map(|entries| entries.len())
+        .unwrap_or(0);
+    let walk_forward_fold_count = value_u64(walk_forward_summary, "fold_count") as usize;
+    let mean_walk_forward_accuracy = walk_forward_summary
+        .get("mean_validation_accuracy")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.0);
+    let sample_per_feature = samples.len() as f64 / feature_models.len().max(1) as f64;
+
+    let train_positive_rate = train_samples
+        .iter()
+        .filter(|sample| sample.label >= 0.5)
+        .count() as f64
+        / train_samples.len().max(1) as f64;
+    let valid_positive_rate = valid_samples
+        .iter()
+        .filter(|sample| sample.label >= 0.5)
+        .count() as f64
+        / valid_samples.len().max(1) as f64;
+    let test_positive_rate = test_samples
+        .iter()
+        .filter(|sample| sample.label >= 0.5)
+        .count() as f64
+        / test_samples.len().max(1) as f64;
+
+    let mut warnings = Vec::new();
+    if sample_per_feature < 5.0 {
+        warnings.push("sample_per_feature_is_below_minimum".to_string());
+    }
+    if high_correlation_pair_count > 0 {
+        warnings.push("high_correlation_pairs_detected".to_string());
+    }
+    if counterintuitive_bin_count > 0 {
+        warnings.push("counterintuitive_bins_detected".to_string());
+    }
+    if walk_forward_fold_count == 0 {
+        warnings.push("walk_forward_folds_not_executed".to_string());
+    }
+    if walk_forward_fold_count > 0 && mean_walk_forward_accuracy < 0.55 {
+        warnings.push("walk_forward_accuracy_is_weak".to_string());
+    }
+    if (train_positive_rate - valid_positive_rate).abs() > 0.25
+        || (valid_positive_rate - test_positive_rate).abs() > 0.25
+    {
+        warnings.push("label_distribution_shift_is_large".to_string());
+    }
+
+    let production_readiness = if counterintuitive_bin_count > 0 || sample_per_feature < 3.0 {
+        "blocked"
+    } else if warnings.is_empty() {
+        "candidate"
+    } else {
+        "caution"
+    };
+
+    json!({
+        "production_readiness": production_readiness,
+        "sample_per_feature": sample_per_feature,
+        "high_correlation_pair_count": high_correlation_pair_count,
+        "counterintuitive_bin_count": counterintuitive_bin_count,
+        "walk_forward_fold_count": walk_forward_fold_count,
+        "mean_walk_forward_accuracy": mean_walk_forward_accuracy,
+        "warnings": warnings,
+    })
+}
+
+fn compute_information_value(
+    bin: &FeatureBinModel,
+    total_positive: f64,
+    total_negative: f64,
+) -> f64 {
+    let smooth = 0.5;
+    let positive_rate = (bin.positive_count + smooth) / (total_positive + smooth * 2.0);
+    let negative_rate = (bin.negative_count + smooth) / (total_negative + smooth * 2.0);
+    (positive_rate - negative_rate) * bin.woe
+}
+
+fn feature_kind_name(kind: &TrainingFeatureKind) -> &'static str {
+    match kind {
+        TrainingFeatureKind::Numeric => "numeric",
+        TrainingFeatureKind::Categorical => "categorical",
+    }
+}
+
+fn feature_value_as_key(value: &TrainingFeatureValue) -> String {
+    match value {
+        TrainingFeatureValue::Numeric(number) => format!("{number:.6}"),
+        TrainingFeatureValue::Category(category) => category.clone(),
+    }
+}
+
+fn evaluate_sample_refs(
+    split_samples: &[&TrainingSample],
+    feature_models: &[FeatureModel],
+    trained_model: &TrainedLogisticModel,
+) -> Value {
+    if split_samples.is_empty() {
+        return json!({
+            "sample_count": 0,
+            "accuracy": Value::Null,
+            "positive_rate": Value::Null,
+        });
+    }
+
+    let mut correct_count = 0_usize;
+    let mut positive_count = 0_usize;
+    for sample in split_samples {
+        let probability = predict_probability(sample, feature_models, trained_model).unwrap_or(0.5);
+        let predicted = if probability >= 0.5 { 1.0 } else { 0.0 };
+        if (predicted - sample.label).abs() <= 1e-9 {
+            correct_count += 1;
+        }
+        if sample.label >= 0.5 {
+            positive_count += 1;
+        }
+    }
+
+    json!({
+        "sample_count": split_samples.len(),
+        "accuracy": correct_count as f64 / split_samples.len() as f64,
+        "positive_rate": positive_count as f64 / split_samples.len() as f64,
+    })
+}
+
+fn mean_of(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    values.iter().sum::<f64>() / values.len() as f64
+}
+
+fn compute_variance(values: &[f64]) -> f64 {
+    if values.len() <= 1 {
+        return 0.0;
+    }
+    let mean = mean_of(values);
+    values
+        .iter()
+        .map(|value| {
+            let diff = *value - mean;
+            diff * diff
+        })
+        .sum::<f64>()
+        / values.len() as f64
+}
+
+fn compute_pearson_correlation(left: &[f64], right: &[f64]) -> f64 {
+    if left.len() != right.len() || left.len() <= 1 {
+        return 0.0;
+    }
+    let left_mean = mean_of(left);
+    let right_mean = mean_of(right);
+    let numerator = left
+        .iter()
+        .zip(right.iter())
+        .map(|(left_value, right_value)| (*left_value - left_mean) * (*right_value - right_mean))
+        .sum::<f64>();
+    let left_variance = compute_variance(left);
+    let right_variance = compute_variance(right);
+    if left_variance <= 1e-12 || right_variance <= 1e-12 {
+        return 0.0;
+    }
+    numerator / ((left.len() as f64) * left_variance.sqrt() * right_variance.sqrt())
+}
+
+fn value_f64(value: &Value, field_name: &str) -> f64 {
+    value.get(field_name).and_then(Value::as_f64).unwrap_or(0.0)
+}
+
+fn value_u64(value: &Value, field_name: &str) -> u64 {
+    value.get(field_name).and_then(Value::as_u64).unwrap_or(0)
 }
 
 fn build_artifact(
@@ -1039,6 +2027,7 @@ fn build_metrics_summary(
     samples: &[TrainingSample],
     feature_models: &[FeatureModel],
     trained_model: &TrainedLogisticModel,
+    diagnostics_summary: Value,
 ) -> Value {
     let train_metrics = evaluate_split(samples, "train", feature_models, trained_model);
     let valid_metrics = evaluate_split(samples, "valid", feature_models, trained_model);
@@ -1050,6 +2039,7 @@ fn build_metrics_summary(
         "test": test_metrics,
         "feature_count": feature_models.len(),
         "sample_count": samples.len(),
+        "diagnostics": diagnostics_summary,
     })
 }
 
@@ -1060,32 +2050,7 @@ fn evaluate_split(
     trained_model: &TrainedLogisticModel,
 ) -> Value {
     let split_samples = samples_for_split(samples, split_name);
-    if split_samples.is_empty() {
-        return json!({
-            "sample_count": 0,
-            "accuracy": Value::Null,
-            "positive_rate": Value::Null,
-        });
-    }
-
-    let mut correct_count = 0_usize;
-    let mut positive_count = 0_usize;
-    for sample in &split_samples {
-        let probability = predict_probability(sample, feature_models, trained_model).unwrap_or(0.5);
-        let predicted = if probability >= 0.5 { 1.0 } else { 0.0 };
-        if (predicted - sample.label).abs() <= 1e-9 {
-            correct_count += 1;
-        }
-        if sample.label >= 0.5 {
-            positive_count += 1;
-        }
-    }
-
-    json!({
-        "sample_count": split_samples.len(),
-        "accuracy": correct_count as f64 / split_samples.len() as f64,
-        "positive_rate": positive_count as f64 / split_samples.len() as f64,
-    })
+    evaluate_sample_refs(&split_samples, feature_models, trained_model)
 }
 
 fn predict_probability(

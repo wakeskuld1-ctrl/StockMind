@@ -240,7 +240,10 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
     // 2026-04-16 CST: Added because A-1a expands the first formal training sample field set.
     // Reason: the prior 18-field baseline still missed regime / industry / event-density / QV proxy fields.
     // Purpose: keep retraining observability aligned with the approved thicker sample contract.
-    assert_eq!(output["data"]["metrics_summary_json"]["feature_count"], 24);
+    // 2026-04-17 CST: Added because disclosure events now enter training as weighted component
+    // scores instead of only sparse boolean/risk-count hints.
+    // Purpose: lock the first formal event-scoring feature family into the training contract.
+    assert_eq!(output["data"]["metrics_summary_json"]["feature_count"], 36);
     assert_eq!(output["data"]["metrics_summary_json"]["sample_count"], 8);
     assert_eq!(
         output["data"]["metrics_summary_json"]["train"]["sample_count"],
@@ -278,6 +281,31 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
         output["data"]["metrics_summary_json"]["test"]["positive_rate"],
         0.5
     );
+    // 2026-04-17 CST: Added because the user explicitly asked to inspect process metrics instead
+    // of only split accuracy.
+    // Reason: the formal training contract must now expose a governed diagnostic surface showing
+    // correlation, walk-forward stability, drift, and segment slices.
+    // Purpose: lock the minimum P0 diagnostic report contract before implementing the builder.
+    assert!(
+        output["data"]["metrics_summary_json"]["diagnostics"].is_object(),
+        "expected diagnostics summary to exist in metrics_summary_json, output={output}"
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["diagnostics"]["correlation_summary"].is_object(),
+        "expected correlation summary to exist in diagnostics, output={output}"
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["diagnostics"]["walk_forward_summary"].is_object(),
+        "expected walk-forward summary to exist in diagnostics, output={output}"
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["diagnostics"]["segment_slice_summary"].is_object(),
+        "expected segment slice summary to exist in diagnostics, output={output}"
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["diagnostics"]["readiness_assessment"].is_object(),
+        "expected readiness assessment to exist in diagnostics, output={output}"
+    );
 
     let artifact_path = PathBuf::from(
         output["data"]["artifact_path"]
@@ -294,10 +322,16 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
             .as_str()
             .expect("model registry path should exist"),
     );
+    let training_diagnostic_report_path = PathBuf::from(
+        output["data"]["training_diagnostic_report_path"]
+            .as_str()
+            .expect("training diagnostic report path should exist"),
+    );
 
     assert!(artifact_path.exists());
     assert!(refit_run_path.exists());
     assert!(model_registry_path.exists());
+    assert!(training_diagnostic_report_path.exists());
 
     let artifact_json: Value =
         serde_json::from_slice(&fs::read(&artifact_path).expect("artifact should be readable"))
@@ -341,6 +375,10 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
         "announcement_count",
         "disclosure_risk_keyword_count",
         "has_risk_warning_notice",
+        "hard_risk_score",
+        "negative_attention_score",
+        "positive_support_score",
+        "event_net_impact_score",
         "data_gap_count",
         "risk_note_count",
         "revenue_yoy_pct",
@@ -348,9 +386,17 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
         "roe_pct",
         "market_regime",
         "industry_bucket",
+        "subindustry_bucket",
         "instrument_subscope",
         "event_density_bucket",
         "flow_status",
+        "volume_ratio_20",
+        "mfi_14",
+        "macd_histogram",
+        "shareholder_return_status",
+        "fundamental_quality_bucket",
+        "rsi_14",
+        "atr_ratio_14",
         "valuation_status",
     ] {
         assert!(
@@ -385,7 +431,7 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
     // summary without replaying the entire training run in memory.
     assert_eq!(
         persisted_model_registry["metrics_summary_json"]["feature_count"],
-        24
+        36
     );
     assert_eq!(
         persisted_model_registry["metrics_summary_json"]["sample_count"],
@@ -402,6 +448,32 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
     assert_eq!(
         persisted_model_registry["metrics_summary_json"]["test"]["sample_count"],
         2
+    );
+    assert!(
+        persisted_model_registry["metrics_summary_json"]["diagnostics"].is_object(),
+        "expected diagnostics summary in persisted registry"
+    );
+
+    let persisted_training_diagnostic_report: Value = serde_json::from_slice(
+        &fs::read(&training_diagnostic_report_path)
+            .expect("persisted training diagnostic report should be readable"),
+    )
+    .expect("persisted training diagnostic report should be valid json");
+    assert_eq!(
+        persisted_training_diagnostic_report["document_type"],
+        "security_scorecard_training_diagnostic_report"
+    );
+    assert!(
+        persisted_training_diagnostic_report["correlation_summary"].is_object(),
+        "expected correlation summary in persisted training diagnostic report"
+    );
+    assert!(
+        persisted_training_diagnostic_report["walk_forward_summary"].is_object(),
+        "expected walk-forward summary in persisted training diagnostic report"
+    );
+    assert!(
+        persisted_training_diagnostic_report["segment_slice_summary"].is_object(),
+        "expected segment slice summary in persisted training diagnostic report"
     );
 }
 
@@ -532,19 +604,19 @@ fn security_scorecard_training_keeps_numeric_feature_contract_when_fundamental_m
 
 #[test]
 fn security_scorecard_training_tolerates_unseen_categorical_values_in_diagnostic_splits() {
-    // 2026-04-17 CST: Added because the user provided a real training rerun that crashed when
-    // `valid/test` introduced a categorical value not seen during train-only binning.
-    // Reason: `metrics_summary` re-encodes non-train splits, so the old categorical contract was
-    // incomplete even though the artifact had already been persisted.
-    // Purpose: lock the regression before the trainer gets a governed neutral fallback bin.
+    // 2026-04-17 CST: Added because the real 40-name rerun now re-encodes train/valid/test during
+    // diagnostics, and the previous implementation crashed once test-only disclosure states first
+    // appeared after train-only binning.
+    // Purpose: lock the formal regression where `has_risk_warning_notice=true` exists only in the
+    // test split, while the training run must still complete and expose an explicit fallback bin.
     let runtime_db_path =
-        create_test_runtime_db("security_scorecard_training_unseen_categorical_metrics");
+        create_test_runtime_db("security_scorecard_training_unseen_categorical_diagnostics");
     let runtime_root = runtime_db_path
         .parent()
         .expect("runtime db should have parent")
         .join("scorecard_training_runtime");
     let fixture_dir =
-        create_training_fixture_dir("security_scorecard_training_unseen_categorical_metrics");
+        create_training_fixture_dir("security_scorecard_training_unseen_categorical_diagnostics");
 
     let stock_up_csv = fixture_dir.join("stock_up.csv");
     let stock_down_csv = fixture_dir.join("stock_down.csv");

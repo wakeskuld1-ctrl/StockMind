@@ -1,26 +1,27 @@
+use chrono::{Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{Hash, Hasher};
 use thiserror::Error;
 
 use crate::ops::stock::security_analysis_contextual::SecurityAnalysisContextualResult;
 use crate::ops::stock::security_analysis_fullstack::{
     CrossBorderEtfContext, DisclosureContext, EtfContext, FundamentalContext, IndustryContext,
-    FundamentalMetrics, IntegratedConclusion, SecurityAnalysisFullstackError,
-    SecurityAnalysisFullstackRequest, SecurityAnalysisFullstackResult,
-    disclosure_has_annual_report_notice,
-    disclosure_has_buyback_or_increase_notice, disclosure_has_dividend_notice,
+    IntegratedConclusion, SecurityAnalysisFullstackError, SecurityAnalysisFullstackRequest,
+    SecurityAnalysisFullstackResult, disclosure_has_abnormal_volatility_notice,
+    disclosure_has_annual_report_notice, disclosure_has_buyback_or_increase_notice,
+    disclosure_has_dividend_notice, disclosure_has_fund_occupation_notice,
     disclosure_has_inquiry_notice, disclosure_has_litigation_notice,
     disclosure_has_preloss_or_loss_notice, disclosure_has_reduction_notice,
-    disclosure_has_risk_warning_notice, disclosure_has_termination_notice,
-    disclosure_positive_keyword_count, disclosure_risk_keyword_count, security_analysis_fullstack,
+    disclosure_has_refinancing_notice, disclosure_has_risk_warning_notice,
+    disclosure_has_termination_notice, disclosure_positive_keyword_count,
+    disclosure_risk_keyword_count, security_analysis_fullstack,
 };
-use crate::ops::stock::security_external_proxy_backfill::{
-    load_historical_external_proxy_snapshot, load_latest_external_proxy_snapshot,
-    resolve_effective_external_proxy_inputs,
-};
+use crate::ops::stock::security_external_proxy_backfill::resolve_effective_external_proxy_inputs;
+use crate::runtime::security_corporate_action_store::SecurityCorporateActionStore;
+use crate::runtime::security_disclosure_history_store::SecurityDisclosureHistoryStore;
 
 // 2026-04-14 CST: 这里补回外部代理输入正式合同，原因是 ETF/跨市场代理数据链已经在 backfill/runtime 中落盘，
 // 目的：让 committee/snapshot/training 继续消费统一结构，而不是各模块分别自定义一套散乱字段。
@@ -165,6 +166,35 @@ pub struct SecurityDecisionEvidenceBundleResult {
     pub external_proxy_inputs: Option<SecurityExternalProxyInputs>,
 }
 
+// 2026-04-17 CST: Added because P0-2 needs one governed disclosure replay summary that can
+// override the thinner live disclosure summary when store-backed history exists.
+// Reason: the first 40-name P0 rerun showed several event-side features were still collapsing
+// because only truncated disclosure context was entering the evidence seed.
+// Purpose: centralize the formal disclosure-thickening read path before snapshot and training.
+#[derive(Debug, Clone, PartialEq)]
+struct GovernedDisclosureSignalSummary {
+    // 2026-04-17 CST: Adjusted because the real-data rerun showed raw notice count was a poor
+    // event-density proxy once the governed store could return multiple same-day notices.
+    // Reason: training only needs one stable cadence feature here, and distinct notice days are
+    // materially more informative than a capped pile of same-date rows.
+    // Purpose: keep the existing feature name stable while making the underlying signal useful.
+    announcement_count: usize,
+    disclosure_positive_keyword_count: usize,
+    disclosure_risk_keyword_count: usize,
+    has_annual_report_notice: bool,
+    has_dividend_notice: bool,
+    has_buyback_or_increase_notice: bool,
+    has_reduction_notice: bool,
+    has_refinancing_notice: bool,
+    has_inquiry_notice: bool,
+    has_litigation_notice: bool,
+    has_termination_notice: bool,
+    has_abnormal_volatility_notice: bool,
+    has_risk_warning_notice: bool,
+    has_preloss_or_loss_notice: bool,
+    has_fund_occupation_notice: bool,
+}
+
 // 2026-04-09 CST: 这里单独定义证据包错误边界，原因是上层 Tool 不应该直接暴露 fullstack 内部错误实现，
 // 目的：给 dispatcher 和后续治理层统一错误口径，避免错误文本跟着底层结构变化。
 #[derive(Debug, Error)]
@@ -180,30 +210,11 @@ pub enum SecurityDecisionEvidenceBundleError {
 pub fn security_decision_evidence_bundle(
     request: &SecurityDecisionEvidenceBundleRequest,
 ) -> Result<SecurityDecisionEvidenceBundleResult, SecurityDecisionEvidenceBundleError> {
-    let effective_proxy_snapshot = resolve_effective_proxy_snapshot(request)?;
-    // 2026-04-17 CST: Added because no-date ETF requests should inherit the latest
-    // governed proxy date before the full analysis chain is built.
-    // Reason: resolving proxy payloads without resolving the effective analysis date
-    // still lets contextual/fullstack drift to live "today" semantics.
-    // Purpose: keep technical, evidence, committee, scorecard, and chair aligned on
-    // the same governed ETF anchor date.
-    let effective_as_of_date = request
-        .as_of_date
-        .clone()
-        .or_else(|| {
-            if is_etf_symbol(&request.symbol) {
-                effective_proxy_snapshot
-                    .as_ref()
-                    .map(|(resolved_date, _)| resolved_date.clone())
-            } else {
-                None
-            }
-        });
     // 2026-04-14 CST: 这里先把 dated proxy backfill 与请求级 override 合并成有效代理输入，原因是当前 ETF 兼容修补要优先恢复统一事实口径；
     // 目的：即便后续 fullstack 还没显式消费这些字段，证据层也先保留同源可追溯输入，避免继续在更上层散落处理。
     let effective_external_proxy_inputs = resolve_effective_external_proxy_inputs(
         request.symbol.trim(),
-        effective_as_of_date.as_deref(),
+        request.as_of_date.as_deref(),
         request.external_proxy_inputs.clone(),
     )
     .map_err(|error| SecurityDecisionEvidenceBundleError::ExternalProxy(error.to_string()))?;
@@ -213,18 +224,13 @@ pub fn security_decision_evidence_bundle(
         sector_symbol: request.sector_symbol.clone(),
         market_profile: request.market_profile.clone(),
         sector_profile: request.sector_profile.clone(),
-        as_of_date: effective_as_of_date,
+        as_of_date: request.as_of_date.clone(),
         underlying_symbol: request.underlying_symbol.clone(),
         fx_symbol: request.fx_symbol.clone(),
         lookback_days: request.lookback_days,
         disclosure_limit: request.disclosure_limit,
     };
-    let mut analysis = security_analysis_fullstack(&fullstack_request)?;
-    hydrate_governed_etf_proxy_information(
-        request,
-        &mut analysis,
-        effective_external_proxy_inputs.as_ref(),
-    );
+    let analysis = security_analysis_fullstack(&fullstack_request)?;
     Ok(build_evidence_bundle(
         request,
         analysis,
@@ -238,8 +244,9 @@ pub fn build_evidence_bundle_feature_seed(
     bundle: &SecurityDecisionEvidenceBundleResult,
 ) -> BTreeMap<String, Value> {
     let stock_analysis = &bundle.technical_context.stock_analysis;
+    let indicator_snapshot = &stock_analysis.indicator_snapshot;
     let report_metrics = &bundle.fundamental_context.report_metrics;
-    let recent_announcements = &bundle.disclosure_context.recent_announcements;
+    let disclosure_signals = build_governed_disclosure_signal_summary(bundle);
     let mut features = BTreeMap::new();
     features.insert(
         "integrated_stance".to_string(),
@@ -253,79 +260,6 @@ pub fn build_evidence_bundle_feature_seed(
                 .contextual_conclusion
                 .alignment
                 .clone(),
-        ),
-    );
-    // 2026-04-17 CST: Added because ETF snapshot/training consumers now require
-    // the canonical technical numeric layer on the shared evidence seed.
-    // Reason: the previous seed only froze textual signals, which left formal raw
-    // snapshots without the numeric ETF factors the regression suite expects.
-    // Purpose: keep snapshot, scorecard, and future training readers aligned on
-    // one governed technical-factor contract.
-    insert_optional_numeric_feature(
-        &mut features,
-        "close_vs_sma50",
-        ratio_delta(
-            stock_analysis.indicator_snapshot.close,
-            stock_analysis.indicator_snapshot.sma_50,
-        ),
-    );
-    insert_optional_numeric_feature(
-        &mut features,
-        "close_vs_sma200",
-        ratio_delta(
-            stock_analysis.indicator_snapshot.close,
-            stock_analysis.indicator_snapshot.sma_200,
-        ),
-    );
-    insert_optional_numeric_feature(
-        &mut features,
-        "volume_ratio_20",
-        Some(stock_analysis.indicator_snapshot.volume_ratio_20),
-    );
-    insert_optional_numeric_feature(
-        &mut features,
-        "mfi_14",
-        Some(stock_analysis.indicator_snapshot.mfi_14),
-    );
-    insert_optional_numeric_feature(
-        &mut features,
-        "cci_20",
-        Some(stock_analysis.indicator_snapshot.cci_20),
-    );
-    insert_optional_numeric_feature(
-        &mut features,
-        "williams_r_14",
-        Some(stock_analysis.indicator_snapshot.williams_r_14),
-    );
-    insert_optional_numeric_feature(
-        &mut features,
-        "boll_width_ratio_20",
-        Some(stock_analysis.indicator_snapshot.boll_width_ratio_20),
-    );
-    insert_optional_numeric_feature(
-        &mut features,
-        "rsrs_zscore_18_60",
-        Some(stock_analysis.indicator_snapshot.rsrs_zscore_18_60),
-    );
-    insert_optional_numeric_feature(
-        &mut features,
-        "atr_14",
-        Some(stock_analysis.indicator_snapshot.atr_14),
-    );
-    insert_optional_numeric_feature(
-        &mut features,
-        "support_gap_pct_20",
-        gap_to_level_pct(
-            stock_analysis.indicator_snapshot.support_level_20,
-            stock_analysis.indicator_snapshot.close,
-        ),
-    );
-    insert_optional_numeric_feature(
-        &mut features,
-        "resistance_gap_pct_20",
-        gap_to_level_pct(
-            stock_analysis.indicator_snapshot.resistance_level_20,
-            stock_analysis.indicator_snapshot.close,
         ),
     );
     features.insert(
@@ -702,6 +636,76 @@ pub fn build_evidence_bundle_feature_seed(
         "volatility_state".to_string(),
         Value::String(stock_analysis.volatility_state.clone()),
     );
+    // 2026-04-16 CST: Added because P0 data thickening must expose the governed numeric flow and
+    // extension snapshot to downstream sample builders.
+    // Reason: the technical layer already computes these values, but the evidence seed previously
+    // collapsed them into coarse text-only signals.
+    // Purpose: keep snapshot, runtime scorecard, and training on one real numeric feature family.
+    features.insert(
+        "volume_ratio_20".to_string(),
+        json!(indicator_snapshot.volume_ratio_20),
+    );
+    features.insert("mfi_14".to_string(), json!(indicator_snapshot.mfi_14));
+    features.insert("cci_20".to_string(), json!(indicator_snapshot.cci_20));
+    features.insert(
+        "williams_r_14".to_string(),
+        json!(indicator_snapshot.williams_r_14),
+    );
+    features.insert(
+        "boll_width_ratio_20".to_string(),
+        json!(indicator_snapshot.boll_width_ratio_20),
+    );
+    // 2026-04-17 CST: Added because the thicker governed technical surface must keep the
+    // pre-existing raw snapshot contract alive during migration.
+    // Reason: ETF snapshot regressions and runtime scorecard guards still read the legacy
+    // `close_vs_sma*`, `rsrs_zscore_18_60`, and key-level gap fields directly.
+    // Purpose: widen the feature family without silently dropping the stable aliases that the
+    // current StockMind runtime already depends on.
+    features.insert(
+        "close_vs_sma50".to_string(),
+        json!(derive_ratio_delta(
+            indicator_snapshot.close,
+            indicator_snapshot.sma_50,
+        )),
+    );
+    features.insert(
+        "close_vs_sma200".to_string(),
+        json!(derive_ratio_delta(
+            indicator_snapshot.close,
+            indicator_snapshot.sma_200,
+        )),
+    );
+    features.insert(
+        "macd_histogram".to_string(),
+        json!(indicator_snapshot.macd_histogram),
+    );
+    features.insert("rsi_14".to_string(), json!(indicator_snapshot.rsi_14));
+    features.insert(
+        "rsrs_zscore_18_60".to_string(),
+        json!(indicator_snapshot.rsrs_zscore_18_60),
+    );
+    features.insert("atr_14".to_string(), json!(indicator_snapshot.atr_14));
+    features.insert(
+        "atr_ratio_14".to_string(),
+        json!(derive_atr_ratio_14(
+            indicator_snapshot.close,
+            indicator_snapshot.atr_14,
+        )),
+    );
+    features.insert(
+        "support_gap_pct_20".to_string(),
+        json!(derive_support_gap_pct_20(
+            indicator_snapshot.close,
+            indicator_snapshot.support_level_20,
+        )),
+    );
+    features.insert(
+        "resistance_gap_pct_20".to_string(),
+        json!(derive_resistance_gap_pct_20(
+            indicator_snapshot.close,
+            indicator_snapshot.resistance_level_20,
+        )),
+    );
     // 2026-04-10 CST: 这里补基本面结构化字段，原因是 fullstack 已经能拿到财报关键同比与 ROE，但之前证据层没有冻结出来；
     // 目的：让训练和回放都能直接复用“盈利信号 + 三个关键指标”，不再反向钻取 fullstack 对象。
     features.insert(
@@ -726,55 +730,286 @@ pub fn build_evidence_bundle_feature_seed(
     // 目的：给评分卡和后续顺丰/平安验证提供稳定的公告事件输入，输出更像“结论/问题点”而不是只说公告可用。
     features.insert(
         "announcement_count".to_string(),
-        json!(bundle.disclosure_context.announcement_count),
+        json!(disclosure_signals.announcement_count),
     );
     features.insert(
         "disclosure_positive_keyword_count".to_string(),
-        json!(disclosure_positive_keyword_count(recent_announcements)),
+        json!(disclosure_signals.disclosure_positive_keyword_count),
     );
     features.insert(
         "disclosure_risk_keyword_count".to_string(),
-        json!(disclosure_risk_keyword_count(recent_announcements)),
+        json!(disclosure_signals.disclosure_risk_keyword_count),
     );
     features.insert(
         "has_annual_report_notice".to_string(),
-        json!(disclosure_has_annual_report_notice(recent_announcements)),
+        json!(disclosure_signals.has_annual_report_notice),
     );
     features.insert(
         "has_dividend_notice".to_string(),
-        json!(disclosure_has_dividend_notice(recent_announcements)),
+        json!(disclosure_signals.has_dividend_notice),
     );
     features.insert(
         "has_buyback_or_increase_notice".to_string(),
-        json!(disclosure_has_buyback_or_increase_notice(
-            recent_announcements
-        )),
+        json!(disclosure_signals.has_buyback_or_increase_notice),
     );
     features.insert(
         "has_reduction_notice".to_string(),
-        json!(disclosure_has_reduction_notice(recent_announcements)),
+        json!(disclosure_signals.has_reduction_notice),
     );
     features.insert(
         "has_inquiry_notice".to_string(),
-        json!(disclosure_has_inquiry_notice(recent_announcements)),
+        json!(disclosure_signals.has_inquiry_notice),
     );
     features.insert(
         "has_litigation_notice".to_string(),
-        json!(disclosure_has_litigation_notice(recent_announcements)),
+        json!(disclosure_signals.has_litigation_notice),
     );
     features.insert(
         "has_termination_notice".to_string(),
-        json!(disclosure_has_termination_notice(recent_announcements)),
+        json!(disclosure_signals.has_termination_notice),
     );
     features.insert(
         "has_risk_warning_notice".to_string(),
-        json!(disclosure_has_risk_warning_notice(recent_announcements)),
+        json!(disclosure_signals.has_risk_warning_notice),
     );
     features.insert(
         "has_preloss_or_loss_notice".to_string(),
-        json!(disclosure_has_preloss_or_loss_notice(recent_announcements)),
+        json!(disclosure_signals.has_preloss_or_loss_notice),
+    );
+    // 2026-04-17 CST: Added because disclosure events now need one weighted component surface
+    // instead of forcing downstream consumers to reinterpret several sparse booleans on their own.
+    // Purpose: freeze one explainable event-scoring slice before the first retraining pass uses it.
+    features.insert(
+        "hard_risk_score".to_string(),
+        json!(derive_hard_risk_score(&disclosure_signals)),
+    );
+    features.insert(
+        "negative_attention_score".to_string(),
+        json!(derive_negative_attention_score(&disclosure_signals)),
+    );
+    features.insert(
+        "positive_support_score".to_string(),
+        json!(derive_positive_support_score(&disclosure_signals)),
+    );
+    features.insert(
+        "event_net_impact_score".to_string(),
+        json!(derive_event_net_impact_score(&disclosure_signals)),
+    );
+    // 2026-04-16 CST: Added because P0 needs one honest shareholder-return slice without claiming
+    // total-return relabeling is already finished.
+    // Reason: dividend and buyback notices were already frozen individually, but downstream
+    // training still lacked one governed combined bucket for corporate-action style signals.
+    // Purpose: expose minimum capital-return and fundamental-quality buckets on the canonical seed.
+    features.insert(
+        "shareholder_return_status".to_string(),
+        Value::String(build_governed_shareholder_return_status(
+            bundle,
+            &disclosure_signals,
+        )),
+    );
+    features.insert(
+        "fundamental_quality_bucket".to_string(),
+        Value::String(derive_fundamental_quality_bucket(
+            &bundle.fundamental_context.profit_signal,
+            report_metrics.revenue_yoy_pct,
+            report_metrics.net_profit_yoy_pct,
+            report_metrics.roe_pct,
+        )),
     );
     features
+}
+
+// 2026-04-17 CST: Added because the governed disclosure runtime already stores more than the
+// shallow live summary that reaches the first P0 artifact.
+// Reason: event density and disclosure risk should be replayed from persisted rows when they
+// exist, otherwise the model keeps learning from a capped and flatter signal surface.
+// Purpose: build one store-backed disclosure summary with a clean fallback to the existing
+// disclosure context for empty or unavailable governed stores.
+fn build_governed_disclosure_signal_summary(
+    bundle: &SecurityDecisionEvidenceBundleResult,
+) -> GovernedDisclosureSignalSummary {
+    let fallback = build_fallback_disclosure_signal_summary(
+        &bundle.disclosure_context,
+        bundle.disclosure_context.announcement_count,
+    );
+    let Ok(store) = SecurityDisclosureHistoryStore::workspace_default() else {
+        return fallback;
+    };
+    let Ok(rows) = store.load_recent_records(&bundle.symbol, Some(&bundle.analysis_date), 64)
+    else {
+        return fallback;
+    };
+    if rows.is_empty() {
+        return fallback;
+    }
+
+    let notices = rows
+        .into_iter()
+        .map(
+            |row| crate::ops::stock::security_analysis_fullstack::DisclosureAnnouncement {
+                published_at: row.published_at,
+                title: row.title,
+                article_code: row.article_code,
+                category: row.category,
+            },
+        )
+        .collect::<Vec<_>>();
+    let event_window_notices =
+        filter_announcements_within_days(&notices, &bundle.analysis_date, 90);
+    let risk_window_notices =
+        filter_announcements_within_days(&notices, &bundle.analysis_date, 180);
+    let shareholder_window_notices =
+        filter_announcements_within_days(&notices, &bundle.analysis_date, 365);
+
+    if event_window_notices.is_empty()
+        && risk_window_notices.is_empty()
+        && shareholder_window_notices.is_empty()
+    {
+        return fallback;
+    }
+
+    GovernedDisclosureSignalSummary {
+        // 2026-04-17 CST: Adjusted because governed event density should reflect cadence across
+        // days, not just the raw count of headlines that may cluster on one date.
+        // Purpose: prevent the 90d announcement feature from collapsing into a near-constant bin.
+        announcement_count: count_distinct_announcement_days(&event_window_notices),
+        disclosure_positive_keyword_count: disclosure_positive_keyword_count(
+            &shareholder_window_notices,
+        ),
+        disclosure_risk_keyword_count: disclosure_risk_keyword_count(&risk_window_notices),
+        has_annual_report_notice: disclosure_has_annual_report_notice(&shareholder_window_notices),
+        has_dividend_notice: disclosure_has_dividend_notice(&shareholder_window_notices),
+        has_buyback_or_increase_notice: disclosure_has_buyback_or_increase_notice(
+            &shareholder_window_notices,
+        ),
+        has_reduction_notice: disclosure_has_reduction_notice(&risk_window_notices),
+        has_refinancing_notice: disclosure_has_refinancing_notice(&risk_window_notices),
+        has_inquiry_notice: disclosure_has_inquiry_notice(&risk_window_notices),
+        has_litigation_notice: disclosure_has_litigation_notice(&risk_window_notices),
+        has_termination_notice: disclosure_has_termination_notice(&risk_window_notices),
+        has_abnormal_volatility_notice: disclosure_has_abnormal_volatility_notice(
+            &risk_window_notices,
+        ),
+        has_risk_warning_notice: disclosure_has_risk_warning_notice(&risk_window_notices),
+        has_preloss_or_loss_notice: disclosure_has_preloss_or_loss_notice(&risk_window_notices),
+        has_fund_occupation_notice: disclosure_has_fund_occupation_notice(&risk_window_notices),
+    }
+}
+
+// 2026-04-17 CST: Added because the evidence seed still needs deterministic values when
+// governed disclosure history is absent or not yet bootstrapped for a symbol/date.
+// Purpose: preserve the existing contract while letting the new store-backed path override it.
+fn build_fallback_disclosure_signal_summary(
+    disclosure_context: &DisclosureContext,
+    _announcement_count: usize,
+) -> GovernedDisclosureSignalSummary {
+    let recent_announcements = &disclosure_context.recent_announcements;
+    GovernedDisclosureSignalSummary {
+        // 2026-04-17 CST: Adjusted because fallback and governed paths must share the same
+        // cadence meaning, otherwise snapshot/training behavior depends on storage availability.
+        // Purpose: keep event-density semantics consistent when the governed store is absent.
+        announcement_count: count_distinct_announcement_days(recent_announcements),
+        disclosure_positive_keyword_count: disclosure_positive_keyword_count(recent_announcements),
+        disclosure_risk_keyword_count: disclosure_risk_keyword_count(recent_announcements),
+        has_annual_report_notice: disclosure_has_annual_report_notice(recent_announcements),
+        has_dividend_notice: disclosure_has_dividend_notice(recent_announcements),
+        has_buyback_or_increase_notice: disclosure_has_buyback_or_increase_notice(
+            recent_announcements,
+        ),
+        has_reduction_notice: disclosure_has_reduction_notice(recent_announcements),
+        has_refinancing_notice: disclosure_has_refinancing_notice(recent_announcements),
+        has_inquiry_notice: disclosure_has_inquiry_notice(recent_announcements),
+        has_litigation_notice: disclosure_has_litigation_notice(recent_announcements),
+        has_termination_notice: disclosure_has_termination_notice(recent_announcements),
+        has_abnormal_volatility_notice: disclosure_has_abnormal_volatility_notice(
+            recent_announcements,
+        ),
+        has_risk_warning_notice: disclosure_has_risk_warning_notice(recent_announcements),
+        has_preloss_or_loss_notice: disclosure_has_preloss_or_loss_notice(recent_announcements),
+        has_fund_occupation_notice: disclosure_has_fund_occupation_notice(recent_announcements),
+    }
+}
+
+// 2026-04-17 CST: Added because shareholder-return state should now prefer the formal
+// corporate-action store while keeping disclosure-derived hints as a bounded fallback.
+// Reason: the store may still be sparse in some workspaces, so dropping disclosure hints would
+// make the field regress to empty in the very environments we are trying to thicken.
+// Purpose: produce one governed capital-return bucket without reopening label or execution logic.
+fn build_governed_shareholder_return_status(
+    bundle: &SecurityDecisionEvidenceBundleResult,
+    disclosure_signals: &GovernedDisclosureSignalSummary,
+) -> String {
+    let fallback = derive_shareholder_return_status(
+        disclosure_signals.has_dividend_notice,
+        disclosure_signals.has_buyback_or_increase_notice,
+    );
+    let Ok(store) = SecurityCorporateActionStore::workspace_default() else {
+        return fallback;
+    };
+    let Ok(rows) = store.load_rows_on_or_before(&bundle.symbol, &bundle.analysis_date) else {
+        return fallback;
+    };
+    if rows.is_empty() {
+        return fallback;
+    }
+
+    let has_recent_dividend_action = rows.iter().any(|row| {
+        row.action_type == "cash_dividend"
+            && is_date_within_days(&row.effective_date, &bundle.analysis_date, 365)
+    });
+
+    derive_shareholder_return_status(
+        has_recent_dividend_action || disclosure_signals.has_dividend_notice,
+        disclosure_signals.has_buyback_or_increase_notice,
+    )
+}
+
+// 2026-04-17 CST: Added because store-backed disclosure rows need a stable rolling-window filter
+// before they can feed event-density and risk helpers.
+// Purpose: keep the windowing rule local to the evidence layer and avoid scattering date math.
+fn filter_announcements_within_days(
+    notices: &[crate::ops::stock::security_analysis_fullstack::DisclosureAnnouncement],
+    as_of_date: &str,
+    window_days: i64,
+) -> Vec<crate::ops::stock::security_analysis_fullstack::DisclosureAnnouncement> {
+    notices
+        .iter()
+        .filter(|notice| is_date_within_days(&notice.published_at, as_of_date, window_days))
+        .cloned()
+        .collect()
+}
+
+fn count_distinct_announcement_days(
+    notices: &[crate::ops::stock::security_analysis_fullstack::DisclosureAnnouncement],
+) -> usize {
+    // 2026-04-17 CST: Added because real disclosure history often contains several notices on the
+    // same day, and using raw row count made the event-density feature look crowded for almost
+    // every symbol in the refreshed 40-name pool.
+    // Purpose: convert governed disclosures into a cadence signal that training can actually use.
+    notices
+        .iter()
+        .map(|notice| notice.published_at.clone())
+        .collect::<BTreeSet<_>>()
+        .len()
+}
+
+// 2026-04-17 CST: Added because governed runtime rows and request dates may carry time suffixes
+// or plain dates, and the event-thickening path should tolerate both.
+// Purpose: normalize the first P0-2 rolling-window implementation without changing upstream
+// storage contracts.
+fn is_date_within_days(date_text: &str, as_of_date: &str, window_days: i64) -> bool {
+    let Some(as_of_date) = parse_date_prefix(as_of_date) else {
+        return false;
+    };
+    let Some(event_date) = parse_date_prefix(date_text) else {
+        return false;
+    };
+    event_date <= as_of_date && event_date >= as_of_date - Duration::days(window_days.max(0))
+}
+
+fn parse_date_prefix(value: &str) -> Option<NaiveDate> {
+    let prefix = value.chars().take(10).collect::<String>();
+    NaiveDate::parse_from_str(prefix.as_str(), "%Y-%m-%d").ok()
 }
 
 // 2026-04-09 CST: 这里集中把 fullstack 映射成正式证据包，原因是研究层与治理层虽然复用事实，但对象职责不同，
@@ -934,195 +1169,6 @@ fn build_evidence_quality(
     }
 }
 
-// 2026-04-17 CST: Added because ETF proxy date resolution now needs to happen before
-// fullstack analysis is invoked.
-// Reason: otherwise the evidence layer can hydrate the right proxy payload but still
-// keep a mismatched live analysis_date.
-// Purpose: expose one effective snapshot resolver that works for exact-date, nearest-prior,
-// and no-date latest ETF proxy requests.
-fn resolve_effective_proxy_snapshot(
-    request: &SecurityDecisionEvidenceBundleRequest,
-) -> Result<Option<(String, SecurityExternalProxyInputs)>, SecurityDecisionEvidenceBundleError> {
-    let snapshot = if let Some(as_of_date) = request.as_of_date.as_deref() {
-        load_historical_external_proxy_snapshot(request.symbol.trim(), as_of_date)
-    } else {
-        load_latest_external_proxy_snapshot(request.symbol.trim())
-    }
-    .map_err(|error| SecurityDecisionEvidenceBundleError::ExternalProxy(error.to_string()))?;
-    Ok(snapshot)
-}
-
-// 2026-04-17 CST: Added because ETF runtime/evidence consumers now need one normalized
-// subscope vocabulary across old and new artifact labels.
-// Reason: treasury/gold/equity ETF fixtures already use the newer names, while legacy
-// helpers still emit bond/commodity aliases.
-// Purpose: keep evidence substitution and scorecard gating aligned on one canonical label set.
-pub fn normalize_etf_instrument_subscope(
-    instrument_subscope: Option<&str>,
-) -> Option<&'static str> {
-    let normalized = instrument_subscope?.trim().to_ascii_lowercase();
-    if normalized.contains("cross_border") || normalized.contains("overseas") {
-        Some("cross_border_etf")
-    } else if normalized.contains("treasury") || normalized.contains("bond") {
-        Some("treasury_etf")
-    } else if normalized.contains("gold") || normalized.contains("commodity") {
-        Some("gold_etf")
-    } else if normalized.contains("equity") {
-        Some("equity_etf")
-    } else {
-        Some("equity_etf")
-    }
-}
-
-// 2026-04-17 CST: Added because governed ETF proxy families should formally substitute
-// for stock-style financial/disclosure contexts when those contexts are not meaningful.
-// Reason: treasury and gold ETF requests currently remain degraded even when the proxy
-// family is complete and auditable.
-// Purpose: project complete ETF proxy evidence into the formal evidence bundle instead of
-// forcing single-stock information requirements onto ETF chains.
-fn hydrate_governed_etf_proxy_information(
-    request: &SecurityDecisionEvidenceBundleRequest,
-    analysis: &mut SecurityAnalysisFullstackResult,
-    external_proxy_inputs: Option<&SecurityExternalProxyInputs>,
-) {
-    if !is_etf_symbol(&request.symbol) {
-        return;
-    }
-    let Some(external_proxy_inputs) = external_proxy_inputs else {
-        return;
-    };
-    let instrument_subscope = normalize_etf_instrument_subscope(
-        resolve_etf_subscope(
-            &request.symbol,
-            request
-                .sector_profile
-                .as_deref()
-                .or(request.market_profile.as_deref()),
-            analysis
-                .etf_context
-                .asset_scope
-                .as_deref()
-                .or(request.sector_profile.as_deref()),
-        ),
-    );
-    if !governed_etf_proxy_family_complete(instrument_subscope, external_proxy_inputs) {
-        return;
-    }
-
-    if analysis.etf_context.status != "available" {
-        analysis.etf_context = build_governed_etf_proxy_etf_context(instrument_subscope);
-    }
-    if analysis.fundamental_context.status != "available" {
-        analysis.fundamental_context =
-            build_governed_etf_proxy_fundamental_context(instrument_subscope, &analysis.analysis_date);
-    }
-    if analysis.disclosure_context.status != "available" {
-        analysis.disclosure_context =
-            build_governed_etf_proxy_disclosure_context(instrument_subscope, &analysis.analysis_date);
-    }
-}
-
-// 2026-04-17 CST: Added because ETF runtime scoring still needs the ETF-wide
-// differentiating family to be non-null even when public ETF facts are unavailable.
-// Reason: proxy-complete treasury/gold ETF requests were still degrading to
-// feature_incomplete because `etf_asset_scope` stayed null.
-// Purpose: project one minimal ETF context from governed proxy completeness so the
-// evidence seed exposes the required ETF-wide family consistently.
-fn build_governed_etf_proxy_etf_context(instrument_subscope: Option<&str>) -> EtfContext {
-    let asset_scope = Some(instrument_subscope.unwrap_or("equity_etf").to_string());
-    EtfContext {
-        status: "available".to_string(),
-        source: "governed_etf_proxy_information".to_string(),
-        fund_name: None,
-        benchmark: None,
-        asset_scope: asset_scope.clone(),
-        latest_scale: None,
-        latest_share: None,
-        premium_discount_rate_pct: None,
-        headline: format!(
-            "Governed ETF proxy information supplied the minimum ETF context for `{}`.",
-            instrument_subscope.unwrap_or("equity_etf")
-        ),
-        structure_risk_flags: vec![],
-        research_gaps: vec![],
-    }
-}
-
-// 2026-04-17 CST: Added because ETF proxy-backed evidence needs an explicit formal
-// source tag once it replaces stock-only financial availability.
-// Reason: silently marking the context available without a source change would make
-// later audits ambiguous.
-// Purpose: produce one auditable fundamental context for complete governed ETF proxy families.
-fn build_governed_etf_proxy_fundamental_context(
-    instrument_subscope: Option<&str>,
-    analysis_date: &str,
-) -> FundamentalContext {
-    FundamentalContext {
-        status: "available".to_string(),
-        source: "governed_etf_proxy_information".to_string(),
-        latest_report_period: Some(analysis_date.to_string()),
-        report_notice_date: Some(analysis_date.to_string()),
-        headline: format!(
-            "ETF proxy-backed structural evidence is complete for `{}` on {}.",
-            instrument_subscope.unwrap_or("equity_etf"),
-            analysis_date
-        ),
-        profit_signal: "proxy_complete".to_string(),
-        report_metrics: FundamentalMetrics {
-            revenue: None,
-            revenue_yoy_pct: None,
-            net_profit: None,
-            net_profit_yoy_pct: None,
-            roe_pct: None,
-        },
-        narrative: vec![
-            "Governed ETF proxy history replaced stock-only financial availability.".to_string(),
-        ],
-        risk_flags: vec![],
-    }
-}
-
-// 2026-04-17 CST: Added because ETF proxy-backed completeness must also unblock the
-// disclosure-side evidence contract for non-stock instruments.
-// Reason: leaving disclosure unavailable would keep fully-governed ETF evidence
-// permanently degraded even after proxy hydration succeeds.
-// Purpose: expose one minimal formal disclosure context sourced from governed ETF proxies.
-fn build_governed_etf_proxy_disclosure_context(
-    instrument_subscope: Option<&str>,
-    analysis_date: &str,
-) -> DisclosureContext {
-    DisclosureContext {
-        status: "available".to_string(),
-        source: "governed_etf_proxy_information".to_string(),
-        announcement_count: 0,
-        headline: format!(
-            "ETF proxy-backed event surface is sufficient for `{}` on {}.",
-            instrument_subscope.unwrap_or("equity_etf"),
-            analysis_date
-        ),
-        keyword_summary: vec!["governed_etf_proxy_complete".to_string()],
-        recent_announcements: vec![],
-        risk_flags: vec![],
-    }
-}
-
-// 2026-04-17 CST: Added because ETF proxy substitution must follow the same required
-// family contract that runtime scorecard gating uses.
-// Reason: otherwise evidence completeness and scoring validity could drift on the same ETF.
-// Purpose: declare ETF proxy completeness only when every required family field is present.
-fn governed_etf_proxy_family_complete(
-    instrument_subscope: Option<&str>,
-    external_proxy_inputs: &SecurityExternalProxyInputs,
-) -> bool {
-    let payload = serde_json::to_value(external_proxy_inputs)
-        .ok()
-        .and_then(|value| value.as_object().cloned())
-        .unwrap_or_default();
-    required_etf_feature_family(instrument_subscope)
-        .iter()
-        .all(|feature_name| matches!(payload.get(*feature_name), Some(value) if !value.is_null()))
-}
-
 // 2026-04-09 CST: 这里生成证据哈希，原因是新治理链要求 committee / snapshot / chair 都围绕同一份冻结证据演进，
 // 目的：给后续回放、审计和对齐校验提供稳定证据版本锚点。
 fn build_evidence_hash(
@@ -1175,18 +1221,10 @@ pub fn resolve_etf_subscope(
     }
     let market_profile = market_profile.unwrap_or_default().to_ascii_lowercase();
     let asset_scope = asset_scope.unwrap_or_default().to_ascii_lowercase();
-    if asset_scope.contains("gold")
-        || asset_scope.contains("commodity")
-        || market_profile.contains("gold")
-        || market_profile.contains("commodity")
-    {
-        Some("gold_etf")
-    } else if asset_scope.contains("treasury")
-        || asset_scope.contains("bond")
-        || market_profile.contains("treasury")
-        || market_profile.contains("bond")
-    {
-        Some("treasury_etf")
+    if asset_scope.contains("commodity") || market_profile.contains("commodity") {
+        Some("commodity_etf")
+    } else if asset_scope.contains("bond") || market_profile.contains("bond") {
+        Some("bond_etf")
     } else if asset_scope.contains("cross_border")
         || asset_scope.contains("overseas")
         || market_profile.contains("overseas")
@@ -1207,9 +1245,45 @@ pub fn resolve_etf_subscope(
 pub fn derive_market_regime(
     market_profile: Option<&str>,
     subject_asset_class: Option<&str>,
+    market_bias: Option<&str>,
+    market_breakout_signal: Option<&str>,
+    market_volatility_state: Option<&str>,
+    market_momentum_signal: Option<&str>,
 ) -> String {
     let market_profile = market_profile.unwrap_or_default().to_ascii_lowercase();
     let subject_asset_class = subject_asset_class.unwrap_or_default().to_ascii_lowercase();
+    let market_bias = market_bias.unwrap_or_default().to_ascii_lowercase();
+    let market_breakout_signal = market_breakout_signal
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let market_volatility_state = market_volatility_state
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let market_momentum_signal = market_momentum_signal
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    if market_bias.contains("bullish") && market_breakout_signal == "confirmed" {
+        return "bull_breakout".to_string();
+    }
+    if market_bias.contains("bullish")
+        && (market_momentum_signal == "positive" || market_breakout_signal.contains("retest"))
+    {
+        return "bull_trend".to_string();
+    }
+    if market_bias.contains("bearish")
+        && (market_momentum_signal == "negative"
+            || market_breakout_signal.contains("failed")
+            || market_breakout_signal.contains("range"))
+    {
+        return "bear_pressure".to_string();
+    }
+    if market_volatility_state.contains("high") || market_volatility_state.contains("wide") {
+        return "range_high_vol".to_string();
+    }
+    if market_volatility_state.contains("low") || market_volatility_state.contains("contract") {
+        return "range_low_vol".to_string();
+    }
 
     if market_profile.contains("cross_border") || market_profile.contains("overseas") {
         "cross_border".to_string()
@@ -1235,9 +1309,14 @@ pub fn derive_market_regime(
 // Purpose: provide one minimal normalized industry bucket now, with room for later refinement.
 pub fn derive_industry_bucket(
     sector_profile: Option<&str>,
+    symbol_level_bucket: Option<&str>,
     instrument_subscope: Option<&str>,
     subject_asset_class: Option<&str>,
 ) -> String {
+    if let Some(symbol_level_bucket) = symbol_level_bucket.filter(|value| !value.trim().is_empty())
+    {
+        return symbol_level_bucket.trim().to_string();
+    }
     let sector_profile = sector_profile.unwrap_or_default().to_ascii_lowercase();
     if sector_profile.contains("bank") {
         return "bank".to_string();
@@ -1290,9 +1369,12 @@ pub fn derive_event_density_bucket(
     announcement_count: usize,
     disclosure_risk_keyword_count: usize,
 ) -> String {
-    if announcement_count >= 5 || disclosure_risk_keyword_count >= 3 {
+    // 2026-04-17 CST: Adjusted because the earlier threshold turned a 90d cadence of only a few
+    // announcement days into the same bucket as truly crowded disclosure windows.
+    // Purpose: widen the moderate band so real governed symbols can leave the single dense bucket.
+    if announcement_count >= 6 || disclosure_risk_keyword_count >= 3 {
         "dense".to_string()
-    } else if announcement_count >= 2 || disclosure_risk_keyword_count >= 1 {
+    } else if announcement_count >= 3 || disclosure_risk_keyword_count >= 1 {
         "moderate".to_string()
     } else if announcement_count >= 1 {
         "light".to_string()
@@ -1309,25 +1391,37 @@ pub fn derive_event_density_bucket(
 pub fn derive_flow_status(
     money_flow_signal: Option<&str>,
     volume_confirmation: Option<&str>,
+    volume_ratio_20: Option<f64>,
+    mfi_14: Option<f64>,
+    macd_histogram: Option<f64>,
 ) -> String {
     let money_flow_signal = money_flow_signal.unwrap_or_default().to_ascii_lowercase();
     let volume_confirmation = volume_confirmation.unwrap_or_default().to_ascii_lowercase();
+    let volume_ratio_20 = volume_ratio_20.unwrap_or(1.0);
+    let mfi_14 = mfi_14.unwrap_or(50.0);
+    let macd_histogram = macd_histogram.unwrap_or(0.0);
     let positive_flow = money_flow_signal.contains("positive")
         || money_flow_signal.contains("support")
-        || money_flow_signal.contains("inflow");
+        || money_flow_signal.contains("inflow")
+        || money_flow_signal.contains("accumulation");
     let negative_flow = money_flow_signal.contains("negative")
         || money_flow_signal.contains("pressure")
-        || money_flow_signal.contains("outflow");
+        || money_flow_signal.contains("outflow")
+        || money_flow_signal.contains("distribution");
     let confirmed_volume = volume_confirmation.contains("confirm")
         || volume_confirmation.contains("support")
-        || volume_confirmation.contains("positive");
+        || volume_confirmation.contains("positive")
+        || volume_ratio_20 >= 1.15;
     let weak_volume = volume_confirmation.contains("weak")
         || volume_confirmation.contains("absent")
-        || volume_confirmation.contains("negative");
+        || volume_confirmation.contains("negative")
+        || volume_ratio_20 <= 0.90;
+    let supportive_money = mfi_14 >= 35.0 && mfi_14 <= 75.0 && macd_histogram >= -0.05;
+    let pressured_money = mfi_14 >= 78.0 || macd_histogram <= -0.05;
 
-    if positive_flow && confirmed_volume {
+    if positive_flow && confirmed_volume && supportive_money {
         "supportive".to_string()
-    } else if negative_flow && weak_volume {
+    } else if negative_flow && weak_volume && pressured_money {
         "pressured".to_string()
     } else {
         "mixed".to_string()
@@ -1343,6 +1437,10 @@ pub fn derive_valuation_status(
     range_position_signal: Option<&str>,
     bollinger_position_signal: Option<&str>,
     mean_reversion_signal: Option<&str>,
+    profit_signal: Option<&str>,
+    revenue_yoy_pct: Option<f64>,
+    net_profit_yoy_pct: Option<f64>,
+    roe_pct: Option<f64>,
 ) -> String {
     let range_position_signal = range_position_signal
         .unwrap_or_default()
@@ -1353,6 +1451,12 @@ pub fn derive_valuation_status(
     let mean_reversion_signal = mean_reversion_signal
         .unwrap_or_default()
         .to_ascii_lowercase();
+    let quality_bucket = derive_fundamental_quality_bucket(
+        profit_signal.unwrap_or_default(),
+        revenue_yoy_pct,
+        net_profit_yoy_pct,
+        roe_pct,
+    );
 
     let extended = range_position_signal.contains("high")
         || range_position_signal.contains("upper")
@@ -1363,7 +1467,11 @@ pub fn derive_valuation_status(
         || bollinger_position_signal.contains("lower")
         || mean_reversion_signal.contains("oversold");
 
-    if extended {
+    if compressed && quality_bucket == "strong" {
+        "undervalued_candidate".to_string()
+    } else if extended && quality_bucket == "fragile" {
+        "overvalued_risk".to_string()
+    } else if extended {
         "extended".to_string()
     } else if compressed {
         "compressed".to_string()
@@ -1374,15 +1482,152 @@ pub fn derive_valuation_status(
 
 // 2026-04-14 CST: 这里补 ETF 特征族门禁函数，原因是当前 scorecard runtime 要判断不同 ETF 子池至少具备哪些特征；
 // 目的：让 ETF 模型兼容门禁先恢复成显式合同，而不是在编译失败期间完全失去约束。
+fn derive_hard_risk_score(disclosure_signals: &GovernedDisclosureSignalSummary) -> f64 {
+    // 2026-04-17 CST: Added because event-side analysis now needs a weighted hard-risk component
+    // instead of collapsing governance and profit warnings into one flat boolean.
+    // Purpose: expose one explainable severe-event score for governed snapshot and training.
+    let mut score = 0.0;
+    if disclosure_signals.has_risk_warning_notice {
+        score += 4.0;
+    }
+    if disclosure_signals.has_inquiry_notice {
+        score += 3.0;
+    }
+    if disclosure_signals.has_litigation_notice {
+        score += 4.0;
+    }
+    if disclosure_signals.has_preloss_or_loss_notice {
+        score += 4.0;
+    }
+    if disclosure_signals.has_fund_occupation_notice {
+        score += 5.0;
+    }
+    score
+}
+
+fn derive_negative_attention_score(disclosure_signals: &GovernedDisclosureSignalSummary) -> f64 {
+    // 2026-04-17 CST: Added because several negative-but-not-fatal events should still pressure
+    // the message surface without being mislabeled as the same severity as hard risks.
+    // Purpose: separate financing and attention shocks from the severe-risk bucket.
+    let mut score = 0.0;
+    if disclosure_signals.has_reduction_notice {
+        score += 2.0;
+    }
+    if disclosure_signals.has_refinancing_notice {
+        score += 2.0;
+    }
+    if disclosure_signals.has_termination_notice {
+        score += 2.0;
+    }
+    if disclosure_signals.has_abnormal_volatility_notice {
+        score += 1.0;
+    }
+    score
+}
+
+fn derive_positive_support_score(disclosure_signals: &GovernedDisclosureSignalSummary) -> f64 {
+    // 2026-04-17 CST: Added because message-side support should be expressed as its own component
+    // before netting against the new negative buckets.
+    // Purpose: preserve simple upside-support evidence without claiming a full event-stage model.
+    let mut score = 0.0;
+    if disclosure_signals.has_buyback_or_increase_notice {
+        score += 3.0;
+    }
+    if disclosure_signals.has_dividend_notice {
+        score += 1.0;
+    }
+    score
+}
+
+fn derive_event_net_impact_score(disclosure_signals: &GovernedDisclosureSignalSummary) -> f64 {
+    // 2026-04-17 CST: Added because downstream consumers need one net event direction field that
+    // remains explainable and decomposable back into positive / negative components.
+    // Purpose: provide the first governed disclosure impact score without hiding component details.
+    derive_positive_support_score(disclosure_signals)
+        - derive_hard_risk_score(disclosure_signals)
+        - derive_negative_attention_score(disclosure_signals)
+}
+
+pub fn derive_shareholder_return_status(
+    has_dividend_notice: bool,
+    has_buyback_or_increase_notice: bool,
+) -> String {
+    if has_dividend_notice && has_buyback_or_increase_notice {
+        "capital_return_active".to_string()
+    } else if has_dividend_notice {
+        "dividend_only".to_string()
+    } else if has_buyback_or_increase_notice {
+        "buyback_or_increase_only".to_string()
+    } else {
+        "capital_return_absent".to_string()
+    }
+}
+
+pub fn derive_fundamental_quality_bucket(
+    profit_signal: &str,
+    revenue_yoy_pct: Option<f64>,
+    net_profit_yoy_pct: Option<f64>,
+    roe_pct: Option<f64>,
+) -> String {
+    let profit_signal = profit_signal.to_ascii_lowercase();
+    let revenue_yoy_pct = revenue_yoy_pct.unwrap_or(0.0);
+    let net_profit_yoy_pct = net_profit_yoy_pct.unwrap_or(0.0);
+    let roe_pct = roe_pct.unwrap_or(0.0);
+
+    if profit_signal == "positive" && net_profit_yoy_pct >= 8.0 && roe_pct >= 12.0 {
+        "strong".to_string()
+    } else if profit_signal == "negative"
+        || net_profit_yoy_pct < 0.0
+        || revenue_yoy_pct < 0.0
+        || roe_pct < 6.0
+    {
+        "fragile".to_string()
+    } else {
+        "balanced".to_string()
+    }
+}
+
+pub fn derive_atr_ratio_14(close: f64, atr_14: f64) -> f64 {
+    if close.abs() <= f64::EPSILON {
+        0.0
+    } else {
+        atr_14 / close.abs()
+    }
+}
+
+pub fn derive_ratio_delta(current_value: f64, baseline_value: f64) -> f64 {
+    if baseline_value.abs() <= f64::EPSILON {
+        0.0
+    } else {
+        current_value / baseline_value - 1.0
+    }
+}
+
+pub fn derive_support_gap_pct_20(close: f64, support_level_20: f64) -> f64 {
+    if close.abs() <= f64::EPSILON {
+        0.0
+    } else {
+        (close - support_level_20) / close.abs()
+    }
+}
+
+pub fn derive_resistance_gap_pct_20(close: f64, resistance_level_20: f64) -> f64 {
+    if close.abs() <= f64::EPSILON {
+        0.0
+    } else {
+        (resistance_level_20 - close) / close.abs()
+    }
+}
+
 pub fn required_etf_feature_family(instrument_subscope: Option<&str>) -> &'static [&'static str] {
-    match normalize_etf_instrument_subscope(instrument_subscope).unwrap_or("equity_etf") {
-        "gold_etf" => &[
+    match instrument_subscope.unwrap_or("equity_etf") {
+        "commodity_etf" => &[
             "gold_spot_proxy_status",
             "gold_spot_proxy_return_5d",
             "real_rate_proxy_status",
             "real_rate_proxy_delta_bp_5d",
         ],
-        "treasury_etf" => &[
+        "bond_etf" => &[
             "yield_curve_proxy_status",
             "yield_curve_slope_delta_bp_5d",
             "funding_liquidity_proxy_status",
@@ -1423,33 +1668,6 @@ fn normalized_numeric_feature(value: Option<f64>) -> Value {
     // 2026-04-10 CST: 这里把缺失 numeric 特征回填成稳定数字，原因是用户要求做成统一标准而不是下游各自兜底；
     // 目的：保证对训练和评分暴露的 numeric feature 永远保持 numeric 类型，减少 null 漂移带来的契约断裂。
     json!(value.unwrap_or(0.0))
-}
-
-// 2026-04-17 CST: Added because the canonical evidence seed now needs a shared
-// ratio helper for derived technical numeric factors.
-// Reason: repeating ad-hoc percentage math across snapshot and training layers
-// would quickly drift once ETF factor families evolve again.
-// Purpose: keep close-vs-average style factors zero-safe and contract-stable.
-fn ratio_delta(numerator: f64, denominator: f64) -> Option<f64> {
-    if denominator.abs() <= f64::EPSILON {
-        None
-    } else {
-        Some((numerator - denominator) / denominator.abs())
-    }
-}
-
-// 2026-04-17 CST: Added because support/resistance gap factors should share one
-// stable normalization baseline across all feature consumers.
-// Reason: the feature snapshot regression locks presence today, and future
-// training needs the same gap semantics instead of one-off local formulas.
-// Purpose: expose key-level distance features as reusable percent gaps from the
-// current price anchor.
-fn gap_to_level_pct(target_level: f64, anchor_price: f64) -> Option<f64> {
-    if anchor_price.abs() <= f64::EPSILON {
-        None
-    } else {
-        Some((target_level - anchor_price) / anchor_price.abs())
-    }
 }
 
 fn insert_optional_string_feature(
@@ -1501,4 +1719,29 @@ fn default_lookback_days() -> usize {
 
 fn default_disclosure_limit() -> usize {
     8
+}
+
+#[cfg(test)]
+mod tests {
+    use super::derive_event_density_bucket;
+
+    #[test]
+    fn derive_event_density_bucket_keeps_mid_cadence_symbols_out_of_dense() {
+        // 2026-04-17 CST: Added because the real 40-name rerun showed that the old threshold made
+        // almost every governed symbol look dense once the disclosure store could provide enough
+        // recent notices.
+        // Purpose: keep the bucket honest for symbols with visible activity but without truly
+        // crowded announcement cadence.
+        assert_eq!(derive_event_density_bucket(5, 0), "moderate");
+        assert_eq!(derive_event_density_bucket(3, 1), "moderate");
+    }
+
+    #[test]
+    fn derive_event_density_bucket_still_marks_high_cadence_or_high_risk_as_dense() {
+        // 2026-04-17 CST: Added because relaxing the cadence threshold must not remove the
+        // dense bucket for genuinely crowded or risky disclosure windows.
+        // Purpose: preserve the upper-tail signal while fixing the former single-bucket collapse.
+        assert_eq!(derive_event_density_bucket(6, 0), "dense");
+        assert_eq!(derive_event_density_bucket(2, 3), "dense");
+    }
 }

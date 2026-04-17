@@ -2396,15 +2396,37 @@ fn build_disclosure_keyword_summary(notices: &[DisclosureAnnouncement]) -> Vec<S
 fn build_disclosure_risk_flags(notices: &[DisclosureAnnouncement]) -> Vec<String> {
     let risk_keywords = [
         ("减持", "最近公告含减持事项，需留意筹码压力"),
+        ("定增", "最近公告含再融资事项，需留意融资摊薄与预期重定价"),
+        (
+            "向特定对象发行",
+            "最近公告含再融资事项，需留意融资摊薄与预期重定价",
+        ),
+        (
+            "非公开发行",
+            "最近公告含再融资事项，需留意融资摊薄与预期重定价",
+        ),
+        ("配股", "最近公告含再融资事项，需留意融资摊薄与预期重定价"),
+        (
+            "募集配套资金",
+            "最近公告含再融资事项，需留意融资摊薄与预期重定价",
+        ),
         ("问询", "最近公告含问询事项，需留意监管关注点"),
         ("诉讼", "最近公告含诉讼事项，需留意经营不确定性"),
         ("终止", "最近公告含终止事项，需留意原有催化是否失效"),
+        (
+            "异常波动",
+            "最近公告含异常波动事项，需警惕短期情绪与监管扰动",
+        ),
         (
             "风险提示",
             "最近公告含风险提示，需关注公司主动披露的不确定性",
         ),
         ("预亏", "最近公告含预亏信息，需重新评估盈利预期"),
         ("亏损", "最近公告含亏损相关信息，需警惕业绩压力"),
+        (
+            "资金占用",
+            "最近公告含资金占用事项，需重点复核治理与财务风险",
+        ),
     ];
     let mut flags = Vec::new();
     for notice in notices {
@@ -2446,13 +2468,21 @@ pub(crate) fn disclosure_positive_keyword_count(notices: &[DisclosureAnnouncemen
 // 2026-04-10 CST: 这里补风险关键词计数 helper，原因是第一阶段统一评分版需要把消息面从“有无公告”下沉到“风险密度”；
 // 目的：给 snapshot / training / scorecard 提供稳定的离散风险强度输入，而不是只在 headline 里体现。
 pub(crate) fn disclosure_risk_keyword_count(notices: &[DisclosureAnnouncement]) -> usize {
+    // 2026-04-17 CST: Added because the thicker training/snapshot migration now needs the
+    // coarse risk-count feature to include refinancing, abnormal-volatility, and fund-occupation
+    // event families instead of undercounting the governed disclosure surface.
+    // Purpose: keep legacy risk density and newer weighted event scoring aligned on the same set
+    // of negative disclosure families.
     [
         disclosure_has_reduction_notice(notices),
+        disclosure_has_refinancing_notice(notices),
         disclosure_has_inquiry_notice(notices),
         disclosure_has_litigation_notice(notices),
         disclosure_has_termination_notice(notices),
+        disclosure_has_abnormal_volatility_notice(notices),
         disclosure_has_risk_warning_notice(notices),
         disclosure_has_preloss_or_loss_notice(notices),
+        disclosure_has_fund_occupation_notice(notices),
     ]
     .into_iter()
     .filter(|flag| *flag)
@@ -2477,6 +2507,16 @@ pub(crate) fn disclosure_has_reduction_notice(notices: &[DisclosureAnnouncement]
     disclosure_notice_exists(notices, &["减持"])
 }
 
+// 2026-04-17 CST: Added because refinancing headlines should become a first-class negative
+// event family instead of staying invisible to the governed disclosure features.
+// Purpose: give securities analysis one reusable refinancing detector for snapshot and training.
+pub(crate) fn disclosure_has_refinancing_notice(notices: &[DisclosureAnnouncement]) -> bool {
+    disclosure_notice_exists(
+        notices,
+        &["定增", "非公开发行", "向特定对象发行", "配股", "募集配套资金"],
+    )
+}
+
 pub(crate) fn disclosure_has_inquiry_notice(notices: &[DisclosureAnnouncement]) -> bool {
     disclosure_notice_exists(notices, &["问询"])
 }
@@ -2489,12 +2529,28 @@ pub(crate) fn disclosure_has_termination_notice(notices: &[DisclosureAnnouncemen
     disclosure_notice_exists(notices, &["终止"])
 }
 
+// 2026-04-17 CST: Added because unusual-volatility notices often matter as short-term negative
+// attention even when they do not amount to a hard fundamental risk.
+// Purpose: separate abnormal trading heat from the older generic risk-warning bucket.
+pub(crate) fn disclosure_has_abnormal_volatility_notice(
+    notices: &[DisclosureAnnouncement],
+) -> bool {
+    disclosure_notice_exists(notices, &["异常波动", "交易异常波动"])
+}
+
 pub(crate) fn disclosure_has_risk_warning_notice(notices: &[DisclosureAnnouncement]) -> bool {
     disclosure_notice_exists(notices, &["风险提示"])
 }
 
 pub(crate) fn disclosure_has_preloss_or_loss_notice(notices: &[DisclosureAnnouncement]) -> bool {
     disclosure_notice_exists(notices, &["预亏", "亏损"])
+}
+
+// 2026-04-17 CST: Added because fund occupation is materially more severe than generic negative
+// attention and should be promoted into the governed hard-risk surface.
+// Purpose: expose one reusable detector for capital-occupation governance events.
+pub(crate) fn disclosure_has_fund_occupation_notice(notices: &[DisclosureAnnouncement]) -> bool {
+    disclosure_notice_exists(notices, &["资金占用", "非经营性资金占用"])
 }
 
 // 2026-04-10 CST: 这里集中封装标题关键词命中，原因是上面多组 helper 都只是“同一批公告标题是否命中不同规则”的变体；

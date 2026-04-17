@@ -136,6 +136,14 @@ pub mod technical_consultation_basic;
 #[path = "security_decision_evidence_bundle.rs"]
 pub mod security_decision_evidence_bundle;
 
+// 2026-04-17 CST: Added because the full scorecard-training migration now also depends on the
+// governed symbol taxonomy module used by snapshot, runtime scorecard, and training together.
+// Reason: without exporting the shared routing helper, the migrated thicker training chain would
+// compile against a module path that does not exist in the split repo.
+// Purpose: keep symbol-level market/sector routing inside the stock boundary as one internal tool.
+#[path = "security_symbol_taxonomy.rs"]
+pub(crate) mod security_symbol_taxonomy;
+
 // 2026-04-16 CST: Added because plan A now starts landing the formal composite scorecard
 // business object on the stock domain boundary.
 // Reason: the approved core-value design needs one stable code artifact before any deeper

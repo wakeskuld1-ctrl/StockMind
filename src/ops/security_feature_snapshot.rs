@@ -11,6 +11,7 @@ use crate::ops::stock::security_decision_evidence_bundle::{
     derive_flow_status, derive_industry_bucket, derive_instrument_subscope, derive_market_regime,
     derive_valuation_status, security_decision_evidence_bundle,
 };
+use crate::ops::stock::security_symbol_taxonomy::resolve_effective_security_routing;
 
 // 2026-04-09 CST: 这里新增特征快照请求合同，原因是 Task 2 要把“分析时点可见特征冻结”独立成正式 Tool，
 // 目的：让后续训练 / 回算 / 主席线都能从统一入口拿到稳定快照，而不是每次临时拼字段。
@@ -73,12 +74,19 @@ pub enum SecurityFeatureSnapshotError {
 pub fn security_feature_snapshot(
     request: &SecurityFeatureSnapshotRequest,
 ) -> Result<SecurityFeatureSnapshot, SecurityFeatureSnapshotError> {
+    let effective_routing = resolve_effective_security_routing(
+        &request.symbol,
+        request.market_symbol.as_deref(),
+        request.sector_symbol.as_deref(),
+        request.market_profile.as_deref(),
+        request.sector_profile.as_deref(),
+    );
     let evidence_request = SecurityDecisionEvidenceBundleRequest {
         symbol: request.symbol.clone(),
-        market_symbol: request.market_symbol.clone(),
-        sector_symbol: request.sector_symbol.clone(),
-        market_profile: request.market_profile.clone(),
-        sector_profile: request.sector_profile.clone(),
+        market_symbol: effective_routing.market_symbol.clone(),
+        sector_symbol: effective_routing.sector_symbol.clone(),
+        market_profile: effective_routing.market_profile.clone(),
+        sector_profile: effective_routing.sector_profile.clone(),
         as_of_date: request.as_of_date.clone(),
         underlying_symbol: request.underlying_symbol.clone(),
         fx_symbol: request.fx_symbol.clone(),
@@ -88,10 +96,11 @@ pub fn security_feature_snapshot(
     };
     let evidence_bundle = security_decision_evidence_bundle(&evidence_request)?;
     let raw_features_json = enrich_raw_features_json(
-        request,
+        &evidence_bundle,
+        &effective_routing,
         build_evidence_bundle_feature_seed(&evidence_bundle),
     );
-    let group_features_json = build_group_features(request, &raw_features_json);
+    let group_features_json = build_group_features(&raw_features_json);
     let data_quality_flags = build_data_quality_flags(&evidence_bundle);
     let snapshot_hash = build_snapshot_hash(
         &request.symbol,
@@ -121,15 +130,13 @@ pub fn security_feature_snapshot(
     })
 }
 
-fn build_group_features(
-    request: &SecurityFeatureSnapshotRequest,
-    raw_features_json: &BTreeMap<String, Value>,
-) -> BTreeMap<String, Value> {
+fn build_group_features(raw_features_json: &BTreeMap<String, Value>) -> BTreeMap<String, Value> {
     let mut groups = BTreeMap::new();
     groups.insert("M".to_string(), json!({
-        "market_profile": request.market_profile.clone().unwrap_or_else(|| "unknown".to_string()),
+        "market_profile": raw_features_json.get("market_profile").cloned().unwrap_or(Value::Null),
         "market_regime": raw_features_json.get("market_regime").cloned().unwrap_or(Value::Null),
         "industry_bucket": raw_features_json.get("industry_bucket").cloned().unwrap_or(Value::Null),
+        "subindustry_bucket": raw_features_json.get("subindustry_bucket").cloned().unwrap_or(Value::Null),
         "instrument_subscope": raw_features_json.get("instrument_subscope").cloned().unwrap_or(Value::Null),
         "integrated_stance": raw_features_json.get("integrated_stance").cloned().unwrap_or(Value::Null),
         "technical_alignment": raw_features_json.get("technical_alignment").cloned().unwrap_or(Value::Null),
@@ -159,6 +166,13 @@ fn build_group_features(
     groups.insert("E".to_string(), json!({
         "disclosure_status": raw_features_json.get("disclosure_status").cloned().unwrap_or(Value::Null),
         "disclosure_available": raw_features_json.get("disclosure_available").cloned().unwrap_or(Value::Null),
+        // 2026-04-17 CST: Added because disclosure analysis now exports weighted component scores
+        // that should stay visible on the grouped event surface as well as the raw seed.
+        // Purpose: let snapshot consumers read the event score breakdown without reparsing raw fields.
+        "hard_risk_score": raw_features_json.get("hard_risk_score").cloned().unwrap_or(Value::Null),
+        "negative_attention_score": raw_features_json.get("negative_attention_score").cloned().unwrap_or(Value::Null),
+        "positive_support_score": raw_features_json.get("positive_support_score").cloned().unwrap_or(Value::Null),
+        "event_net_impact_score": raw_features_json.get("event_net_impact_score").cloned().unwrap_or(Value::Null),
     }));
     groups.insert("R".to_string(), json!({
         "overall_evidence_status": raw_features_json.get("overall_evidence_status").cloned().unwrap_or(Value::Null),
@@ -245,14 +259,15 @@ fn build_data_quality_flags(
 }
 
 fn enrich_raw_features_json(
-    request: &SecurityFeatureSnapshotRequest,
+    evidence_bundle: &crate::ops::stock::security_decision_evidence_bundle::SecurityDecisionEvidenceBundleResult,
+    effective_routing: &crate::ops::stock::security_symbol_taxonomy::EffectiveSecurityRouting,
     mut raw_features_json: BTreeMap<String, Value>,
 ) -> BTreeMap<String, Value> {
-    let market_profile = request
+    let market_profile = effective_routing
         .market_profile
         .clone()
         .unwrap_or_else(|| "unknown".to_string());
-    let sector_profile = request
+    let sector_profile = effective_routing
         .sector_profile
         .clone()
         .unwrap_or_else(|| "unknown".to_string());
@@ -260,17 +275,49 @@ fn enrich_raw_features_json(
         .get("subject_asset_class")
         .and_then(Value::as_str);
     let instrument_subscope = derive_instrument_subscope(
-        &request.symbol,
-        request.market_profile.as_deref(),
+        &evidence_bundle.symbol,
+        effective_routing.market_profile.as_deref(),
         subject_asset_class,
     );
     let industry_bucket = derive_industry_bucket(
-        request.sector_profile.as_deref(),
+        effective_routing.sector_profile.as_deref(),
+        effective_routing.industry_bucket.as_deref(),
         Some(&instrument_subscope),
         subject_asset_class,
     );
-    let market_regime =
-        derive_market_regime(request.market_profile.as_deref(), subject_asset_class);
+    let market_regime = derive_market_regime(
+        effective_routing.market_profile.as_deref(),
+        subject_asset_class,
+        Some(
+            evidence_bundle
+                .technical_context
+                .market_analysis
+                .consultation_conclusion
+                .bias
+                .as_str(),
+        ),
+        Some(
+            evidence_bundle
+                .technical_context
+                .market_analysis
+                .breakout_signal
+                .as_str(),
+        ),
+        Some(
+            evidence_bundle
+                .technical_context
+                .market_analysis
+                .volatility_state
+                .as_str(),
+        ),
+        Some(
+            evidence_bundle
+                .technical_context
+                .market_analysis
+                .momentum_signal
+                .as_str(),
+        ),
+    );
     let announcement_count = raw_features_json
         .get("announcement_count")
         .and_then(Value::as_u64)
@@ -288,6 +335,13 @@ fn enrich_raw_features_json(
         raw_features_json
             .get("volume_confirmation")
             .and_then(Value::as_str),
+        raw_features_json
+            .get("volume_ratio_20")
+            .and_then(Value::as_f64),
+        raw_features_json.get("mfi_14").and_then(Value::as_f64),
+        raw_features_json
+            .get("macd_histogram")
+            .and_then(Value::as_f64),
     );
     let valuation_status = derive_valuation_status(
         raw_features_json
@@ -299,6 +353,16 @@ fn enrich_raw_features_json(
         raw_features_json
             .get("mean_reversion_signal")
             .and_then(Value::as_str),
+        raw_features_json
+            .get("profit_signal")
+            .and_then(Value::as_str),
+        raw_features_json
+            .get("revenue_yoy_pct")
+            .and_then(Value::as_f64),
+        raw_features_json
+            .get("net_profit_yoy_pct")
+            .and_then(Value::as_f64),
+        raw_features_json.get("roe_pct").and_then(Value::as_f64),
     );
 
     // 2026-04-16 CST: Added because A-1a promotes request-side regime and industry routing into
@@ -312,6 +376,15 @@ fn enrich_raw_features_json(
     raw_features_json.insert(
         "industry_bucket".to_string(),
         Value::String(industry_bucket),
+    );
+    raw_features_json.insert(
+        "subindustry_bucket".to_string(),
+        Value::String(
+            effective_routing
+                .subindustry_bucket
+                .clone()
+                .unwrap_or_else(|| instrument_subscope.clone()),
+        ),
     );
     raw_features_json.insert(
         "instrument_subscope".to_string(),

@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "version": "a_share_symbol_taxonomy_v1",
+    "created_at": "2026-04-16T20:10:00+08:00",
+    "change_reason_en": "Add one governed symbol-level taxonomy so mixed A-share training no longer reuses a single blended sector proxy for every stock.",
+    "purpose_en": "Provide symbol-specific sector routing plus coarse industry and subindustry buckets for snapshot, training, and runtime scoring."
+  },
+  "profiles": [
+    { "symbol": "000001.SZ", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512800.SH", "sector_profile": "a_share_bank", "industry_bucket": "bank", "subindustry_bucket": "joint_stock_bank" },
+    { "symbol": "600000.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512800.SH", "sector_profile": "a_share_bank", "industry_bucket": "bank", "subindustry_bucket": "joint_stock_bank" },
+    { "symbol": "600036.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512800.SH", "sector_profile": "a_share_bank", "industry_bucket": "bank", "subindustry_bucket": "joint_stock_bank" },
+    { "symbol": "601166.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512800.SH", "sector_profile": "a_share_bank", "industry_bucket": "bank", "subindustry_bucket": "joint_stock_bank" },
+    { "symbol": "601169.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512800.SH", "sector_profile": "a_share_bank", "industry_bucket": "bank", "subindustry_bucket": "city_bank" },
+    { "symbol": "601288.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512800.SH", "sector_profile": "a_share_bank", "industry_bucket": "bank", "subindustry_bucket": "big_four_bank" },
+    { "symbol": "601328.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512800.SH", "sector_profile": "a_share_bank", "industry_bucket": "bank", "subindustry_bucket": "national_bank" },
+    { "symbol": "601398.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512800.SH", "sector_profile": "a_share_bank", "industry_bucket": "bank", "subindustry_bucket": "big_four_bank" },
+    { "symbol": "601818.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512800.SH", "sector_profile": "a_share_bank", "industry_bucket": "bank", "subindustry_bucket": "joint_stock_bank" },
+    { "symbol": "601916.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512800.SH", "sector_profile": "a_share_bank", "industry_bucket": "bank", "subindustry_bucket": "joint_stock_bank" },
+    { "symbol": "601939.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512800.SH", "sector_profile": "a_share_bank", "industry_bucket": "bank", "subindustry_bucket": "big_four_bank" },
+    { "symbol": "601988.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512800.SH", "sector_profile": "a_share_bank", "industry_bucket": "bank", "subindustry_bucket": "big_four_bank" },
+
+    { "symbol": "600030.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512070.SH", "sector_profile": "a_share_broker", "industry_bucket": "broker", "subindustry_bucket": "brokerage" },
+    { "symbol": "601211.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512070.SH", "sector_profile": "a_share_broker", "industry_bucket": "broker", "subindustry_bucket": "brokerage" },
+    { "symbol": "601318.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512070.SH", "sector_profile": "a_share_insurance", "industry_bucket": "insurance", "subindustry_bucket": "life_property_insurance" },
+    { "symbol": "601319.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512070.SH", "sector_profile": "a_share_insurance", "industry_bucket": "insurance", "subindustry_bucket": "property_insurance" },
+    { "symbol": "601336.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512070.SH", "sector_profile": "a_share_insurance", "industry_bucket": "insurance", "subindustry_bucket": "life_insurance" },
+    { "symbol": "601601.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512070.SH", "sector_profile": "a_share_insurance", "industry_bucket": "insurance", "subindustry_bucket": "composite_insurance" },
+    { "symbol": "601628.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512070.SH", "sector_profile": "a_share_insurance", "industry_bucket": "insurance", "subindustry_bucket": "life_insurance" },
+    { "symbol": "601688.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "512070.SH", "sector_profile": "a_share_broker", "industry_bucket": "broker", "subindustry_bucket": "brokerage" },
+
+    { "symbol": "000858.SZ", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "159928.SZ", "sector_profile": "a_share_consumer", "industry_bucket": "consumer", "subindustry_bucket": "baijiu" },
+    { "symbol": "002352.SZ", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "159928.SZ", "sector_profile": "a_share_consumer", "industry_bucket": "consumer", "subindustry_bucket": "logistics" },
+    { "symbol": "002475.SZ", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "159928.SZ", "sector_profile": "a_share_consumer", "industry_bucket": "consumer", "subindustry_bucket": "consumer_electronics" },
+    { "symbol": "600519.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "159928.SZ", "sector_profile": "a_share_consumer", "industry_bucket": "consumer", "subindustry_bucket": "baijiu" },
+    { "symbol": "600809.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "159928.SZ", "sector_profile": "a_share_consumer", "industry_bucket": "consumer", "subindustry_bucket": "baijiu" },
+    { "symbol": "600887.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "159928.SZ", "sector_profile": "a_share_consumer", "industry_bucket": "consumer", "subindustry_bucket": "dairy" },
+    { "symbol": "603288.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "159928.SZ", "sector_profile": "a_share_consumer", "industry_bucket": "consumer", "subindustry_bucket": "condiment" },
+
+    { "symbol": "002594.SZ", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "159755.SZ", "sector_profile": "a_share_growth", "industry_bucket": "manufacturing_growth", "subindustry_bucket": "new_energy_vehicle" },
+    { "symbol": "300750.SZ", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "159755.SZ", "sector_profile": "a_share_growth", "industry_bucket": "manufacturing_growth", "subindustry_bucket": "battery" },
+    { "symbol": "600276.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "159755.SZ", "sector_profile": "a_share_growth", "industry_bucket": "manufacturing_growth", "subindustry_bucket": "innovative_pharma" },
+    { "symbol": "600309.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "159755.SZ", "sector_profile": "a_share_growth", "industry_bucket": "manufacturing_growth", "subindustry_bucket": "specialty_chemical" },
+    { "symbol": "600438.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "159755.SZ", "sector_profile": "a_share_growth", "industry_bucket": "manufacturing_growth", "subindustry_bucket": "solar_material" },
+    { "symbol": "600941.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "159755.SZ", "sector_profile": "a_share_growth", "industry_bucket": "manufacturing_growth", "subindustry_bucket": "telecom_operator" },
+    { "symbol": "601012.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "159755.SZ", "sector_profile": "a_share_growth", "industry_bucket": "manufacturing_growth", "subindustry_bucket": "solar_equipment" },
+    { "symbol": "601899.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "159755.SZ", "sector_profile": "a_share_growth", "industry_bucket": "manufacturing_growth", "subindustry_bucket": "metals_mining" },
+
+    { "symbol": "600028.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "510880.SH", "sector_profile": "a_share_dividend_soe", "industry_bucket": "dividend_soe", "subindustry_bucket": "petrochemical" },
+    { "symbol": "600900.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "510880.SH", "sector_profile": "a_share_dividend_soe", "industry_bucket": "dividend_soe", "subindustry_bucket": "hydropower" },
+    { "symbol": "601088.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "510880.SH", "sector_profile": "a_share_dividend_soe", "industry_bucket": "dividend_soe", "subindustry_bucket": "coal" },
+    { "symbol": "601225.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "510880.SH", "sector_profile": "a_share_dividend_soe", "industry_bucket": "dividend_soe", "subindustry_bucket": "coal" },
+    { "symbol": "601668.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "510880.SH", "sector_profile": "a_share_dividend_soe", "industry_bucket": "dividend_soe", "subindustry_bucket": "infrastructure" },
+    { "symbol": "601857.SH", "market_symbol": "510300.SH", "market_profile": "a_share_core_v1", "sector_symbol": "510880.SH", "sector_profile": "a_share_dividend_soe", "industry_bucket": "dividend_soe", "subindustry_bucket": "oil_gas" }
+  ]
+}

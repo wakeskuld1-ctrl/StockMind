@@ -1,6 +1,12 @@
 mod common;
 
 use chrono::{Duration, NaiveDate};
+use excel_skill::runtime::security_corporate_action_store::{
+    SecurityCorporateActionRow, SecurityCorporateActionStore,
+};
+use excel_skill::runtime::security_disclosure_history_store::{
+    SecurityDisclosureHistoryRecordRow, SecurityDisclosureHistoryStore,
+};
 use serde_json::json;
 use std::collections::HashMap;
 use std::fs;
@@ -220,7 +226,7 @@ fn security_feature_snapshot_freezes_raw_and_group_features_with_hash() {
         .as_object()
         .expect("raw features should be an object");
     assert_eq!(raw_features["profit_signal"], "positive");
-    assert_eq!(raw_features["announcement_count"], 2);
+    assert_eq!(raw_features["announcement_count"], 1);
     assert_eq!(raw_features["has_annual_report_notice"], true);
     assert_eq!(raw_features["has_dividend_notice"], true);
     assert_eq!(raw_features["has_buyback_or_increase_notice"], false);
@@ -233,19 +239,434 @@ fn security_feature_snapshot_freezes_raw_and_group_features_with_hash() {
     // Purpose: freeze these derived fields into the canonical snapshot before retraining starts consuming them.
     assert_eq!(raw_features["market_profile"], "a_share_core");
     assert_eq!(raw_features["sector_profile"], "a_share_bank");
-    assert_eq!(raw_features["market_regime"], "a_share");
+    let market_regime = raw_features["market_regime"]
+        .as_str()
+        .expect("market regime should be a string");
+    assert!(matches!(market_regime, "bull_breakout" | "bull_trend"));
     assert_eq!(raw_features["industry_bucket"], "bank");
+    assert_eq!(raw_features["subindustry_bucket"], "joint_stock_bank");
     assert_eq!(raw_features["instrument_subscope"], "equity");
-    assert_eq!(raw_features["event_density_bucket"], "moderate");
+    assert_eq!(raw_features["event_density_bucket"], "light");
+    assert!(raw_features["volume_ratio_20"].is_number());
+    assert!(raw_features["mfi_14"].is_number());
+    assert!(raw_features["macd_histogram"].is_number());
+    assert!(raw_features["rsi_14"].is_number());
+    assert_eq!(raw_features["shareholder_return_status"], "dividend_only");
+    assert_eq!(raw_features["fundamental_quality_bucket"], "strong");
     let group_features = output["data"]["group_features_json"]
         .as_object()
         .expect("group features should be an object");
-    assert_eq!(group_features["M"]["market_regime"], "a_share");
+    assert_eq!(group_features["M"]["market_regime"], market_regime);
     assert_eq!(group_features["M"]["industry_bucket"], "bank");
+    assert_eq!(
+        group_features["M"]["subindustry_bucket"],
+        "joint_stock_bank"
+    );
     assert_eq!(group_features["M"]["instrument_subscope"], "equity");
     assert_ne!(group_features["Q"]["flow_status"], "not_populated_v1");
-    assert_eq!(group_features["Q"]["event_density_bucket"], "moderate");
+    assert_eq!(group_features["Q"]["event_density_bucket"], "light");
     assert_ne!(group_features["V"]["valuation_status"], "not_populated_v1");
+}
+
+#[test]
+fn security_feature_snapshot_prefers_governed_disclosure_and_corporate_action_signals_when_available()
+ {
+    let runtime_db_path =
+        create_test_runtime_db("security_feature_snapshot_governed_signal_thickening");
+
+    let stock_csv = create_stock_history_csv(
+        "security_feature_snapshot_governed_signal_thickening",
+        "stock.csv",
+        &build_confirmed_breakout_rows(220, 88.0),
+    );
+    let market_csv = create_stock_history_csv(
+        "security_feature_snapshot_governed_signal_thickening",
+        "market.csv",
+        &build_confirmed_breakout_rows(220, 3200.0),
+    );
+    let sector_csv = create_stock_history_csv(
+        "security_feature_snapshot_governed_signal_thickening",
+        "sector.csv",
+        &build_confirmed_breakout_rows(220, 950.0),
+    );
+    import_history_csv(&runtime_db_path, &stock_csv, "601916.SH");
+    import_history_csv(&runtime_db_path, &market_csv, "510300.SH");
+    import_history_csv(&runtime_db_path, &sector_csv, "512800.SH");
+
+    persist_disclosure_history_rows(
+        &runtime_db_path,
+        "601916.SH",
+        &[
+            // 2026-04-17 CST: Adjusted because the governed-store regression must live inside the
+            // same 90d/180d/365d windows as the resolved analysis date, otherwise announcement_count
+            // collapses to zero for the wrong reason and masks the real store-priority contract.
+            // 2026-04-17 CST: Switched key titles to explicit Unicode literals because this test
+            // must validate keyword detection itself, not depend on terminal/codepage rendering.
+            ("2026-04-15", "\u{5E74}\u{5EA6}\u{62A5}\u{544A}"),
+            ("2026-04-10", "\u{56DE}\u{8D2D}\u{516C}\u{544A}"),
+            (
+                "2026-03-28",
+                "\u{98CE}\u{9669}\u{63D0}\u{793A}\u{516C}\u{544A}",
+            ),
+            ("2026-03-12", "\u{95EE}\u{8BE2}\u{51FD}\u{516C}\u{544A}"),
+            (
+                "2026-02-18",
+                "\u{516C}\u{53F8}\u{65E5}\u{5E38}\u{7ECF}\u{8425}\u{516C}\u{544A}",
+            ),
+            (
+                "2026-01-25",
+                "\u{516C}\u{53F8}\u{8FDB}\u{5C55}\u{516C}\u{544A}",
+            ),
+        ],
+    );
+    persist_corporate_action_rows(
+        &runtime_db_path,
+        &[SecurityCorporateActionRow {
+            symbol: "601916.SH".to_string(),
+            // 2026-04-17 CST: Adjusted because this fixture should prove the corporate-action store
+            // is consumed on the same governed analysis date, not because an older row happened to
+            // remain inside the 365d fallback window.
+            effective_date: "2026-03-30".to_string(),
+            action_type: "cash_dividend".to_string(),
+            cash_dividend_per_share: 0.18,
+            split_ratio: 1.0,
+            bonus_ratio: 0.0,
+            source: "snapshot_fixture".to_string(),
+            payload_json: "{\"kind\":\"cash_dividend\"}".to_string(),
+        }],
+    );
+
+    let server = spawn_http_route_server(vec![
+        (
+            "/financials",
+            "HTTP/1.1 200 OK",
+            r#"[
+                {
+                    "REPORT_DATE":"2025-12-31",
+                    "NOTICE_DATE":"2026-03-28",
+                    "TOTAL_OPERATE_INCOME":308227000000.0,
+                    "YSTZ":8.37,
+                    "PARENT_NETPROFIT":11117000000.0,
+                    "SJLTZ":9.31,
+                    "ROEJQ":14.8
+                }
+            ]"#,
+            "application/json",
+        ),
+        (
+            "/announcements",
+            "HTTP/1.1 200 OK",
+            r#"{
+                "data":{
+                    "list":[
+                        {"notice_date":"2026-03-28","title":"2025骞村勾搴︽姤鍛?,"art_code":"AN202603281234567890","columns":[{"column_name":"瀹氭湡鎶ュ憡"}]}
+                    ]
+                }
+            }"#,
+            "application/json",
+        ),
+    ]);
+
+    let request = json!({
+        "tool": "security_feature_snapshot",
+        "args": {
+            "symbol": "601916.SH",
+            "market_symbol": "510300.SH",
+            "sector_symbol": "512800.SH",
+            // 2026-04-17 CST: Added because this regression should lock one deterministic analysis
+            // date instead of inheriting whatever the latest imported trade row happens to be.
+            "as_of_date": "2026-04-16",
+            "market_profile": "a_share_core",
+            "sector_profile": "a_share_bank",
+            "stop_loss_pct": 0.05,
+            "target_return_pct": 0.12
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &[
+            (
+                "EXCEL_SKILL_EASTMONEY_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
+                "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+        ],
+    );
+
+    // 2026-04-17 CST: Added because P0-2 needs a direct regression proving the
+    // governed disclosure store and corporate-action store override thinner live summaries.
+    // Reason: the real 40-name training checkpoint showed event-density and shareholder-return
+    // fields were still collapsing even after the first P0 closure.
+    // Purpose: lock the formal signal priority before retraining the governed pool.
+    assert_eq!(output["status"], "ok", "feature snapshot output: {output}");
+    assert_eq!(output["data"]["as_of_date"], "2026-04-16");
+    let raw_features = output["data"]["raw_features_json"]
+        .as_object()
+        .expect("raw features should be an object");
+    assert_eq!(raw_features["announcement_count"], 6);
+    assert_eq!(raw_features["event_density_bucket"], "dense");
+    assert_eq!(raw_features["has_buyback_or_increase_notice"], true);
+    assert_eq!(
+        raw_features["shareholder_return_status"],
+        "capital_return_active"
+    );
+    assert_eq!(raw_features["disclosure_risk_keyword_count"], 2);
+    assert_eq!(raw_features["has_risk_warning_notice"], true);
+}
+
+#[test]
+fn security_feature_snapshot_uses_announcement_days_for_governed_event_density() {
+    let runtime_db_path =
+        create_test_runtime_db("security_feature_snapshot_governed_event_density_days");
+
+    let stock_csv = create_stock_history_csv(
+        "security_feature_snapshot_governed_event_density_days",
+        "stock.csv",
+        &build_confirmed_breakout_rows(220, 42.0),
+    );
+    let market_csv = create_stock_history_csv(
+        "security_feature_snapshot_governed_event_density_days",
+        "market.csv",
+        &build_confirmed_breakout_rows(220, 3200.0),
+    );
+    let sector_csv = create_stock_history_csv(
+        "security_feature_snapshot_governed_event_density_days",
+        "sector.csv",
+        &build_confirmed_breakout_rows(220, 950.0),
+    );
+    import_history_csv(&runtime_db_path, &stock_csv, "600000.SH");
+    import_history_csv(&runtime_db_path, &market_csv, "510300.SH");
+    import_history_csv(&runtime_db_path, &sector_csv, "512800.SH");
+
+    persist_disclosure_history_rows(
+        &runtime_db_path,
+        "600000.SH",
+        &[
+            // 2026-04-17 CST: Added because this regression must prove the governed event-density
+            // path counts distinct announcement days instead of blindly inheriting the raw notice
+            // count, which turned real training into a single-bucket placeholder.
+            // Purpose: keep repeated same-day notices from being mislabeled as dense activity.
+            ("2026-04-15", "\u{5E74}\u{5EA6}\u{62A5}\u{544A}"),
+            (
+                "2026-04-15",
+                "\u{516C}\u{53F8}\u{65E5}\u{5E38}\u{7ECF}\u{8425}\u{516C}\u{544A}",
+            ),
+            ("2026-04-10", "\u{56DE}\u{8D2D}\u{516C}\u{544A}"),
+            (
+                "2026-04-10",
+                "\u{516C}\u{53F8}\u{8FDB}\u{5C55}\u{516C}\u{544A}",
+            ),
+            ("2026-03-28", "\u{95EE}\u{8BE2}\u{51FD}\u{516C}\u{544A}"),
+            ("2026-03-28", "\u{4E34}\u{65F6}\u{516C}\u{544A}"),
+        ],
+    );
+
+    let server = spawn_http_route_server(vec![
+        (
+            "/financials",
+            "HTTP/1.1 200 OK",
+            r#"[
+                {
+                    "REPORT_DATE":"2025-12-31",
+                    "NOTICE_DATE":"2026-03-28",
+                    "TOTAL_OPERATE_INCOME":308227000000.0,
+                    "YSTZ":8.37,
+                    "PARENT_NETPROFIT":11117000000.0,
+                    "SJLTZ":9.31,
+                    "ROEJQ":14.8
+                }
+            ]"#,
+            "application/json",
+        ),
+        (
+            "/announcements",
+            "HTTP/1.1 200 OK",
+            r#"{
+                "data":{
+                    "list":[
+                        {"notice_date":"2026-04-15","title":"2025年年度报告","art_code":"AN202604150001","columns":[{"column_name":"定期报告"}]},
+                        {"notice_date":"2026-04-10","title":"公司进展公告","art_code":"AN202604100001","columns":[{"column_name":"公司公告"}]}
+                    ]
+                }
+            }"#,
+            "application/json",
+        ),
+    ]);
+
+    let request = json!({
+        "tool": "security_feature_snapshot",
+        "args": {
+            "symbol": "600000.SH",
+            "market_symbol": "510300.SH",
+            "sector_symbol": "512800.SH",
+            "market_profile": "a_share_core",
+            "sector_profile": "a_share_bank",
+            "as_of_date": "2026-04-16",
+            "stop_loss_pct": 0.05,
+            "target_return_pct": 0.12
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &[
+            (
+                "EXCEL_SKILL_EASTMONEY_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
+                "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+            (
+                "EXCEL_SKILL_ETF_FACTS_URL_BASE",
+                format!("{server}/etf-facts"),
+            ),
+        ],
+    );
+
+    assert_eq!(output["status"], "ok", "feature snapshot output: {output}");
+    let raw_features = output["data"]["raw_features_json"]
+        .as_object()
+        .expect("raw features should be an object");
+    assert_eq!(raw_features["announcement_count"], 3);
+    assert_eq!(raw_features["disclosure_risk_keyword_count"], 1);
+    assert_eq!(raw_features["event_density_bucket"], "moderate");
+}
+
+#[test]
+fn security_feature_snapshot_scores_disclosure_events_with_weighted_components() {
+    let runtime_db_path =
+        create_test_runtime_db("security_feature_snapshot_disclosure_event_scoring");
+
+    let stock_csv = create_stock_history_csv(
+        "security_feature_snapshot_disclosure_event_scoring",
+        "stock.csv",
+        &build_confirmed_breakout_rows(220, 66.0),
+    );
+    let market_csv = create_stock_history_csv(
+        "security_feature_snapshot_disclosure_event_scoring",
+        "market.csv",
+        &build_confirmed_breakout_rows(220, 3200.0),
+    );
+    let sector_csv = create_stock_history_csv(
+        "security_feature_snapshot_disclosure_event_scoring",
+        "sector.csv",
+        &build_confirmed_breakout_rows(220, 950.0),
+    );
+    import_history_csv(&runtime_db_path, &stock_csv, "600000.SH");
+    import_history_csv(&runtime_db_path, &market_csv, "510300.SH");
+    import_history_csv(&runtime_db_path, &sector_csv, "512800.SH");
+
+    persist_disclosure_history_rows(
+        &runtime_db_path,
+        "600000.SH",
+        &[
+            // 2026-04-17 CST: Added because disclosure scoring must lock weighted event semantics
+            // before the mainline starts retraining on these fields.
+            // Purpose: prove refinancing / abnormal-volatility / fund-occupation events are no
+            // longer flattened into one generic boolean risk surface.
+            (
+                "2026-04-15",
+                "\u{5411}\u{7279}\u{5B9A}\u{5BF9}\u{8C61}\u{53D1}\u{884C}\u{80A1}\u{7968}\u{9884}\u{6848}",
+            ),
+            (
+                "2026-04-13",
+                "\u{63A7}\u{80A1}\u{80A1}\u{4E1C}\u{51CF}\u{6301}\u{8BA1}\u{5212}\u{516C}\u{544A}",
+            ),
+            (
+                "2026-04-12",
+                "\u{80A1}\u{7968}\u{4EA4}\u{6613}\u{5F02}\u{5E38}\u{6CE2}\u{52A8}\u{516C}\u{544A}",
+            ),
+            (
+                "2026-04-10",
+                "\u{975E}\u{7ECF}\u{8425}\u{6027}\u{8D44}\u{91D1}\u{5360}\u{7528}\u{4E13}\u{9879}\u{8BF4}\u{660E}",
+            ),
+            ("2026-04-08", "\u{56DE}\u{8D2D}\u{516C}\u{544A}"),
+            (
+                "2026-04-05",
+                "\u{5229}\u{6DA6}\u{5206}\u{914D}\u{9884}\u{6848}\u{516C}\u{544A}",
+            ),
+        ],
+    );
+
+    let server = spawn_http_route_server(vec![
+        (
+            "/financials",
+            "HTTP/1.1 200 OK",
+            r#"[
+                {
+                    "REPORT_DATE":"2025-12-31",
+                    "NOTICE_DATE":"2026-03-28",
+                    "TOTAL_OPERATE_INCOME":308227000000.0,
+                    "YSTZ":8.37,
+                    "PARENT_NETPROFIT":11117000000.0,
+                    "SJLTZ":9.31,
+                    "ROEJQ":14.8
+                }
+            ]"#,
+            "application/json",
+        ),
+        (
+            "/announcements",
+            "HTTP/1.1 200 OK",
+            r#"{"data":{"list":[]}}"#,
+            "application/json",
+        ),
+    ]);
+
+    let request = json!({
+        "tool": "security_feature_snapshot",
+        "args": {
+            "symbol": "600000.SH",
+            "market_symbol": "510300.SH",
+            "sector_symbol": "512800.SH",
+            "as_of_date": "2026-04-16",
+            "market_profile": "a_share_core",
+            "sector_profile": "a_share_bank",
+            "stop_loss_pct": 0.05,
+            "target_return_pct": 0.12
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &[
+            (
+                "EXCEL_SKILL_EASTMONEY_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
+                "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+        ],
+    );
+
+    assert_eq!(output["status"], "ok", "feature snapshot output: {output}");
+    let raw_features = output["data"]["raw_features_json"]
+        .as_object()
+        .expect("raw features should be an object");
+    assert_eq!(raw_features["hard_risk_score"], json!(5.0));
+    assert_eq!(raw_features["negative_attention_score"], json!(5.0));
+    assert_eq!(raw_features["positive_support_score"], json!(4.0));
+    assert_eq!(raw_features["event_net_impact_score"], json!(-6.0));
+    assert_eq!(raw_features["disclosure_risk_keyword_count"], 4);
+
+    let group_features = output["data"]["group_features_json"]
+        .as_object()
+        .expect("group features should be an object");
+    assert_eq!(group_features["E"]["hard_risk_score"], json!(5.0));
+    assert_eq!(group_features["E"]["negative_attention_score"], json!(5.0));
+    assert_eq!(group_features["E"]["positive_support_score"], json!(4.0));
+    assert_eq!(group_features["E"]["event_net_impact_score"], json!(-6.0));
 }
 
 #[test]
@@ -1107,6 +1528,47 @@ fn import_history_csv(runtime_db_path: &Path, csv_path: &Path, symbol: &str) {
         &[],
     );
     assert_eq!(output["status"], "ok");
+}
+
+fn persist_disclosure_history_rows(runtime_db_path: &Path, symbol: &str, rows: &[(&str, &str)]) {
+    let store = SecurityDisclosureHistoryStore::new(
+        runtime_db_path
+            .parent()
+            .expect("runtime db should have parent")
+            .join("security_disclosure_history.db"),
+    );
+    let persisted_rows = rows
+        .iter()
+        .enumerate()
+        .map(
+            |(index, (published_at, title))| SecurityDisclosureHistoryRecordRow {
+                symbol: symbol.to_string(),
+                published_at: (*published_at).to_string(),
+                title: (*title).to_string(),
+                article_code: Some(format!("fixture-disclosure-{index}")),
+                category: Some("fixture".to_string()),
+                source: "security_feature_snapshot_fixture".to_string(),
+                batch_id: "fixture_batch".to_string(),
+                record_ref: format!("{symbol}:{published_at}:{index}"),
+                created_at: "2026-04-17T09:00:00+08:00".to_string(),
+            },
+        )
+        .collect::<Vec<_>>();
+    store
+        .upsert_rows(&persisted_rows)
+        .expect("disclosure history fixture rows should persist");
+}
+
+fn persist_corporate_action_rows(runtime_db_path: &Path, rows: &[SecurityCorporateActionRow]) {
+    let store = SecurityCorporateActionStore::new(
+        runtime_db_path
+            .parent()
+            .expect("runtime db should have parent")
+            .join("security_corporate_action.db"),
+    );
+    store
+        .upsert_rows(rows)
+        .expect("corporate action fixture rows should persist");
 }
 
 // 2026-04-09 CST: 这里沿用稳定上行样本，原因是本测试只关心可见特征冻结对象本身，

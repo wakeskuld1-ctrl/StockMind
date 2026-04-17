@@ -201,3 +201,29 @@
 
 ### 记忆点（可选）
 - 用户强调“不要幻想”，所以从 sibling repo 合并修复时必须先核对目标仓依赖闭包，再决定是抽取核心 fix 还是整体迁移，不能把更厚的一整层实现直接硬拷进来。
+
+## 2026-04-17
+### 修改内容
+- `src/ops/security_decision_evidence_bundle.rs`：为厚实现迁移后的 governed technical seed 补回 `close_vs_sma50`、`close_vs_sma200`、`rsrs_zscore_18_60`、`atr_14`、`support_gap_pct_20`、`resistance_gap_pct_20` 等 legacy raw numeric feature alias，目的：在保留新厚字段的同时恢复 ETF snapshot / scorecard 仍依赖的旧合同。
+
+### 修改原因
+- 真实失败点不是 ETF 技术指标没算出来，而是整文件迁移后 `raw_features_json` 的字段合同漂移；`technical_consultation_basic.rs` 仍然产出 `sma_50/sma_200/rsrs/atr/support/resistance`，但证据层没有继续把旧字段名写回 raw seed。
+- `tests/security_feature_snapshot_cli.rs` 的 `security_feature_snapshot_exposes_etf_specific_numeric_features` 因 `close_vs_sma50` 等字段不再是 numeric 而失败；`src/ops/security_scorecard.rs` 里的 ETF runtime guard 也仍显式依赖这组字段名。
+
+### 方案还差什么?
+- [ ] 仅剩 git 提交与推送收口；提交时继续排除 `tests/runtime_fixtures/**` 等运行产物。
+- [ ] 若后续决定彻底废弃 legacy raw feature 名称，需要连同 `security_feature_snapshot_cli`、`security_scorecard`、相关模型 artifact/训练合同一起整体改，不应再做半迁移。
+
+### 潜在问题
+- [ ] 当前修法是兼容层，意味着新旧字段会并存一段时间；若后续有人只改新字段、不改 alias，仍可能再次出现 snapshot/scorecard 漂移。
+- [ ] 来源仓 `TradingAgents` 上同一条 `security_feature_snapshot_exposes_etf_specific_numeric_features` 在本次 10 分钟窗口内未跑完，说明那边单测耗时仍偏长；不过 `StockMind` 本地失败根因已被独立复现并修复，不依赖该结果。
+
+### 关闭项
+- 已通过 `cargo test --test security_feature_snapshot_cli security_feature_snapshot_exposes_etf_specific_numeric_features -- --nocapture`
+- 已通过 `cargo test --test security_feature_snapshot_cli -- --nocapture`
+- 已通过 `cargo test --test security_scorecard_training_cli -- --nocapture`
+- 已通过 `cargo test --test security_scorecard_cli -- --nocapture`
+
+### 记忆点（可选）
+- 用户要求“不要任何幻想”，所以完整迁移后必须先验证字段合同有没有断，再谈功能是否对齐；这次根因就是“指标还在，但 raw feature 名字丢了”。
+- 用户明确提醒不要把 `tests/runtime_fixtures/**` 这类历史/运行生成物带进提交。
