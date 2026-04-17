@@ -142,6 +142,8 @@ struct TrainedLogisticModel {
     coefficients: Vec<f64>,
 }
 
+const UNSEEN_CATEGORICAL_BIN_LABEL: &str = "__unseen__";
+
 // 2026-04-09 CST: 这里实现 Task 5 的最小正式训练入口，原因是我们需要先把训练主链跑通，再继续做回算重估和晋级治理；
 // 目的：以最小的“样本采集 -> 分箱 -> WOE -> logistic -> artifact -> refit”闭环承接现有 scorecard 体系。
 pub fn security_scorecard_training(
@@ -663,7 +665,7 @@ fn build_categorical_bins(
         }
     }
 
-    Ok(bucket_counts
+    let mut bins = bucket_counts
         .into_iter()
         .map(
             |(value, (positive_count, negative_count))| FeatureBinModel {
@@ -679,7 +681,15 @@ fn build_categorical_bins(
                 ),
             },
         )
-        .collect())
+        .collect::<Vec<_>>();
+    // 2026-04-17 CST: Added because the sibling-repo training fix established one governed
+    // unseen-category contract that StockMind should preserve as well.
+    // Reason: train-only categorical bins are too thin once later evaluation touches values that
+    // never appeared in the fit split.
+    // Purpose: append one explicit neutral fallback bin instead of silently leaving the artifact
+    // without a stable landing point for unseen categorical values.
+    bins.push(build_unseen_categorical_bin());
+    Ok(bins)
 }
 
 fn build_numeric_bins(
@@ -868,6 +878,13 @@ fn resolve_feature_woe(
                         .any(|candidate| candidate == category)
                 })
                 .map(|bin| bin.woe)
+                .or_else(|| {
+                    feature_model
+                        .bins
+                        .iter()
+                        .find(|bin| bin.bin_label == UNSEEN_CATEGORICAL_BIN_LABEL)
+                        .map(|bin| bin.woe)
+                })
                 .ok_or_else(|| {
                     SecurityScorecardTrainingError::Build(format!(
                         "no categorical bin matched feature `{}` value `{category}`",
@@ -890,6 +907,20 @@ fn resolve_feature_woe(
             "feature `{}` kind mismatch",
             feature_model.feature_name
         ))),
+    }
+}
+
+fn build_unseen_categorical_bin() -> FeatureBinModel {
+    FeatureBinModel {
+        bin_label: UNSEEN_CATEGORICAL_BIN_LABEL.to_string(),
+        match_values: vec![],
+        min_inclusive: None,
+        max_exclusive: None,
+        // 2026-04-17 CST: Added because the fallback must keep inference numerically stable
+        // without inventing unsupported direction for categories never observed in train.
+        // Purpose: use a neutral WOE so later scoring can continue while keeping the artifact
+        // contract explicit and inspectable.
+        woe: 0.0,
     }
 }
 

@@ -530,6 +530,144 @@ fn security_scorecard_training_keeps_numeric_feature_contract_when_fundamental_m
     }
 }
 
+#[test]
+fn security_scorecard_training_tolerates_unseen_categorical_values_in_diagnostic_splits() {
+    // 2026-04-17 CST: Added because the user provided a real training rerun that crashed when
+    // `valid/test` introduced a categorical value not seen during train-only binning.
+    // Reason: `metrics_summary` re-encodes non-train splits, so the old categorical contract was
+    // incomplete even though the artifact had already been persisted.
+    // Purpose: lock the regression before the trainer gets a governed neutral fallback bin.
+    let runtime_db_path =
+        create_test_runtime_db("security_scorecard_training_unseen_categorical_metrics");
+    let runtime_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have parent")
+        .join("scorecard_training_runtime");
+    let fixture_dir =
+        create_training_fixture_dir("security_scorecard_training_unseen_categorical_metrics");
+
+    let stock_up_csv = fixture_dir.join("stock_up.csv");
+    let stock_down_csv = fixture_dir.join("stock_down.csv");
+    let market_csv = fixture_dir.join("market.csv");
+    let sector_csv = fixture_dir.join("sector.csv");
+
+    fs::write(
+        &stock_up_csv,
+        build_trend_rows(420, 100.0, 0.9, 1.0).join("\n"),
+    )
+    .expect("upward symbol csv should be written");
+    fs::write(
+        &stock_down_csv,
+        build_trend_rows(420, 120.0, -0.7, 1.0).join("\n"),
+    )
+    .expect("downward symbol csv should be written");
+    fs::write(
+        &market_csv,
+        build_trend_rows(420, 3200.0, 2.5, 5.0).join("\n"),
+    )
+    .expect("market csv should be written");
+    fs::write(
+        &sector_csv,
+        build_trend_rows(420, 980.0, 1.4, 2.0).join("\n"),
+    )
+    .expect("sector csv should be written");
+
+    import_history_csv(&runtime_db_path, &stock_up_csv, "601916.SH");
+    import_history_csv(&runtime_db_path, &stock_down_csv, "600000.SH");
+    import_history_csv(&runtime_db_path, &market_csv, "510300.SH");
+    import_history_csv(&runtime_db_path, &sector_csv, "512800.SH");
+
+    let server = spawn_http_route_server(vec![
+        (
+            "/financials",
+            "HTTP/1.1 200 OK",
+            r#"[
+                {
+                    "REPORT_DATE":"2025-12-31",
+                    "NOTICE_DATE":"2026-03-28",
+                    "TOTAL_OPERATE_INCOME":308227000000.0,
+                    "YSTZ":8.37,
+                    "PARENT_NETPROFIT":11117000000.0,
+                    "SJLTZ":9.31,
+                    "ROEJQ":14.8
+                }
+            ]"#,
+            "application/json",
+        ),
+        (
+            "/announcements",
+            "HTTP/1.1 200 OK",
+            r#"{
+                "data":{
+                    "list":[]
+                }
+            }"#,
+            "application/json",
+        ),
+    ]);
+
+    let request = json!({
+        "tool": "security_scorecard_training",
+        "args": {
+            "created_at": "2026-04-17T18:10:00+08:00",
+            "training_runtime_root": runtime_root.to_string_lossy(),
+            "market_scope": "A_SHARE",
+            "instrument_scope": "EQUITY",
+            "symbol_list": ["601916.SH", "600000.SH"],
+            "market_symbol": "510300.SH",
+            "sector_symbol": "512800.SH",
+            "market_profile": "a_share_core",
+            "sector_profile": "a_share_bank",
+            "horizon_days": 10,
+            "target_head": "direction_head",
+            "train_range": "2025-03-01..2025-08-31",
+            "valid_range": "2025-09-01..2025-11-30",
+            "test_range": "2025-12-01..2026-01-31",
+            "feature_set_version": "security_feature_snapshot.v1",
+            "label_definition_version": "security_forward_outcome.v1"
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &[
+            (
+                "EXCEL_SKILL_EASTMONEY_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
+                "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+        ],
+    );
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    let artifact_path = PathBuf::from(
+        output["data"]["artifact_path"]
+            .as_str()
+            .expect("artifact path should exist"),
+    );
+    let artifact_json: Value =
+        serde_json::from_slice(&fs::read(&artifact_path).expect("artifact should be readable"))
+            .expect("artifact should be valid json");
+    let risk_warning_feature = artifact_json["features"]
+        .as_array()
+        .expect("features should be an array")
+        .iter()
+        .find(|feature| feature["feature_name"] == "has_risk_warning_notice")
+        .expect("risk warning feature should exist");
+    assert!(
+        risk_warning_feature["bins"]
+            .as_array()
+            .expect("risk warning bins should be an array")
+            .iter()
+            .any(|bin| bin["bin_label"] == "__unseen__"),
+        "artifact should expose the governed unseen categorical fallback bin"
+    );
+}
+
 fn import_history_csv(runtime_db_path: &Path, csv_path: &Path, symbol: &str) {
     let request = json!({
         "tool": "import_stock_price_history",

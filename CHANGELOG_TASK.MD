@@ -175,3 +175,29 @@
 
 ### 记忆点（可选）
 - 用户这一步要的是“交接时把未来不要怎么做写清楚”，尤其是不要再默认往 `stock.rs` 上堆新能力。
+## 2026-04-17
+### 修改内容
+- `tests/security_scorecard_training_cli.rs`：新增 `security_scorecard_training_tolerates_unseen_categorical_values_in_diagnostic_splits` 回归测试，目的：先锁住“artifact 必须显式携带 `__unseen__` fallback categorical bin”这一正式合同。
+- `src/ops/security_scorecard_training.rs`：为 categorical 分箱追加 `__unseen__` neutral fallback bin，并在 WOE 解析时回退到该 bin，目的：把 sibling repo 已验证的 unseen categorical 修复稳妥回灌到 `StockMind` 现有训练链。
+- `docs/fix/2026-04-17-categorical-unseen-fallback-findings.md` / `docs/plans/2026-04-17-categorical-unseen-fallback-design.md`：同步这轮问题说明与设计文档，目的：保留这次合并的真实背景、边界与测试依据。
+
+### 修改原因
+- 用户明确提供了 `TradingAgents` 中已经修好的 scorecard training 相关绝对路径，并要求核对后合并到 `StockMind` 再推送。
+- 实际对比后确认源仓这轮真实问题核心是 categorical unseen fallback，但源仓 training 栈已经比 `StockMind` 更厚；因此本轮按最稳妥方式抽取已验证的 bug fix，而不是整包迁移更厚的训练体系。
+- 先补测试再补实现，避免“看起来对了”但没有把正式 artifact 合同锁住。
+
+### 方案还差什么?
+- [ ] 如后续需要对齐 `TradingAgents` 更厚的 training diagnostics / 36 特征体系，再单独做依赖闭包核对后迁移，不在本轮 unseen fallback 修复里混入。
+- [ ] 如后续要做正式验收，可再补一条覆盖多个 categorical 字段的 test-only unseen 值回归测试，而不只锁 `has_risk_warning_notice`。
+
+### 潜在问题
+- [ ] 本轮只回灌了 unseen categorical fallback，不代表 `TradingAgents` 当前更厚的 training diagnostics、taxonomy 路由和 36 特征合同已经全部同步到 `StockMind`。
+- [ ] `__unseen__` 采用 neutral `woe = 0.0`，能保稳定但不会提供方向信息；后续若出现大量 unseen 类别，仍需回到样本覆盖与特征治理层处理。
+
+### 关闭项
+- 已通过 `cargo test --test security_scorecard_training_cli security_scorecard_training_tolerates_unseen_categorical_values_in_diagnostic_splits -- --nocapture`
+- 已通过 `cargo test --test security_scorecard_training_cli -- --nocapture`
+- 已同步源仓设计与 findings 文档到 `StockMind/docs`
+
+### 记忆点（可选）
+- 用户强调“不要幻想”，所以从 sibling repo 合并修复时必须先核对目标仓依赖闭包，再决定是抽取核心 fix 还是整体迁移，不能把更厚的一整层实现直接硬拷进来。
