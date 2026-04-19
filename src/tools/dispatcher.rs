@@ -9,8 +9,16 @@ mod stock_ops;
 pub fn dispatch(request: ToolRequest) -> ToolResponse {
     match request.tool.as_str() {
         "tool_catalog" => ToolResponse::tool_catalog(),
-        "import_stock_price_history" => stock_ops::dispatch_import_stock_price_history(request.args),
+        "import_stock_price_history" => {
+            stock_ops::dispatch_import_stock_price_history(request.args)
+        }
+        "import_stock_price_history_legacy_db" => {
+            stock_ops::dispatch_import_stock_price_history_legacy_db(request.args)
+        }
         "sync_stock_price_history" => stock_ops::dispatch_sync_stock_price_history(request.args),
+        "security_corporate_action_backfill" => {
+            stock_ops::dispatch_security_corporate_action_backfill(request.args)
+        }
         "security_fundamental_history_live_backfill" => {
             stock_ops::dispatch_security_fundamental_history_live_backfill(request.args)
         }
@@ -62,18 +70,12 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         "security_decision_committee" => {
             stock_ops::dispatch_security_decision_committee(request.args)
         }
-        "security_committee_vote" => {
-            stock_ops::dispatch_security_committee_vote(request.args)
-        }
+        "security_committee_vote" => stock_ops::dispatch_security_committee_vote(request.args),
         "security_committee_member_agent" => {
             stock_ops::dispatch_security_committee_member_agent(request.args)
         }
-        "security_chair_resolution" => {
-            stock_ops::dispatch_security_chair_resolution(request.args)
-        }
-        "security_decision_package" => {
-            stock_ops::dispatch_security_decision_package(request.args)
-        }
+        "security_chair_resolution" => stock_ops::dispatch_security_chair_resolution(request.args),
+        "security_decision_package" => stock_ops::dispatch_security_decision_package(request.args),
         "security_decision_verify_package" => {
             stock_ops::dispatch_security_decision_verify_package(request.args)
         }
@@ -83,9 +85,7 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         "security_decision_submit_approval" => {
             stock_ops::dispatch_security_decision_submit_approval(request.args)
         }
-        "security_condition_review" => {
-            stock_ops::dispatch_security_condition_review(request.args)
-        }
+        "security_condition_review" => stock_ops::dispatch_security_condition_review(request.args),
         "security_position_plan" => stock_ops::dispatch_security_position_plan(request.args),
         "security_position_plan_record" => {
             stock_ops::dispatch_security_position_plan_record(request.args)
@@ -93,9 +93,13 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         "security_portfolio_position_plan" => {
             stock_ops::dispatch_security_portfolio_position_plan(request.args)
         }
-        "security_execution_record" => {
-            stock_ops::dispatch_security_execution_record(request.args)
+        "security_account_objective_contract" => {
+            stock_ops::dispatch_security_account_objective_contract(request.args)
         }
+        "security_portfolio_replacement_plan" => {
+            stock_ops::dispatch_security_portfolio_replacement_plan(request.args)
+        }
+        "security_execution_record" => stock_ops::dispatch_security_execution_record(request.args),
         "security_execution_journal" => {
             stock_ops::dispatch_security_execution_journal(request.args)
         }
@@ -114,27 +118,15 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         "security_record_post_meeting_conclusion" => {
             stock_ops::dispatch_security_record_post_meeting_conclusion(request.args)
         }
-        "security_feature_snapshot" => {
-            stock_ops::dispatch_security_feature_snapshot(request.args)
-        }
-        "security_forward_outcome" => {
-            stock_ops::dispatch_security_forward_outcome(request.args)
-        }
-        "security_master_scorecard" => {
-            stock_ops::dispatch_security_master_scorecard(request.args)
-        }
-        "security_scorecard_refit" => {
-            stock_ops::dispatch_security_scorecard_refit(request.args)
-        }
+        "security_feature_snapshot" => stock_ops::dispatch_security_feature_snapshot(request.args),
+        "security_forward_outcome" => stock_ops::dispatch_security_forward_outcome(request.args),
+        "security_master_scorecard" => stock_ops::dispatch_security_master_scorecard(request.args),
+        "security_scorecard_refit" => stock_ops::dispatch_security_scorecard_refit(request.args),
         "security_scorecard_training" => {
             stock_ops::dispatch_security_scorecard_training(request.args)
         }
-        "security_model_promotion" => {
-            stock_ops::dispatch_security_model_promotion(request.args)
-        }
-        "register_resonance_factor" => {
-            stock_ops::dispatch_register_resonance_factor(request.args)
-        }
+        "security_model_promotion" => stock_ops::dispatch_security_model_promotion(request.args),
+        "register_resonance_factor" => stock_ops::dispatch_register_resonance_factor(request.args),
         "append_resonance_factor_series" => {
             stock_ops::dispatch_append_resonance_factor_series(request.args)
         }

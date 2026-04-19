@@ -9,6 +9,12 @@ use crate::ops::stock::stock_data_pipeline::import_stock_price_history::{
 use crate::ops::stock::stock_execution_and_position_management::security_account_open_position_snapshot::{
     SecurityAccountOpenPositionSnapshotRequest, security_account_open_position_snapshot,
 };
+use crate::ops::stock::stock_execution_and_position_management::security_account_objective_contract::{
+    SecurityAccountObjectiveContractRequest, security_account_objective_contract,
+};
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_replacement_plan::{
+    SecurityPortfolioReplacementPlanRequest, security_portfolio_replacement_plan,
+};
 use crate::ops::stock::stock_pre_trade::security_analysis_contextual::{
     SecurityAnalysisContextualRequest, security_analysis_contextual,
 };
@@ -322,11 +328,10 @@ pub(super) fn dispatch_security_external_proxy_history_import(args: Value) -> To
     // proxy-history import tool on the same public dispatcher as the rest of the
     // stock data pipeline.
     // Purpose: remove the split between exported module presence and dispatcher access.
-    let request =
-        match serde_json::from_value::<SecurityExternalProxyHistoryImportRequest>(args) {
-            Ok(request) => request,
-            Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
-        };
+    let request = match serde_json::from_value::<SecurityExternalProxyHistoryImportRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
 
     match security_external_proxy_history_import(&request) {
         Ok(result) => ToolResponse::ok(json!(result)),
@@ -671,6 +676,49 @@ pub(super) fn dispatch_security_account_open_position_snapshot(args: Value) -> T
     }
 }
 
+// 2026-04-19 CST: Added because P10 now starts the portfolio-core expansion
+// from one formal account objective and candidate-set builder on the public stock bus.
+// Reason: the current RED test correctly fails until the dispatcher recognizes
+// this new tool and routes governed inputs into the new P10 module.
+// Purpose: expose the account objective contract builder on the official stock dispatcher.
+pub(super) fn dispatch_security_account_objective_contract(args: Value) -> ToolResponse {
+    let request = match serde_json::from_value::<SecurityAccountObjectiveContractRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_account_objective_contract(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-19 CST: Added because Task 3 now exposes the first P11 unified
+// replacement solver on the public stock dispatcher.
+// Reason: the current RED test correctly fails until the stock bus recognizes
+// and routes the formal replacement-plan contract.
+// Purpose: route portfolio replacement plan requests through the official stock dispatcher.
+pub(super) fn dispatch_security_portfolio_replacement_plan(args: Value) -> ToolResponse {
+    let request = match serde_json::from_value::<SecurityPortfolioReplacementPlanRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_portfolio_replacement_plan(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-19 CST: Added because Task 7 now exposes the governed committee
+// decision package as its own public stock tool.
+// Reason: without this branch, the catalog-visible committee package contract
+// still falls through to "unsupported tool" even after the module exists.
+// Purpose: route the formal post-open committee handoff through the official stock bus.
+// 2026-04-19 CST: Added because the newly approved adjustment-input bridge must
+// be reachable from the public stock dispatcher instead of remaining an internal-only contract.
+// Reason: the current RED test correctly fails until the stock bus recognizes this tool.
+// Purpose: route the formal approved downstream bridge through the official stock dispatcher.
 pub(super) fn dispatch_security_post_trade_review(args: Value) -> ToolResponse {
     // 2026-04-09 CST: 这里接入 security_post_trade_review 的 stock dispatcher 分支，原因是 Task 8 要把投后复盘升级为正式 Tool；
     // 目的：让 CLI / Skill 直接消费正式复盘文档，并保持其事实源复用 position_plan 与 forward_outcome 主链。
@@ -879,8 +927,8 @@ pub(super) fn dispatch_security_record_post_meeting_conclusion(args: Value) -> T
         Ok(package) => package,
         Err(error) => return ToolResponse::error(error),
     };
-    let post_meeting_conclusion = build_security_post_meeting_conclusion(
-        SecurityPostMeetingConclusionBuildInput {
+    let post_meeting_conclusion =
+        build_security_post_meeting_conclusion(SecurityPostMeetingConclusionBuildInput {
             generated_at,
             scene_name: package.scene_name.clone(),
             decision_id: package.decision_id.clone(),
@@ -900,21 +948,21 @@ pub(super) fn dispatch_security_record_post_meeting_conclusion(args: Value) -> T
             reviewer,
             reviewer_role,
             revision_reason: revision_reason.clone(),
-        },
-    );
-    let post_meeting_conclusion_path =
-        match resolve_post_meeting_conclusion_path(Path::new(&package_path), &package.decision_id) {
-            Ok(path) => path,
-            Err(error) => return ToolResponse::error(error),
-        };
-    if let Err(error) =
-        persist_json_pretty(&post_meeting_conclusion_path, &post_meeting_conclusion)
+        });
+    let post_meeting_conclusion_path = match resolve_post_meeting_conclusion_path(
+        Path::new(&package_path),
+        &package.decision_id,
+    ) {
+        Ok(path) => path,
+        Err(error) => return ToolResponse::error(error),
+    };
+    if let Err(error) = persist_json_pretty(&post_meeting_conclusion_path, &post_meeting_conclusion)
     {
         return ToolResponse::error(error);
     }
 
-    let revision_result = match security_decision_package_revision(
-        &SecurityDecisionPackageRevisionRequest {
+    let revision_result =
+        match security_decision_package_revision(&SecurityDecisionPackageRevisionRequest {
             package_path: package_path.clone(),
             revision_reason,
             reverify_after_revision,
@@ -923,11 +971,10 @@ pub(super) fn dispatch_security_record_post_meeting_conclusion(args: Value) -> T
             post_trade_review_path: None,
             approval_brief_signing_key_secret,
             approval_brief_signing_key_secret_env,
-        },
-    ) {
-        Ok(result) => result,
-        Err(error) => return ToolResponse::error(error.to_string()),
-    };
+        }) {
+            Ok(result) => result,
+            Err(error) => return ToolResponse::error(error.to_string()),
+        };
 
     ToolResponse::ok(json!({
         "post_meeting_conclusion": post_meeting_conclusion,
@@ -945,7 +992,9 @@ pub(super) fn dispatch_security_record_post_meeting_conclusion(args: Value) -> T
 // 2026-04-17 CST: Reason=record_post_meeting now starts from an existing package file
 // rather than a raw chair request. Purpose=centralize package loading and keep dispatcher
 // error messages stable for the orchestration entry.
-fn load_decision_package_document(package_path: &str) -> Result<SecurityDecisionPackageDocument, String> {
+fn load_decision_package_document(
+    package_path: &str,
+) -> Result<SecurityDecisionPackageDocument, String> {
     serde_json::from_slice::<SecurityDecisionPackageDocument>(
         &fs::read(package_path).map_err(|error| error.to_string())?,
     )

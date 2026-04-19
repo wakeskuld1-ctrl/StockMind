@@ -1,0 +1,1945 @@
+## 2026-04-17
+### Modified
+- Updated `src/ops/security_chair_resolution.rs` to expose governed chair-side entry and sizing fields:
+  - `entry_grade`
+  - `entry_reason`
+  - `entry_blockers`
+  - `target_gross_pct`
+  - `sizing_grade`
+  - `sizing_reason`
+- Reused shared helpers from `security_position_plan` inside chair resolution building instead of adding a chair-only heuristic.
+- Added a regression assertion in `tests/security_chair_resolution_cli.rs` for the model-unavailable downgrade case so the chair object must expose the same entry/sizing answer as the position-plan side.
+
+### Why
+- The new `StockMind` mainline already carries governed entry/sizing on the position-plan and approval side, but the final chair output was still missing the same formal answer.
+- The user requested that this capability be merged back into the new standalone project rather than leaving it only in the old local repository.
+
+### Remaining
+- [ ] Decide whether the next backport slice should continue with `security_decision_submit_approval` or stop after the chair-side dual-anchor contract.
+- [ ] Run a broader focused verification set if we continue to touch adjacent stock decision modules.
+
+### Risks
+- [ ] This round only verified focused chair-resolution regressions, not the full repository test suite.
+- [ ] The active local project path is `D:\SM` instead of `D:\Rust\StockMind` because Windows path-length limits blocked checkout under the longer path.
+
+### Closed
+- Chair-side entry/sizing fields merged into `StockMind`
+- Focused chair regression added
+- Focused verification passed
+
+## 2026-04-17
+### Modified
+- Rewrote `D:\SM\docs\AI_HANDOFF.md` into a practical AI handoff manual for the standalone `StockMind` mainline.
+- Consolidated the mainline repo decision, current working branch, local working-tree status, and the already backported `security_chair_resolution` capability slice.
+- Added an audit summary of `D:\Rust\Stock`, including workspace shape, `.env.example`, live data-source wiring, adapter inventory, SQLite schema scope, and local runtime data artifacts.
+
+### Why
+- The previous handoff file focused on architecture boundaries, but it was not strong enough as an execution handoff for the next AI session.
+- The user explicitly asked for both a usable handoff manual and a check on the Rust `Stock` project because it already connects some data.
+
+### Remaining
+- [ ] Decide whether the next delivery step should continue as another minimal backport into `D:\SM` or start a fresh capability branch directly on the standalone mainline.
+- [ ] If future work needs market-data integration in `D:\SM`, define which pieces of `D:\Rust\Stock` stay reference-only and which pieces are safe for minimal reuse.
+
+### Risks
+- [ ] This round updated documentation only and did not rerun repository tests in `D:\SM`.
+- [ ] `D:\Rust\Stock` was audited as a reference project, but no code was merged from it in this round.
+
+### Closed
+- AI handoff manual rewritten for `D:\SM`
+- `D:\Rust\Stock` data-access audit captured into the handoff manual
+- Task journal updated for downstream AI continuity
+
+## 2026-04-17
+### Modified
+- 将 `D:\Rust\Stock\stock.db` 剪切到 `D:\SM\.stockmind_runtime\incoming\stock.db`，未执行复制。
+- 将 `D:\Rust\Stock\infra\stock.db` 剪切到 `D:\SM\.stockmind_runtime\incoming\infra_stock.db`，未执行复制。
+- 先完成 `D:\SM` 本地训练底座的数据归集，保留 `Stock` 现成 SQLite 数据作为后续行情/估值/静态信息抽取来源。
+
+### Why
+- 用户明确要求先复用已有数据库数据源，再继续下载补齐，避免从零抓全量数据。
+- 用户明确要求使用“剪切”而不是“复制”，避免 `D:\Rust\Stock` 与 `D:\SM` 同时保留大体积 SQLite 文件占用磁盘空间。
+
+### Remaining
+- [ ] 从 `D:\SM\.stockmind_runtime\incoming\stock.db` 抽取可直接进入训练准备的历史行情与估值数据，并映射到 `StockMind` 正式 runtime 分库。
+- [ ] 使用本地采集工具补齐公告、消息与其它未覆盖的数据族后，再进入训练阶段。
+
+### Risks
+- [ ] `D:\Rust\Stock\stock.db` 是单库多表结构，不能直接当作 `StockMind` 的 `stock_history.db` 正式运行时替代，需要后续做结构化导入。
+- [ ] `market_sentiment`、`analysis_results` 等表覆盖度较低，不能默认作为正式训练主数据源。
+
+### Closed
+- 已确认 `D:\SM\.stockmind_runtime\incoming\stock.db` 存在，且原路径 `D:\Rust\Stock\stock.db` 已不存在。
+- 已确认 `D:\SM\.stockmind_runtime\incoming\infra_stock.db` 存在，且原路径 `D:\Rust\Stock\infra\stock.db` 已不存在。
+
+## 2026-04-17
+### Modified
+- `tests/import_stock_price_history_legacy_db_cli.rs`：新增 legacy SQLite 历史桥接的 CLI 回归测试，并补一条 `NULL` OHLC 脏行跳过回归，目的：先锁住“单库 `stocks_daily` -> 正式 `stock_history.db`”以及“坏行不中断整批导入”的正式合同。
+- `src/ops/import_stock_price_history_legacy_db.rs`：新增 `import_stock_price_history_legacy_db`，把 legacy `stocks_daily` 行按 symbol 正规化后导入正式 `StockHistoryStore`，并在遇到 `NULL` OHLC 行时跳过并统计 `skipped_row_count`，目的：复用已剪切进 `D:\SM` 的旧库数据而不把整库直接硬顶成正式 runtime。
+- `src/ops/stock.rs` / `src/ops/stock_data_pipeline.rs` / `src/tools/catalog.rs` / `src/tools/dispatcher.rs` / `src/tools/dispatcher/stock_ops.rs`：补齐新桥接工具的 stock 边界导出、data-pipeline 分组、tool catalog 与 dispatcher 路由，目的：让旧库导入能力成为正式可调用 Tool，而不是一次性脚本。
+- 运行正式补数：
+  - 已把 taxonomy 相关 `41` 个 equity symbol 的 legacy 价格历史导入 `D:\SM\.stockmind_runtime\stock_history.db`
+  - 已用 `sync_stock_price_history` 补齐 `510300.SH`、`510880.SH`、`512070.SH`、`512800.SH`、`159755.SZ`、`159928.SZ` 六个 market/sector 代理 ETF
+  - 已为 `41` 个 equity symbol 批量执行 `security_fundamental_history_live_backfill`
+  - 已为 `41` 个 equity symbol 批量执行 `security_disclosure_history_live_backfill`
+
+### Why
+- 用户明确要求先复用已存在数据源，再继续下载补齐，而不是从零重新抓全量训练数据。
+- `incoming/stock.db` 是单库多表，不能直接替代 `StockMind` 正式 runtime 分库，因此需要一个最小桥接导入层。
+- 真实导入时暴露出 legacy 脏行含 `NULL` OHLC，如果不先修 importer，正式导入会在真实库上中断。
+
+### Remaining
+- [ ] 在当前数据已补齐的基础上，重新评估训练标签与“强势/弱势分桶”目标，决定是否继续沿 `direction_head` 修补，还是切到新的分桶训练合同。
+- [ ] 评估是否需要把 corporate action / 其它未纳入当前训练主链的数据族并入正式 runtime，再进入下一轮训练。
+
+### Risks
+- [ ] `security_fundamental_history.db` 当前每个 equity symbol 只有最近 `4` 个报告期；如果后续分桶训练需要更厚的财报时间轴，仍需继续补多期历史。
+- [ ] `security_disclosure_history.db` 当前每个 equity symbol 本轮批量抓取为最近 `60` 条公告；如后续要做更长周期的事件强弱分桶，可能仍需继续扩页。
+- [ ] `159755.SZ` 自身上市较晚，价格历史起点为 `2021-06-24`，这不是补数失败，而是产品实际历史长度限制。
+- [ ] 当前还没有把 corporate action 历史纳入本轮补数；如果后续标签或特征要处理分红送转除权影响，需要单独补齐。
+
+### Closed
+- 已通过 `cargo test --test import_stock_price_history_legacy_db_cli -- --nocapture`
+- 已通过 `cargo test --test stock_training_data_coverage_audit_cli -- --nocapture`
+- 已确认正式 runtime 当前规模：
+  - `stock_history.db / stock_price_history = 61302`
+  - `security_fundamental_history.db / security_fundamental_history = 164`
+  - `security_disclosure_history.db / security_disclosure_history = 2460`
+- 已确认 taxonomy 相关 `41` 个 equity symbol 当前价格历史最后日期均已补到 `2026-04-17`
+- 
+## 2026-04-18
+### Modified
+- Added `tests/security_corporate_action_backfill_cli.rs` and completed the red-green cycle for the new governed corporate-action backfill tool.
+- Added `src/ops/security_corporate_action_backfill.rs` and wired it into `src/ops/stock.rs`, `src/ops/stock_data_pipeline.rs`, `src/tools/catalog.rs`, `src/tools/dispatcher.rs`, and `src/tools/dispatcher/stock_ops.rs`.
+- Added focused taxonomy-coverage tests for `sync_template_resonance_factors` and `template_factor_definitions`.
+- Expanded resonance template sync and bootstrap coverage from bank-only to include `broker`, `insurance`, `consumer`, `manufacturing_growth`, and `dividend_soe`.
+- Bootstrapped resonance factor definitions and synced active taxonomy template factor series into `D:\SM\.stockmind_runtime\security_resonance.db`.
+
+### Why
+- Scheme C2 required formal governed capability before continuing full data completion.
+- The current A-share taxonomy already used templates beyond `bank`, so bank-only resonance coverage would leave training and research-sidecar data incomplete.
+- `signal_outcome` backfill depends on resonance definitions and factor series being present in formal runtime.
+
+### Remaining
+- [ ] Source and import real governed records into `D:\SM\.stockmind_runtime\security_corporate_action.db`.
+- [ ] Source and import real governed records into `D:\SM\.stockmind_runtime\security_external_proxy.db`.
+- [ ] Design and execute historical snapshot generation so `signal_outcome_research.db` can contain real forward outcomes instead of remaining empty on the latest date.
+- [ ] Re-run training-readiness and feature-completeness checks after the remaining data families are filled.
+
+### Risks
+- [ ] The new corporate-action tool is verified by contract tests, but the runtime still lacks real imported corporate-action rows.
+- [ ] `signal_outcome_research.db` is still empty because latest-date snapshots do not have future return windows to backfill.
+- [ ] Some resonance factor series are shorter than equity price history because source ETFs such as `159755.SZ` or newly synced bond proxies have shorter available histories.
+
+### Closed
+- `security_corporate_action_backfill` is now a formal stock tool with catalog and dispatcher coverage.
+- Active taxonomy resonance templates now have both sync recipes and bootstrap definitions.
+- Formal runtime resonance DB is no longer empty (`factor_registry = 33`, `factor_series = 22731`).
+- Focused verification and regression targets passed.
+
+## 2026-04-18
+### Modified
+- 使用现有正式工具链继续补齐训练底座数据，不复制大库，直接往 `D:\SM\.stockmind_runtime` 正式 runtime 回填真实数据。
+- 通过 `akshare.stock_dividend_cninfo` 抓取 taxonomy 41 只股票的历史分红送转，生成正式 backfill 批次并写入 `D:\SM\.stockmind_runtime\security_corporate_action.db`。
+- 基于已有 `D:\SM\.stockmind_runtime\stock_history.db` 为 41 只股票派生股价相对行业 ETF 的 5 日强弱与行业 ETF 5 日量能代理，生成正式 CSV 批次并写入 `D:\SM\.stockmind_runtime\security_external_proxy.db`。
+- 追加更新 `task_plan.md`、`findings.md`、`progress.md`，把本轮真实补数结果和剩余训练缺口同步到项目上下文。
+
+### Why
+- 用户要求先把数据和指标尽量补全，再进入下一轮模型训练和方法切换。
+- 当前正式 runtime 中最明显的两个空洞就是 `security_corporate_action.db` 和 `security_external_proxy.db`，如果不先补齐，后面的强弱分桶训练仍然容易反复回头补基础层。
+
+### Remaining
+- [ ] 评估是否需要把 `signal_outcome_research.db` 从当前月频历史样本继续加密到周频或更高密度，以支持更稳定的强弱分桶训练。
+- [ ] 评估是否需要继续补 `external_proxy` 的宏观/利率/汇率等字段，而不只保留当前第一批 equity 代理字段。
+- [ ] 如下一轮要正式开训，补一份“训练数据 + 指标完整度”总审计结果，避免只看单库行数。
+
+### Risks
+- [ ] `security_external_proxy.db` 当前虽然已不为空，但仅覆盖 equity 场景下最先可解释的 4 个代理字段，不能等同于全量宏观代理全部就绪。
+- [ ] `signal_outcome_research.db` 目前仍以月频历史快照为主，若后续直接做更细粒度分桶，样本密度可能仍然不够。
+- [ ] 这轮是数据补数，没有新增代码验证集；真实性主要靠正式 tool 写入结果和 SQLite 落库核对。
+
+### Closed
+- `security_corporate_action.db` 已补齐真实记录：`964` 条，覆盖 `41` 个 symbol。
+- `security_external_proxy.db` 已补齐真实记录：`51480` 条，覆盖 `41` 个 symbol。
+- 真实补数批次文件已留存在 `D:\SM\.stockmind_runtime\generated_backfills\` 目录，后续可复查和重跑。
+### Why
+- The user approved the direction that bank training should use hierarchical inheritance while high-dividend / high-bonus remains a horizontal overlay instead of a competing main chain.
+- The next implementation slice must stay auditable and phase-based so each data completion step is followed by one real training round before continuing.
+- Freezing the design and task order first reduces the risk of mixing B-stage label repair with later A-stage pool expansion and overlay work.
+
+### Remaining
+- [ ] Get explicit approval to start Task 1 of the plan and enter the red-green cycle for dividend-aware forward-outcome labels.
+- [ ] Decide whether B-stage real training should widen the train window back to `2020-01-01` where symbol coverage permits, or keep a narrower governed window for the first repaired-label run.
+- [ ] Confirm the governed all-A-share bank list before A1 implementation if any bank membership edge cases appear during taxonomy expansion.
+
+### Risks
+- [ ] The new design is frozen, but no implementation code has started yet.
+- [ ] Some terminals still display Chinese markdown as garbled text even when the saved file is UTF-8, so file-content validation should rely on editor or downstream reads if needed.
+- [ ] Overlay definitions may still need one more threshold discussion once the bank parent and child results are visible.
+
+### Closed
+- The bank main-chain and high-dividend overlay relationship is now formalized as `main inheritance + horizontal overlay`, not true multi-parent model inheritance.
+- The implementation order is now locked as `B -> A1 -> A2 -> Overlay`.
+- Both design and execution-plan documents are stored under `D:\SM\docs\plans\`.
+- Both design and execution-plan documents are stored under `D:\SM\docs\plans\`.
+
+## 2026-04-18
+### Modified
+- Added three new corporate-action regression tests to `D:\SM\tests\security_forward_outcome_cli.rs` covering:
+  - cash dividend total return
+  - bonus-ratio share-count uplift
+  - combined cash dividend plus bonus compounding
+- Added one new benchmark-relative regression to `D:\SM\tests\security_scorecard_training_cli.rs` proving dividend-aware subject labels can create strong samples that would otherwise be neutral.
+- Updated `D:\SM\src\ops\security_forward_outcome.rs` so forward-return labels now:
+  - read governed rows from `security_corporate_action.db`
+  - accumulate `cash_dividend_per_share`
+  - apply `bonus_ratio` and `split_ratio` through a share-adjustment factor
+  - preserve the legacy adj-close path when no effective corporate action exists
+
+### Why
+- Scheme B starts with repairing label truth before running the next real `dividend_soe` training round.
+- The earlier label path ignored governed dividend and bonus events, which understated shareholder-return-heavy names and caused benchmark-relative bucket sampling to drop valid strong cases.
+- The new regression layer was needed so later training changes cannot silently fall back to close-to-close labels again.
+
+### Remaining
+- [ ] Run the real B-stage `dividend_soe` training round on formal runtime with the repaired label path.
+- [ ] Record artifact, registry, diagnostics, and split metrics for that real run.
+- [ ] Review whether the first repaired-label run should widen its train window farther back toward `2020-01-01`.
+
+### Risks
+- [ ] `max_drawdown` and `max_runup` still follow the older price-path contract; this round only repaired `forward_return`.
+- [ ] Benchmark-side return still uses the plain benchmark price path; ETF distribution handling was not expanded in this slice.
+- [ ] The new training regression depends on dense fixture dividends across the date window, so future edits to sampling cadence may require fixture maintenance.
+
+### Closed
+- TDD red-green cycle completed for dividend-aware subject forward-return labels.
+- Focused and adjacent verification passed:
+  - `cargo test --test security_forward_outcome_cli corporate_action -- --nocapture`
+  - `cargo test --test security_scorecard_training_cli relative_benchmark -- --nocapture`
+  - `cargo test --test security_forward_outcome_cli -- --nocapture`
+  - `cargo test --test security_scorecard_training_cli -- --nocapture`
+  - `cargo test --test security_scorecard_refit_cli -- --nocapture`
+
+## 2026-04-18
+### Modified
+- Executed the real `A2` governed child-pool training round for `state-owned-major-bank-child.v1` on the same formal runtime root and the same date windows used by `A1`.
+- Updated `D:\SM\task_plan.md`, `D:\SM\findings.md`, and `D:\SM\progress.md` with the bank parent-vs-child audit results, artifact paths, and next-step recommendation.
+- Recorded that the first `A2` real run used the wrong runtime root and was explicitly discarded from the comparison baseline.
+
+### Why
+- The approved execution order already moved from `B` into `A1 -> A2`, so the next required step was a real governed child-pool training round rather than more design work.
+- The parent-pool result was already weak, so we needed to verify whether `bank -> state-owned-major-bank` inheritance materially improved stability before deciding whether to continue into `Overlay`.
+- Using the same runtime root and the same windows as `A1` was necessary so the parent-vs-child comparison stayed auditable.
+
+### Remaining
+- [ ] Backfill the added 30 bank symbols into the missing governed families and retrain `bank-parent.v1`.
+- [ ] Re-check whether the added 30 bank symbols still need more formal `fundamental/disclosure` coverage after the governed-family audit.
+- [ ] Decide whether to start `Overlay` only after the next parent retrain, or to hold it until the label-shift problem is reduced.
+
+### Risks
+- [ ] `A2` remains `production_readiness = blocked` even though `valid_accuracy` and walk-forward accuracy improved.
+- [ ] The child-pool OOT test split collapsed into a one-sided label regime with `test positive_rate = 0.0`, so `test_accuracy = 0.0250` cannot support production sign-off.
+- [ ] `A1` is still contaminated by incomplete governed-family coverage for the newly added 30 banks, so the parent result should be retrained after the next补数 round before drawing a long-term conclusion.
+
+### Closed
+- Real governed `A2` training completed on `D:\SM\.stockmind_runtime`.
+- Verified real training by running:
+  - `cargo run --quiet` with `tool = security_scorecard_training`
+  - `training_contract_id = state-owned-major-bank-child.v1`
+  - `train = 2021-01-04..2025-06-30`
+  - `valid = 2025-07-01..2025-12-31`
+  - `test = 2026-01-01..2026-01-20`
+- Captured the final accepted `A2` outputs:
+  - `sample_count = 166`
+  - `train = 90`
+  - `valid = 36`
+  - `test = 40`
+  - `valid_accuracy = 0.5000`
+  - `test_accuracy = 0.0250`
+  - `mean_walk_forward_accuracy = 0.7398`
+
+## 2026-04-19
+### Modified
+- Reused the formal live history tools to close the remaining bank data gaps in `D:\SM\.stockmind_runtime` instead of adding a new ad-hoc importer.
+- Probed `601658.SH` first and confirmed both `security_fundamental_history_live_backfill` and `security_disclosure_history_live_backfill` can fetch and persist real governed rows on the shared runtime root.
+- Batch-backfilled the remaining missing bank `fundamental` coverage and saved the batch summary to:
+  - `D:\SM\.stockmind_runtime\generated_backfills\security_fundamental_history_live_backfill_bank_missing30_summary.json`
+- Batch-backfilled the remaining missing bank `disclosure` coverage and saved the batch summary to:
+  - `D:\SM\.stockmind_runtime\generated_backfills\security_disclosure_history_live_backfill_bank_missing30_summary.json`
+- Re-ran the real governed `bank-parent.v1` training round after the 42-bank pool became fully covered across `fundamental / disclosure / corporate_action / external_proxy`.
+- Updated `D:\SM\task_plan.md`, `D:\SM\findings.md`, and `D:\SM\progress.md` with the full-data bank audit and the refreshed `A1` result.
+
+### Why
+- The user explicitly asked to continue data completion first and only then judge whether the main problem had shifted from missing data to the training method itself.
+- The previous retrain had already closed `corporate_action` and `external_proxy`, but the added 30 bank symbols still lacked governed `fundamental` and `disclosure` history.
+- A clean method diagnosis needed one retrain on a fully completed 42-bank governed foundation instead of continuing to infer from partially completed bank features.
+
+### Remaining
+- [ ] Run a dedicated training-method diagnosis slice before starting `Overlay`.
+- [ ] Decide whether to remove or merge structurally redundant features such as `fundamental_status` and `data_gap_count`.
+- [ ] Decide whether the current OOT window and benchmark-relative split geometry should be widened or redesigned before the next bank retrain.
+
+### Risks
+- [ ] The refreshed full-data `A1` run is still `production_readiness = blocked`.
+- [ ] Full bank data completion did not improve `valid_accuracy` or `test_accuracy`, so the next bottleneck is likely methodological rather than another simple bank-family gap.
+- [ ] This round focused on real data backfill and runtime retraining; it did not add new code changes or new regression targets.
+
+### Closed
+- Bank `fundamental` coverage is now `42 / 42`.
+- Bank `disclosure` coverage is now `42 / 42`.
+- The four current governed bank training families are now all complete at `42 / 42`.
+- The refreshed full-data `bank-parent.v1` result has been captured and compared against the prior retrain baseline.
+
+## 2026-04-18
+### Modified
+- Added one regression test on `tests/security_feature_snapshot_cli.rs` to prove that historical snapshots must keep `fundamental/disclosure` unavailable when governed history is missing, even if live mock providers can still return payloads.
+- Updated `src/ops/security_analysis_fullstack.rs` so requests with `as_of_date` no longer fall back to live `fundamental/disclosure` providers after governed-history misses.
+- Updated `D:\SM\task_plan.md`, `D:\SM\progress.md`, and `D:\SM\findings.md` with the leak diagnosis, repair boundary, and verification evidence.
+
+### Why
+- The training audit exposed a high-severity historical information leakage bug: past-dated samples were still consuming live information payloads when governed `fundamental/disclosure` history had not been backfilled yet.
+- This leakage directly threatens label/feature integrity, so it had to be fixed before using the next training result as trustworthy evidence.
+
+### Remaining
+- [ ] Re-run at least one bank scorecard training / audit slice on top of the repaired historical information contract.
+- [ ] Confirm whether any already-produced training artifacts should be marked as suspect because they were generated before this leakage fix.
+
+### Risks
+- [ ] The current repair treats any request with `as_of_date` as a replay-style request; if a future product flow expects dated-but-live enrichment, that flow will need an explicit contract instead of implicit fallback.
+- [ ] This round verified the snapshot path thoroughly, but it did not yet rerun the downstream bank training artifacts after the fix.
+
+### Closed
+- Historical `fundamental/disclosure` live fallback is now blocked on the `security_feature_snapshot` replay path when governed history is missing.
+- Fresh verification passed:
+  - `cargo test --test security_feature_snapshot_cli security_feature_snapshot_keeps_historical_information_unavailable_when_governed_history_is_missing -- --exact --nocapture`
+  - `cargo test --test security_feature_snapshot_cli -- --nocapture`
+
+## 2026-04-18
+### Modified
+- Re-ran one real `bank-parent.v1` training / audit slice after the historical information leakage repair, using the unchanged parent windows:
+  - `2021-01-04..2025-06-30`
+  - `2025-07-01..2025-12-31`
+  - `2026-01-01..2026-01-20`
+- Captured the new artifact / registry / diagnostics:
+  - `D:\SM\.stockmind_runtime\scorecard_artifacts\a_share_equity_10d_direction_head__candidate_2026_04_18T11_40_00_08_00.json`
+  - `D:\SM\.stockmind_runtime\scorecard_model_registry\a_share_equity_10d_direction_head__candidate_2026_04_18T11_40_00_08_00.json`
+  - `D:\SM\.stockmind_runtime\scorecard_training_diagnostics\a_share_equity_10d_direction_head__candidate_2026_04_18T11_40_00_08_00.json`
+- Updated `D:\SM\task_plan.md`, `D:\SM\progress.md`, and `D:\SM\findings.md` with the post-fix rerun result and the new diagnosis boundary.
+
+### Why
+- After the historical information leak was repaired, the next model result had to be regenerated before it could be trusted as evidence.
+- The user explicitly asked to run it again and verify whether the information surface is now aligned.
+
+### Remaining
+- [ ] Decide whether to first prune / merge the new `disclosure_status + announcement_count + event_density_bucket + data_gap_count` redundancy cluster.
+- [ ] Decide whether earlier-time governed information coverage should be thickened further before the next parent rerun.
+- [ ] Decide whether to delay `Overlay` until the current parent model stops amplifying information-surface redundancy.
+
+### Risks
+- [ ] The post-fix rerun is still `production_readiness = blocked`.
+- [ ] `high_correlation_pair_count` rose from `2` to `9`, so the repaired information surface is now exposing a stronger event-feature coupling problem.
+- [ ] `valid_accuracy` still did not improve, even though `test_accuracy` and walk-forward accuracy ticked up slightly.
+
+### Closed
+- One real parent rerun now exists on the repaired historical information contract.
+- The stricter historical information contract did not reduce the bank parent sample base: the rerun stayed at `1015` samples with `604 / 236 / 175` splits.
+- Fresh execution verification passed:
+  - `cargo run --quiet` with `tool = security_scorecard_training`
+  - `training_contract_id = bank-parent.v1`
+  - `training_runtime_root = D:\SM\.stockmind_runtime`
+
+## 2026-04-18
+### Modified
+- Added `D:\SM\docs\plans\2026-04-18-interleaved-training-split-plan.md` to document the approved shift from regime-heavy sequential splits to interleaved market-calendar sampling.
+- Updated `D:\SM\src\ops\security_scorecard_training.rs` so the benchmark-relative bucket training path now:
+  - resolves one shared market-calendar anchor,
+  - builds a combined training span,
+  - assigns dates by `20` trading-day interleaved blocks,
+  - inserts governed trading-day purge gaps,
+  - intersects those split dates with each symbol's local qualified history before sampling.
+- Added unit regressions in `D:\SM\src\ops\security_scorecard_training.rs` to freeze the new `train -> valid -> train -> test -> train` block rotation and the purge-gap behavior.
+
+### Why
+- The user explicitly approved replacing the old year-style `2-1-1` split geometry because it can overfit a single bull/bear regime and bias validation conclusions.
+- The benchmark-relative bank training line needed a safer split contract that still preserves the existing legacy absolute-label path and current regression fixtures.
+
+### Remaining
+- [ ] Re-run one real bank benchmark-relative training slice on the new interleaved split contract and inspect whether the diagnostic stability improves.
+- [ ] Decide whether the current governed purge default should stay at the bounded half-horizon rule or become contract-configurable in a later round.
+- [ ] Decide whether the same interleaved split contract should be extended from the benchmark-relative bank line to other future training families.
+
+### Risks
+- [ ] This round changes the benchmark-relative split geometry only inside the trainer; downstream diagnostics still display the original configured window strings rather than the derived interleaved block map.
+- [ ] The current governed purge default is a bounded compromise for sample efficiency, not a mathematically exhaustive leakage barrier for every horizon.
+- [ ] The working tree already contained many unrelated runtime and research artifacts before this change, so follow-up staging still needs selective review.
+
+### Closed
+- Fresh verification passed:
+  - `cargo test relative_benchmark_split_ -- --nocapture`
+  - `cargo test security_scorecard_training::tests -- --nocapture`
+  - `cargo test --test security_scorecard_training_cli security_scorecard_training_supports_relative_benchmark_bucket_labels_with_denser_sampling -- --nocapture`
+  - `cargo test --test security_scorecard_training_cli -- --nocapture`
+
+## 2026-04-19
+### Modified
+- Updated `D:\SM\src\ops\security_forward_outcome.rs` to expose one shared governed forward-return helper so training can reuse dividend-aware / split-aware return math without replaying the full snapshot stack.
+- Updated `D:\SM\src\ops\security_decision_evidence_bundle.rs` and `D:\SM\src\ops\security_feature_snapshot.rs` to derive and persist:
+  - `market_cycle_status`
+  - `market_fund_flow_status`
+  - `sector_fund_flow_status`
+  - `market_risk_appetite_status`
+- Updated `D:\SM\src\ops\security_scorecard_training.rs` so:
+  - `1d` relative labels now use cross-sectional top/bottom `20%` buckets,
+  - the `1d` relative benchmark resolves to the sector benchmark first,
+  - the new market-state fields enter the training feature contract,
+  - tail dates without future rows are skipped instead of aborting the whole run.
+- Added / updated regressions in:
+  - `D:\SM\src\ops\security_scorecard_training.rs`
+  - `D:\SM\tests\security_feature_snapshot_cli.rs`
+  - `D:\SM\tests\security_scorecard_training_cli.rs`
+- Re-ran one real `bank-parent.v1` `1d` training round and produced:
+  - `D:\SM\.stockmind_runtime\scorecard_model_registry\a_share_equity_1d_direction_head__candidate_2026_04_19T00_12_00_08_00.json`
+  - `D:\SM\.stockmind_runtime\scorecard_training_diagnostics\a_share_equity_1d_direction_head__candidate_2026_04_19T00_12_00_08_00.json`
+
+### Why
+- The user approved moving the `1d` objective from sparse fixed-threshold prediction to denser cross-sectional strong/weak buckets.
+- The user also asked to make bull/bear and market / sector flow context explicit inside the training chain.
+- The first real `1d` rerun exposed a boundary bug where one symbol without `T+1` rows aborted the full retraining run.
+
+### Remaining
+- [ ] Decide whether `10d` should also migrate from fixed threshold to a cross-sectional bucket contract, or stay as the current excess-threshold baseline for comparison.
+- [ ] Decide whether the new market / sector flow proxies are strong enough for production, or whether a richer market-wide capital-flow source should be backfilled next.
+- [ ] Decide whether walk-forward folding should be further hardened, because the current two-fold `1d` result is usable for comparison but still thin.
+
+### Risks
+- [ ] The real `1d` rerun still ended with `production_readiness = blocked`.
+- [ ] `valid_accuracy` is still weak at roughly `0.43`, so the new label / state contract fixed sparsity but did not fully fix generalization.
+- [ ] `high_correlation_pair_count = 7`, which means the thicker state/event feature surface still has redundancy pressure.
+
+### Closed
+- The `1d` relative benchmark training path is now sector-relative, cross-sectional, and sample-dense enough to run end-to-end.
+- Real rerun no longer aborts on a tail date without future rows.
+- Fresh verification passed:
+  - `cargo test --test security_scorecard_training_cli -- --nocapture`
+  - `cargo test --test security_feature_snapshot_cli -- --nocapture`
+  - `cargo test security_scorecard_training::tests -- --nocapture`
+  - real `bank-parent.v1` `1d` rerun via `target\debug\excel_skill.exe`
+
+## 2026-04-18
+### Modified
+- Added `D:\SM\docs\plans\2026-04-18-layered-market-sector-stock-design.md` to freeze the approved shift from one-step stock-vs-HS300 prediction to a layered market -> sector -> stock design.
+- Added `D:\SM\docs\plans\2026-04-18-layered-market-sector-stock-prediction.md` to define the first executable implementation plan for the layered return-composition path, including probability and `10000` principal earnings outputs.
+
+### Why
+- The user approved stopping the current single-layer model line and requested a direct design for a more business-aligned prediction framework.
+- The latest audit showed the current bank-heavy benchmark-relative model is not tradable, so the next step had to be a frozen design + execution plan instead of more ad-hoc retraining.
+
+### Remaining
+- [ ] Confirm the first implementation slice should stay bank-only before widening to other sectors.
+- [ ] Confirm the exact first-phase market / sector anchor symbols and whether any board-level breadth fields need to be added before coding starts.
+- [ ] Start implementation from the new layered plan after the user chooses the execution mode.
+
+### Risks
+- [ ] The new design is approved but not implemented yet, so all current production/runtime behavior still reflects the old single-layer path.
+- [ ] The layered plan increases orchestration complexity; if one layer is weak, the final composed return can still drift unless calibration is verified separately.
+
+### Closed
+- The approved layered design is now frozen in repo docs and can be used as the implementation baseline for the next coding round.
+- The implementation plan now exists with explicit files, tests, and verification commands, so follow-up work no longer needs to re-derive the high-level architecture.
+## 2026-04-18
+### Modified
+- Updated `D:\SM\src\ops\security_scorecard_training.rs` to add the first formal `security_forward_outcome.layered_market_sector.v1` training path.
+- Added three governed layered heads to the training request contract:
+  - `market_return_head`
+  - `sector_excess_head`
+  - `stock_excess_vs_sector_head`
+- Added shared layered forward-return decomposition inside training so labels can be built from:
+  - market forward return
+  - sector excess return versus market
+  - stock excess return versus sector
+- Added layered request / label regressions in `D:\SM\src\ops\security_scorecard_training.rs`.
+- Added end-to-end CLI regression coverage in `D:\SM\tests\security_scorecard_training_cli.rs` for the three new layered heads.
+- Updated `D:\SM\tests\security_composite_scorecard_unit.rs` to keep the expanded `SecurityMasterScorecardDocument` fixture compiling after `layered_return_summary` became part of the contract.
+
+### Why
+- The user approved starting implementation of the layered `market -> sector -> stock` path and asked to continue coding directly.
+- The previous scorecard line had already been judged not tradable, so the next safe step was to open a new layered label family without breaking the existing relative-benchmark route.
+- The repository also needed one small fixture repair so broader verification could compile after the earlier scorecard contract expansion.
+
+### Remaining
+- [ ] Train and persist three real layered runtime artifacts on the formal bank universe instead of stopping at fixture-level contract coverage.
+- [ ] Connect the layered prediction-side composer to real per-head artifacts so `layered_return_summary` is no longer a placeholder in prediction mode.
+- [ ] Decide whether the layered bank path should use dedicated governed `training_contract_id` values in addition to the new label family.
+
+### Risks
+- [ ] The new layered path currently trains three binary heads, but the prediction-side composition is not yet reading real layered model outputs.
+- [ ] Layered labels now depend on both market and sector anchors having aligned future rows; sparse anchors near range tails can still reduce sample coverage.
+- [ ] This round verified focused suites only, not the full repository test matrix.
+
+### Closed
+- Layered training request validation now accepts the first three governed layered heads.
+- Layered positive-label definitions are now explicit and target-specific.
+- Fresh focused verification passed:
+  - `cargo test --lib layered_market_sector_label_family_ -- --nocapture`
+  - `cargo test --test security_scorecard_training_cli -- --nocapture`
+  - `cargo test --test security_feature_snapshot_cli -- --nocapture`
+  - `cargo test --test security_master_scorecard_cli -- --nocapture`
+  - `cargo test --test security_composite_scorecard_unit -- --nocapture`
+
+## 2026-04-19
+### Modified
+- Executed the first real 42-bank layered three-head training batch on `D:\SM\.stockmind_runtime` using:
+  - `label_definition_version = security_forward_outcome.layered_market_sector.v1`
+  - `market_symbol = 510300.SH`
+  - `sector_symbol = 512800.SH`
+  - `market_profile = a_share_core_v1`
+  - `sector_profile = a_share_bank`
+- Produced and audited three formal layered artifacts:
+  - `a_share_equity_10d_market_return_head__candidate_2026_04_18T23_58_00_08_00`
+  - `a_share_equity_10d_sector_excess_head__candidate_2026_04_18T23_59_00_08_00`
+  - `a_share_equity_10d_stock_excess_vs_sector_head__candidate_2026_04_19T00_00_00_08_00`
+- Updated `D:\SM\findings.md`, `D:\SM\progress.md`, and `D:\SM\task_plan.md` with:
+  - artifact / registry / diagnostics paths
+  - shared sample coverage
+  - per-head positive-rate drift
+  - per-head valid/test accuracy
+  - the current failure ordering across the three-layer stack
+
+### Why
+- The user approved moving from implementation into one real bank-only layered training round on the formal runtime.
+- The first real run was needed before touching prediction composition so we could identify which layer fails first on governed data rather than guessing from fixture tests.
+- Capturing the runtime outputs in repo records keeps the next prediction-side implementation slice auditable.
+
+### Remaining
+- [ ] Connect `security_scorecard` / `security_master_scorecard` prediction mode to these three real layered artifacts.
+- [ ] Decide whether to repair the sector layer first through feature pruning, label redesign, or split-geometry changes.
+- [ ] Add one end-to-end prediction regression that composes the three real heads into the formal layered return summary.
+
+### Risks
+- [ ] All three layered heads remain `production_readiness = blocked`.
+- [ ] The sector layer currently shows the heaviest `label_distribution_shift_is_large` signal and the largest correlation pressure.
+- [ ] This round executed real training and documentation updates, but did not yet change the prediction-side layered placeholder logic.
+
+### Closed
+- The first formal bank-only layered baseline now exists on the governed runtime.
+- The current failure ordering is clearer: `sector_excess_head` is the first unstable layer.
+- Fresh execution evidence was captured from real runtime training outputs rather than fixture-only regressions.
+
+## 2026-04-19
+### Modified
+- Updated `D:\SM\src\ops\security_master_scorecard.rs` so prediction mode now accepts three explicit layered artifact paths:
+  - `layered_market_return_head_model_path`
+  - `layered_sector_excess_head_model_path`
+  - `layered_stock_excess_vs_sector_head_model_path`
+- Added layered prediction artifact loading and validation on the master-scorecard prediction branch.
+- Updated prediction-mode layered composition so it now uses the real three-head values instead of the placeholder `0 / 0 / expected_return` fallback.
+- Updated `D:\SM\src\ops\security_decision_submit_approval.rs` to keep the new request contract compiling with explicit `None` values for the layered prediction fields.
+- Added a new CLI regression in `D:\SM\tests\security_master_scorecard_cli.rs` that proves prediction mode consumes three real layered artifacts end to end.
+
+### Why
+- The previous step already produced three real layered bank artifacts, so the next approved move was to connect prediction mode to those formal outputs.
+- Leaving the layered summary on placeholder math would make the new training line impossible to validate on real symbol/date predictions.
+- The approval path also needed a small constructor repair because the request contract expanded.
+
+### Remaining
+- [ ] Run one real symbol/date prediction report with the real bank layered artifacts and inspect whether the composed output is business-readable.
+- [ ] Decide whether the sector layer should be repaired before using the composed prediction for broader bank screening.
+- [ ] Add a stronger end-to-end verification slice that reads real runtime artifacts instead of fixture artifacts for prediction-mode regression.
+
+### Risks
+- [ ] Prediction-mode `beat_market_probability` is still derived from a deterministic heuristic over composed excess return, not from a dedicated layered classification head.
+- [ ] The current layered profit range still uses the earlier lightweight `+/- 0.02` spread and is not yet calibrated from per-head uncertainty.
+- [ ] This round integrated prediction mode only; replay and fallback branches were intentionally left on their existing behavior.
+
+### Closed
+- Prediction-mode layered summary now reads real three-head artifact values when all three paths are provided.
+- The top-line expected return now stays aligned with the layered composed stock return in prediction mode.
+- Fresh verification passed:
+  - `cargo test --test security_master_scorecard_cli -- --nocapture`
+  - `cargo test --test security_scorecard_cli -- --nocapture`
+
+## 2026-04-18
+### Modified
+- Audited the repository for post-selection position-management logic instead of only stock-picking logic.
+- Read and correlated the main position-management modules:
+  - `D:\SM\src\ops\security_position_plan.rs`
+  - `D:\SM\src\ops\security_portfolio_position_plan.rs`
+  - `D:\SM\src\ops\security_execution_journal.rs`
+  - `D:\SM\src\ops\security_execution_record.rs`
+  - `D:\SM\src\ops\security_account_open_position_snapshot.rs`
+  - `D:\SM\src\ops\security_account_open_position_snapshot_assembler.rs`
+  - `D:\SM\src\ops\security_record_position_adjustment.rs`
+  - `D:\SM\src\runtime\security_execution_store_schema.rs`
+- Updated `D:\SM\task_plan.md`, `D:\SM\findings.md`, and `D:\SM\progress.md` with the investigation trace and conclusions.
+
+### Why
+- The user asked whether the project already contains complete holding-management logic beyond stock selection, and how that logic currently works.
+- This required separating plan generation, portfolio allocation, runtime persistence, and autonomous trigger execution into different layers.
+- Recording the audit result makes the next implementation step focus on the real missing layer instead of repeating the same repository scan.
+
+### Remaining
+- [ ] Add a real trigger-evaluation engine that compares current market data against add/reduce/stop/take-profit thresholds and emits governed actions automatically.
+- [ ] Connect runtime open-position snapshots back into an active rebalance loop instead of only using them for reconstruction and reporting.
+- [ ] Decide whether automatic position actions should stay advisory-first or be allowed to create execution-ready adjustment events directly.
+
+### Risks
+- [ ] Current position-management coverage is strong on planning, allocation, persistence, and review, but still weak on autonomous trigger execution.
+- [ ] Some execution thresholds in the composite adapter are explicitly placeholder values and are not yet indicator-derived production logic.
+- [ ] Repository-wide search in this environment could not use `rg.exe` because the executable returned `Access is denied`, so the audit relied on PowerShell-native search.
+
+### Closed
+- The repository already contains real position-management logic, not just stock-picking logic.
+- The current implemented chain is: single-name plan -> portfolio allocation suggestion -> execution record/journal persistence -> open-position reconstruction -> adjustment-event recording/review.
+- The missing layer is an automatic live decision engine that continuously turns thresholds into actual add/reduce/exit actions.
+## 2026-04-19
+### Modified
+- Updated `D:\SM\src\ops\security_scorecard.rs` to extend the model artifact contract with `prediction_calibration` and a shared `predict_numeric_head_value(...)` decoder for regression plus calibrated direction heads.
+- Updated `D:\SM\src\ops\security_scorecard_training.rs` so layered training samples now retain numeric `target_value`, and layered artifacts now persist `direction_probability_calibrated_return` plus baseline / positive / negative expected-return anchors.
+- Updated `D:\SM\src\ops\security_master_scorecard.rs` so layered prediction loading now accepts calibrated direction artifacts instead of regression-only artifacts.
+- Added a new calibrated-layered prediction regression in `D:\SM\tests\security_master_scorecard_cli.rs` and kept the existing layered training regression green.
+- Re-trained three real bank-layer artifacts on `D:\SM\.stockmind_runtime` and re-ran the live example for `601916.SH / 2026-04-01 / 10d` with the new calibrated artifacts.
+
+### Why
+- The previous implementation could read three layered artifact paths, but real runtime artifacts still returned all-zero layered predictions because they were direction classifiers without numeric calibration.
+- The user asked to keep iterating on real training plus real validation instead of stopping at fixture-only integration.
+- The smallest stable bridge was to keep the existing classifier training flow and add governed probability-to-return calibration inside the artifact contract.
+
+### Remaining
+- [ ] Decide whether the current piecewise-linear calibration should evolve into bucket-level or isotonic calibration after we collect more real validation slices.
+- [ ] Re-run the same calibrated layered flow on more bank symbols and more dates, then compare the error concentration by market / sector / stock layer.
+- [ ] Decide whether `beat_market_probability` should later come from a dedicated layered classifier instead of the current return-derived heuristic.
+
+### Risks
+- [ ] The new calibration currently uses train-split averages, so it can still under-estimate strong market legs when regime shift is large.
+- [ ] `security_master_scorecard` replay mode for the old example did not automatically surface the realized layered decomposition, so actual-vs-predicted comparison still relied on direct `security_forward_outcome` queries for market / sector / stock legs.
+- [ ] The first real calibrated example for `601916.SH / 2026-04-01 / 10d` produced the correct positive sign but still materially under-estimated the realized 10d market return.
+
+### Closed
+- Real layered bank artifacts now deserialize with `prediction_mode = direction_probability_calibrated_return` and non-empty `prediction_calibration` payloads.
+- Prediction-mode layered summary now emits non-zero numeric returns from real calibrated artifacts instead of collapsing to zero.
+- Fresh verification passed:
+  - `cargo test --test security_scorecard_training_cli security_scorecard_training_supports_layered_market_sector_stock_target_heads -- --exact --nocapture`
+  - `cargo test --test security_master_scorecard_cli security_master_scorecard_prediction_mode_supports_calibrated_layered_head_artifacts -- --exact --nocapture`
+  - `cargo test --test security_master_scorecard_cli -- --nocapture`
+  - `cargo test --test security_scorecard_cli -- --nocapture`
+## 2026-04-19
+### Modified
+- Updated `D:\SM\src\ops\security_master_scorecard.rs` to add two new formal outputs:
+  - `layered_prediction_replay_comparison`
+  - `pipeline_payload`
+- Extended replay mode so when three layered artifacts are provided on a historical date, the tool now compares predicted market / sector / stock layered returns against realized replay returns inside the same formal master-scorecard document.
+- Extended prediction mode and replay mode with one normalized pipeline payload for downstream position-management orchestration, including:
+  - `pipeline_stage`
+  - `allocation_signal`
+  - `conviction_score`
+  - `risk_adjustment_hint`
+  - `position_management_ready`
+  - validation-related optional fields
+- Added new regressions in `D:\SM\tests\security_master_scorecard_cli.rs` to lock:
+  - replay-mode layered prediction vs realized replay comparison
+  - prediction-mode pipeline payload contract
+- Added implementation plan file `D:\SM\docs\plans\2026-04-19-master-scorecard-replay-pipeline.md` for this execution slice.
+
+### Why
+- The user approved scheme B: finish replay-side layered validation first, then expose one standardized payload that can later feed position-management as a pipeline.
+- Before this round, replay mode could show realized layered returns and prediction mode could show predicted layered returns, but there was no governed object comparing the two.
+- The future position-management workflow also needed one stable upstream contract instead of reverse-parsing multiple master-scorecard branches.
+
+### Remaining
+- [ ] Wire `pipeline_payload` into `security_position_plan` or `security_portfolio_position_plan` as a real sizing / tranche adjustment input instead of leaving it advisory-only.
+- [ ] Decide whether replay validation should also publish layer-specific confidence grades, not just raw error fields.
+- [ ] Add multi-symbol replay audits so the new validation payload can summarize error concentration by market / sector / stock layer across a batch run.
+
+### Risks
+- [ ] The current `pipeline_payload` uses deterministic rule thresholds, so it is orchestration-ready but not yet a learned sizing policy.
+- [ ] The first real bank replay comparison showed low total-return error but still large market-layer underestimation, so downstream sizing should not trust the market leg too aggressively yet.
+- [ ] Replay comparison is only populated when all three layered artifact paths are present and valid; missing any one path still downgrades the comparison to `None`.
+
+### Closed
+- Replay mode now publishes predicted-vs-realized layered comparison in the formal master-scorecard output when layered artifacts are provided.
+- Prediction mode now publishes a stable position-management pipeline payload that downstream tools can consume without reinterpreting raw master-scorecard fields.
+- Fresh verification passed:
+  - `cargo test --test security_master_scorecard_cli security_master_scorecard_replay_mode_compares_layered_prediction_with_realized_replay -- --exact --nocapture`
+  - `cargo test --test security_master_scorecard_cli security_master_scorecard_prediction_mode_emits_position_pipeline_payload -- --exact --nocapture`
+  - `cargo test --test security_master_scorecard_cli -- --nocapture`
+  - `cargo test --test security_scorecard_cli -- --nocapture`
+- Real runtime example re-check completed for `601916.SH / 2026-04-01 / 10d` with the latest three calibrated layered artifacts.
+
+## 2026-04-18
+### Modified
+- Added helper-level coverage around `D:\SM\src\ops\security_master_scorecard.rs` for:
+  - `build_layered_prediction_replay_comparison(...)`
+  - `build_pipeline_payload(...)`
+  - `resolve_pipeline_allocation_signal(...)`
+  - `resolve_pipeline_risk_adjustment_hint(...)`
+- Updated `D:\SM\tests\security_composite_scorecard_unit.rs` and `D:\SM\tests\security_composite_committee_payload_adapter_unit.rs` fixtures so `layered_return_summary`, `layered_prediction_replay_comparison`, and `pipeline_payload` are covered explicitly.
+
+### Why
+- The user approved scheme B for this slice: freeze replay-side comparison and pipeline payload behavior at the helper/unit layer before expanding downstream orchestration.
+- CLI coverage alone was not enough because the replay and pipeline branches are assembled through `security_master_scorecard.rs` helpers.
+- The fixture layer also needed to stop drifting now that the composite scorecard document carries additional layered payload fields.
+
+### Remaining
+- [ ] Decide whether `resolve_pipeline_validation_status(...)` and `resolve_pipeline_conviction_score(...)` should move into the same governed pipeline-helper surface.
+- [ ] Add an end-to-end check that exercises the composed pipeline payload through the full downstream adapter path.
+- [ ] Decide whether `replay_unavailable` should remain a soft downgrade or become a stronger downstream gating signal.
+
+### Risks
+- [ ] The helper logic still freezes threshold-style branch behavior around values such as `0.03`, `0.05`, and `0.08`; if those business thresholds change, tests must move with them.
+- [ ] The helper assertions still depend on small floating-point tolerances such as `1e-12`, so future refactors should avoid making them brittle.
+- [ ] Local search still prefers PowerShell over `rg.exe` in this workspace because `rg.exe` has produced `Access is denied` intermittently.
+
+### Closed
+- `security_master_scorecard.rs` replay/pipeline helper behavior is now frozen with focused unit and adapter coverage.
+- Composite fixture expectations now explicitly include the layered replay and pipeline payload fields.
+- Focused verification passed:
+  - `cargo test --lib build_layered_prediction_replay_comparison_computes_expected_replay_deltas -- --nocapture`
+  - `cargo test --lib build_pipeline_payload_prediction_stage_marks_position_management_ready -- --nocapture`
+  - `cargo test --lib build_pipeline_payload_replay_stage_uses_validation_artifact_outputs -- --nocapture`
+  - `cargo test --lib resolve_pipeline_allocation_signal_maps_prediction_and_replay_branches -- --nocapture`
+  - `cargo test --lib resolve_pipeline_risk_adjustment_hint_maps_prediction_and_replay_branches -- --nocapture`
+  - `cargo test --test security_composite_scorecard_unit -- --nocapture`
+  - `cargo test --test security_composite_committee_payload_adapter_unit -- --nocapture`
+  - `cargo test --test security_master_scorecard_cli -- --nocapture`
+
+## 2026-04-18
+### Modified
+- Added the formal LLM-facing packet tool `security_investment_manager_entry`.
+- Created `D:\SM\src\ops\security_investment_manager_entry.rs` with the compact delivery artifact `SecurityInvestmentManagerEntryPacket`.
+- Created `D:\SM\src\ops\stock_investment_manager_entry.rs` as the dedicated scenario entry shell.
+- Wired the new packet through `stock.rs`, `stock_pre_trade.rs`, `catalog.rs`, `dispatcher.rs`, and `dispatcher/stock_ops.rs`.
+- Added `D:\SM\tests\security_investment_manager_entry_cli.rs` to lock tool discovery and compact packet output.
+- Added `D:\SM\docs\plans\2026-04-18-stock-investment-manager-entry-plan.md`.
+### Why
+- The user approved scheme B: keep the LLM entry upstream and separate from the pure mathematical position-management engine.
+- The user also required one clear delivery artifact for the LLM and emphasized that the packet should contain only just-enough material.
+- The code graph confirmed that the position-management and execution chain should stay untouched for this slice.
+### Remaining
+- [ ] Tune packet density after real LLM usage and decide whether additional market-state fields are necessary.
+- [ ] Decide whether the future daily stock-evaluation hook should replace the current evidence-bundle source or extend this packet.
+### Risks
+- [ ] The first packet version is intentionally compact, so some future workflows may still require a second retrieval step for deeper evidence.
+- [ ] Compact focus points are deterministic projections from the evidence bundle and are not yet tuned by live LLM usage feedback.
+### Closed
+- Added the first formal LLM entry delivery artifact: `SecurityInvestmentManagerEntryPacket`.
+- Added the public tool route: `security_investment_manager_entry`.
+- Verification passed:
+  - `cargo test --test security_investment_manager_entry_cli -- --nocapture`
+  - `cargo test --test security_decision_evidence_bundle_cli -- --nocapture`
+## 2026-04-18
+### Modified
+- Updated `D:\SM\tests\security_scorecard_training_cli.rs` so the training CLI contract now follows the retained disclosure feature set instead of the removed legacy announcement proxies.
+- Replaced the hard-coded `feature_count = 40` assertion with a retained-feature contract list that currently resolves to 32 governed training features.
+- Added explicit exclusion checks for the pruned disclosure features: `announcement_count`, `disclosure_risk_keyword_count`, `has_risk_warning_notice`, `negative_attention_score`, `event_net_impact_score`, `risk_note_count`, `event_density_bucket`, and `shareholder_return_status`.
+- Switched the unseen categorical fallback-bin regression from removed feature `has_risk_warning_notice` to retained feature `disclosure_status`.
+### Why
+- The approved disclosure thinning rule keeps only the symmetric pair `positive_support_score` and `hard_risk_score`, so the old CLI test contract had become stale and caused false failures.
+- The task needed a governed include/exclude contract instead of another fixed-count snapshot so later retraining rounds can be audited more safely.
+### Remaining
+- [ ] Consider extracting one shared canonical feature-contract helper so CLI tests do not need to duplicate the retained feature list.
+- [ ] Re-check whether any non-CLI audit scripts still assume the removed disclosure feature names.
+### Risks
+- [ ] The CLI test still mirrors the retained feature vocabulary locally, so future feature-contract changes will require synchronized test updates.
+- [ ] `.trae/CHANGELOG_TASK.md` still uses a legacy local encoding path, which can make direct patch-based updates fragile.
+### Closed
+- Aligned the training CLI regression contract with the current disclosure-thinning rule.
+- Verification passed:
+  - `cargo test --test security_scorecard_training_cli -- --nocapture`
+  - `cargo test --test security_scorecard_cli -- --nocapture`
+  - `cargo test --test security_master_scorecard_cli -- --nocapture`
+## 2026-04-18
+### Modified
+- Added the formal design document `D:\SM\docs\plans\2026-04-18-master-scorecard-position-management-integration-design.md`.
+- The document freezes the approved integration path from the prediction engine into the position-management system.
+- The document explicitly limits the current slice to the chain ending at `security_record_position_adjustment` and excludes LLM flow, report output, chair execution, and post-trade review.
+### Why
+- The user asked to stop discussing broad concepts and first organize the approved engine-to-position-management flow as a formal document.
+- The user also clarified that post-trade review and LLM governance logic must not be mixed into the current position-management design slice.
+### Remaining
+- [ ] Convert the document into a concrete field-mapping table from `pipeline_payload` to position-plan fields.
+- [ ] Convert the approved integration order into a detailed implementation task list.
+### Risks
+- [ ] The current document fixes architecture direction, but the exact mapping thresholds and sizing translations are still undecided.
+### Closed
+- Formal integration design document now exists for the approved path:
+  - `security_master_scorecard.pipeline_payload -> security_position_plan -> security_portfolio_position_plan -> execution-state modules`
+## 2026-04-19
+### Modified
+- Implemented approved plan B in `D:\SM\src\ops\security_scorecard_training.rs`.
+- Added `assign_four_day_rotation_split_dates` for the 1d relative-benchmark path and `assign_non_overlapping_anchor_split_dates` for the multi-day relative-benchmark path.
+- Added train-time sparse-feature governance so ordinary low-support features are filtered before WOE/logit fitting, while `hard_risk_score` stays behind an explicit exemption hook.
+- Added `feature_governance_summary` into training diagnostics and routed walk-forward diagnostics through retained governed features.
+- Updated `D:\SM\tests\security_scorecard_training_cli.rs` so the CLI contract now audits candidate vs retained feature counts and the new 10d split geometry.
+### Why
+- The user approved scheme B and explicitly asked to stop using the old large 2-1-1 style split semantics for these retraining paths.
+- The user also required ordinary low-support features to stay out of the main model, while extreme risk fields must keep a separate survival path.
+- Existing training CLI regressions were still asserting the old fixed-count feature contract and old relative-benchmark sample geometry, so they needed to be realigned with the governed training behavior.
+### Remaining
+- [ ] Decide whether categorical sparse governance should stay on the current shared `insufficient_bin_support` rule or move to a dedicated collapsed-category policy.
+- [ ] Expand the current high-risk exemption hook from `hard_risk_score` to a formal independent risk-layer contract.
+### Risks
+- [ ] The current sparse-feature governance uses a conservative support threshold, so very small retraining samples may filter more ordinary features than expected and should be watched during the next real rerun.
+- [ ] The new 10d anchor split reduces sample count by design, so downstream expectations that still assume dense overlapping windows may need follow-up alignment.
+### Closed
+- Approved plan B is now wired into the trainer and diagnostic surface.
+- Verification passed:
+  - `cargo test relative_benchmark_1d_split_uses_four_day_rotation --lib`
+  - `cargo test relative_benchmark_10d_split_uses_non_overlapping_anchor_dates --lib`
+  - `cargo test sparse_training_features_are_filtered_before_model_building --lib`
+  - `cargo test --test security_scorecard_training_cli`
+  - `cargo test --test security_scorecard_cli`
+  - `cargo test --test security_master_scorecard_cli`
+## 2026-04-19
+### Modified
+- Added `D:\SM\docs\plans\2026-04-19-data-quality-feature-main-model-exclusion-design.md` and `D:\SM\docs\plans\2026-04-19-data-quality-feature-main-model-exclusion-implementation.md`.
+- Updated `D:\SM\src\ops\security_scorecard_training.rs` so `disclosure_status` and `data_gap_count` stay in the raw feature contract but are policy-filtered out of the main model.
+- Added unit coverage proving both features are excluded from `retained_feature_configs` while still appearing in `feature_governance_summary.filtered_features`.
+- Updated `D:\SM\tests\security_scorecard_training_cli.rs` so the artifact contract excludes the two data-quality features and diagnostics must report them with the policy reason.
+- Re-ran the real `bank-parent.v1` 10d retrain on the governed runtime and captured the new registry and diagnostic outputs.
+### Why
+- The user explicitly chose option 1: remove `disclosure_status` and `data_gap_count` from the main training model but keep them in diagnostics and audit output.
+- The previous real retrain showed the two features were overlapping quality proxies, produced a near-perfect correlation pair, and contributed to a blocked readiness state.
+### Remaining
+- [ ] Decide whether the next cleanup round should also compress other quality-adjacent proxies such as `fundamental_status` or `hard_risk_score` into a clearer risk/audit split.
+- [ ] Decide whether the policy exclusion should stay fixed or become contract-specific by training pool / horizon.
+### Risks
+- [ ] Because both features are now excluded before model fitting, any downstream report that assumed they still appear in the artifact feature list will need the diagnostic summary instead.
+- [ ] The current fix removes overlap cleanly, but it does not yet address whether the remaining macro-state features are still partially redundant.
+### Closed
+- Removed `disclosure_status` and `data_gap_count` from the main scorecard model while keeping both in governed diagnostics via `excluded_from_main_model_data_quality_overlap`.
+- Real retrain improved from `blocked` to `candidate` on the same bank-parent window.
+- Verification passed:
+  - `cargo test governance_policy_excludes_data_quality_overlap_features_from_main_model --lib -- --nocapture`
+  - `cargo test --test security_scorecard_training_cli security_scorecard_training_generates_artifact_and_registers_refit_outputs -- --nocapture`
+  - `cargo test --test security_scorecard_training_cli -- --nocapture`
+  - `cargo test sparse_training_features_are_filtered_before_model_building --lib -- --nocapture`
+  - `cargo test --test security_scorecard_cli -- --nocapture`
+  - `cargo test --test security_master_scorecard_cli -- --nocapture`
+## 2026-04-18
+### Modified
+- Added `D:\SM\docs\plans\2026-04-18-post-open-position-data-system-design.md` as one merged design document for the post-open-position pure-data system.
+- Updated `D:\SM\progress.md` and `D:\SM\task_plan.md` to record the merged business boundary and next schema-expansion gap.
+### Why
+- The user explicitly asked to stop spreading this work across too many design files and consolidate the approved business flow into one document.
+- The final approved boundary now includes approved open-position intake, daily monitoring evidence output, future LLM committee hook, and capital-event rebasing.
+### Remaining
+- [ ] Expand the merged design into field-level schema documents or field tables for `ApprovedOpenPositionPacket`, `PositionContract`, `PerPositionEvaluation`, `MonitoringEvidencePackage`, and `CapitalEvent`.
+- [ ] Map the merged design objects onto concrete Rust modules before starting implementation planning.
+### Risks
+- [ ] The current document fixes business boundaries and flow, but it does not yet freeze field-level contracts or persistence schema names.
+### Closed
+- The post-open-position pure-data design is now consolidated into one formal reference document and no longer split across three separate design threads.
+## 2026-04-18
+### Modified
+- Expanded `D:\SM\docs\plans\2026-04-18-post-open-position-data-system-design.md` with field-level schema baselines for `ApprovedOpenPositionPacket`, `PositionContract`, `PerPositionEvaluation`, `MonitoringEvidencePackage`, and `CapitalEvent`.
+- Updated `D:\SM\docs\AI_HANDOFF.md` to lock future AI position-management work to the merged post-open-position design document unless the user explicitly approves a flow change.
+- Updated `D:\SM\progress.md` and `D:\SM\task_plan.md` to reflect the schema-expansion and handoff-lock completion.
+### Why
+- The user asked to continue expanding the merged design into concrete fields and also required that the AI handoff manual enforce alignment with the approved report.
+- The project now needs a stable business-contract baseline before mapping these objects to Rust modules.
+### Remaining
+- [ ] Map the approved business objects onto concrete Rust modules and document which existing structs can be evolved versus which new structs are required.
+- [ ] Freeze persistence-layer naming and storage boundaries for the new pure-data objects before implementation starts.
+### Risks
+- [ ] The new field tables are a business-schema baseline, but they are not yet a final storage schema, so naming or optionality may still need one more pass during module mapping.
+### Closed
+- The merged post-open-position design now includes field-level schema definitions and the AI handoff manual now explicitly requires future AI sessions to follow that design.
+## 2026-04-18
+### Modified
+- Updated `D:\SM\docs\plans\2026-04-18-post-open-position-data-system-design.md` with a new `Single Source Data-Side Flow` section.
+- Added one end-to-end pure-data master flowchart, one stage table, and one set of data-side rules so the whole process can be read in one place.
+- Updated `D:\SM\docs\AI_HANDOFF.md` to state that the merged post-open-position design is the single source of truth for the whole pure-data flow.
+- Updated `D:\SM\progress.md` and `D:\SM\task_plan.md` to reflect the consolidation.
+### Why
+- The user explicitly asked to consolidate the whole data-side flow because scattered process descriptions were likely to cause mistakes in later implementation or AI handoff.
+### Remaining
+- [ ] Map the single-source business objects and stages onto concrete Rust modules and file ownership.
+- [ ] Decide whether the next document should freeze persistence schema boundaries or go directly into implementation mapping.
+### Risks
+- [ ] The unified flow is now centralized at the business-design level, but downstream code-module mapping is still pending, so different implementers could still diverge if module ownership is not frozen next.
+### Closed
+- The pure-data process is now consolidated into one single-source section inside the merged design document, and the AI handoff manual now names that document as the authoritative process reference.
+## 2026-04-18
+### Modified
+- Corrected `D:\SM\docs\plans\2026-04-18-post-open-position-data-system-design.md` so both `Adjustment Simulation Data` and `Capital Rebalance Evidence Package` must flow through the future committee/chair chain before `AdjustmentInputPackage` can be created.
+- Updated the unified flowchart, lifecycle flow, daily monitoring flow, capital rebasing flow, and data-side rules to reflect the corrected governance line.
+- Updated `D:\SM\docs\AI_HANDOFF.md`, `D:\SM\progress.md`, and `D:\SM\task_plan.md` so future AI sessions inherit the corrected process.
+### Why
+- The user explicitly pointed out that the previous version was missing the governance line: both ordinary adjustment measurement and capital rebalance evidence must be judged by the committee/chair chain rather than flowing directly into action input.
+### Remaining
+- [ ] Translate the corrected single-source flow into concrete Rust module ownership and object boundaries.
+- [ ] Decide whether the next step should freeze Chinese-localized companion docs or move directly into implementation mapping.
+### Risks
+- [ ] The governing business flow is now corrected at the document level, but older conversational summaries may still contain the previous shortcut path and should not be reused as references.
+### Closed
+- The authoritative design and AI handoff documents now enforce that no adjustment or capital rebalance path may bypass future committee/chair review.
+## 2026-04-18
+### Modified
+- Expanded `D:\SM\docs\plans\2026-04-18-post-open-position-data-system-design.md` with a concrete Rust module mapping section.
+- Added recommended new files, recommended existing files to modify, and a file-level method map for the post-open pure-data design.
+- Updated `D:\SM\progress.md` and `D:\SM\task_plan.md` to record that the module mapping is now fixed at the design-document level.
+- Normalized the numbering inside the `Current Code Seams` section so the subsection labels now match section 9.
+### Why
+- The user explicitly asked for the design to name which files, structs, and methods should change, ideally down to which file should add which method.
+### Remaining
+- [ ] Decide whether the recommended file ownership should be frozen as final before creating the implementation plan.
+- [ ] If frozen, translate the file-level map into a step-by-step implementation plan with tests.
+### Risks
+- [ ] The mapping is now explicit at the design level, but some file ownership choices such as `security_position_contract.rs` versus deeper reuse of `security_position_plan.rs` may still need one final approval before code changes start.
+### Closed
+- The authoritative post-open pure-data design now includes a file-level Rust mapping and method-level ownership guidance instead of only business objects and flow descriptions.
+## 2026-04-18
+### Modified
+- Added `D:\SM\docs\architecture\post_open_position_data_graph.json` as a graphify-style machine-readable graph for the post-open pure-data system.
+- The graph includes process stages, business objects, existing code files and symbols, planned files and methods, and governance edges for committee/chair review.
+- Updated `D:\SM\docs\plans\2026-04-18-post-open-position-data-system-design.md` to reference the JSON graph as the machine-readable companion artifact.
+- Updated `D:\SM\docs\AI_HANDOFF.md` so future AI sessions must treat both the narrative design doc and the companion JSON graph as the authoritative references.
+- Updated `D:\SM\progress.md` and `D:\SM\task_plan.md` to record the new artifact.
+### Why
+- The user explicitly asked for a graph-style associated JSON so future work can anchor on a machine-readable structure and reduce hallucination as the design grows.
+### Remaining
+- [ ] Decide whether to extend the graph with persistence-store nodes and runtime schema nodes before implementation begins.
+- [ ] Decide whether the next step should generate an implementation plan directly from this graph or first freeze the planned file ownership one more time.
+### Risks
+- [ ] The current graph is a governed design graph rather than an auto-extracted code graph, so it must stay aligned with future code changes and should be updated whenever the ownership map changes.
+### Closed
+- A graphify-style machine-readable companion source now exists for the post-open pure-data design, and the AI handoff manual now points future sessions at that artifact.
+## 2026-04-18
+### Modified
+- Added `D:\SM\docs\plans\2026-04-18-post-open-position-data-system-implementation-plan.md` as the executable implementation plan for the approved post-open pure-data system.
+- Updated `D:\SM\progress.md` and `D:\SM\task_plan.md` to record the new implementation-plan artifact and execution choice gap.
+### Why
+- The user approved moving from design into implementation planning and asked for a concrete plan tied back to the approved graph/design artifacts.
+### Remaining
+- [ ] Choose whether to execute the plan in this session or in a separate executing-plans session.
+- [ ] Freeze any remaining file-ownership question before code changes start if the user wants one final review.
+### Risks
+- [ ] The plan is intentionally test-first and module-sliced, so if implementation starts without following the task order, the design and graph guardrails may drift.
+### Closed
+- The post-open pure-data system now has a concrete implementation plan aligned with the approved design document and companion graph JSON.
+## 2026-04-19
+### Modified
+- Updated `D:\SM\src\ops\security_scorecard_training.rs` so `hard_risk_score` is excluded from the main scorecard model through governed feature filtering.
+- Updated `D:\SM\tests\security_scorecard_training_cli.rs` so the training artifact diagnostics must report `hard_risk_score` with `excluded_from_main_model_event_risk_overlap`.
+- Re-ran the focused governance unit test and the scorecard training CLI regression test to confirm the exclusion policy is active in both code paths.
+### Why
+- The user confirmed option 1: `hard_risk_score` overlaps with negative event information and was amplifying downside weight inside the main model.
+### Remaining
+- [ ] Repair runtime raw snapshot construction in `D:\SM\src\ops\security_scorecard.rs` so market-state features used during training are also present during replay/scoring.
+- [ ] Re-run the `601916.SH` 1d replay after the runtime snapshot repair and confirm whether `feature_incomplete` is removed.
+### Risks
+- [ ] The training path now excludes `hard_risk_score`, but replay outputs can still degrade to `feature_incomplete` until runtime snapshot fields such as market cycle and risk appetite are aligned with training.
+### Closed
+- `hard_risk_score` no longer enters the main model governance path, and diagnostics now record the exclusion as `excluded_from_main_model_event_risk_overlap`.
+
+## 2026-04-19
+### Modified
+- Added `D:\SM\src\ops\security_approved_open_position_packet.rs` as the formal `ApprovedOpenPositionPacket` intake module for the post-open pure-data system.
+- Wired the new intake contract through `D:\SM\src\ops\stock.rs`, `D:\SM\src\ops\stock_execution_and_position_management.rs`, `D:\SM\src\tools\catalog.rs`, `D:\SM\src\tools\dispatcher.rs`, and `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+- Kept `D:\SM\tests\security_approved_open_position_packet_cli.rs` as the Task 1 red-green contract and verified it passes after implementation.
+- Updated `D:\SM\task_plan.md` and `D:\SM\progress.md` with the Task 1 execution status and flow-design alignment note.
+### Why
+- The approved implementation plan requires the post-open pure-data chain to start from one governed approved packet instead of implicit reuse of pre-trade approval artifacts.
+- The user selected Scheme B, which requires minimal Task 1 implementation plus formal placement inside the execution-and-position-management grouping.
+- Freezing the intake contract first reduces the risk of mixing later `PositionContract`, monitoring, or LLM governance work into the first delivery slice.
+### Remaining
+- [ ] Start Task 2 and add the `PositionContract` layer on top of the frozen approved packet.
+- [ ] Keep the next step limited to contract-building logic and avoid pulling daily monitoring or capital rebasing forward too early.
+### Risks
+- [ ] This round verified the focused Task 1 CLI contract only, not the full repository test suite.
+- [ ] The current intake module intentionally enforces only the hard governance gates from Task 1; later business invariants still need to be frozen in `PositionContract`.
+### Closed
+- Task 1 red-green cycle for `ApprovedOpenPositionPacket` is complete.
+- Focused verification passed: `cargo test --test security_approved_open_position_packet_cli -- --nocapture`
+- Flow and design remain aligned: the pure data post-open chain still starts from one approved intake packet and downstream layers were not merged forward.
+## 2026-04-18
+### Modified
+- Extended `D:\SM\tests\security_approved_open_position_packet_cli.rs` with follow-up Task 1 coverage for normalization and blank identity fields.
+- Updated `D:\SM\src\ops\security_approved_open_position_packet.rs` so normalized blank `packet_id`, `account_id`, `approval_session_id`, and `source_packet_version` now fail fast.
+- Updated `D:\SM\progress.md` with the hardening pass and the flow-design alignment note.
+### Why
+- The first Task 1 delivery froze the main approved intake path, but several identity anchors were still implicitly accepted as blank after normalization.
+- The user explicitly asked to add the missing boundary tests before continuing deeper into the post-open flow.
+- Tightening the intake contract now reduces the risk of building `PositionContract` on top of ambiguous packet identity.
+### Remaining
+- [ ] Start Task 2 and build `PositionContract` on top of the hardened approved intake packet.
+- [ ] Decide later whether `direction` and `recommended_entry_mode` should remain normalization-only or become explicit enum gates.
+### Risks
+- [ ] This round still verifies the focused Task 1 CLI contract only, not the full repository test suite.
+- [ ] Enum-like fields are normalized but not yet restricted to an explicit allowed-value set.
+### Closed
+- Task 1 boundary hardening is complete for blank identity anchors and secondary normalization coverage.
+- Focused verification passed: `cargo test --test security_approved_open_position_packet_cli -- --nocapture`
+- Flow and design remain aligned: the pure data chain still starts from one approved intake packet, now with stricter traceability anchors.
+## 2026-04-19
+### Modified
+- Updated `D:\SM\src\ops\security_scorecard.rs` so runtime `build_raw_feature_snapshot(...)` now persists `market_cycle_status`, `market_fund_flow_status`, `sector_fund_flow_status`, and `market_risk_appetite_status` beside the existing market regime and flow fields.
+- Added one focused runtime regression test in `D:\SM\src\ops\security_scorecard.rs` to lock that the scorecard raw snapshot exposes the same market-state layer already used by training.
+- Replayed `601916.SH` on `2026-04-01` with the explicit model artifact `a_share_equity_1d_direction_head__candidate_2026_04_18T21_15_00_08_00.json` and confirmed the scorecard moved to `ready` instead of falling into `feature_incomplete`.
+### Why
+- The user approved plan A after the root cause was traced to runtime/training feature drift: training consumed the new market-state fields, but runtime scorecard replay still dropped them from `raw_feature_snapshot`.
+### Remaining
+- [ ] Decide whether to extract the market-state derivation into one shared helper so snapshot generation and runtime scorecard stop maintaining parallel logic.
+- [ ] Re-check the broader ready-case approval regression after the unrelated committee-status drift is isolated, because one existing CLI test currently expects `ready_for_review` but now returns `needs_more_evidence` before scorecard assertions begin.
+### Risks
+- [ ] `D:\SM\src\ops\security_scorecard.rs` and `D:\SM\src\ops\security_feature_snapshot.rs` still derive the same market-state layer in two places, so future field additions could drift again unless the shared contract is centralized.
+### Closed
+- Runtime scorecard replay now carries the market-state fields required by the trained 1d bank model, and the `601916.SH / 2026-04-01` replay no longer degrades to `feature_incomplete` when the explicit model artifact is supplied.
+
+## 2026-04-18
+### Modified
+- Added `D:\SM\tests\security_position_contract_cli.rs` as the Task 2 red-green contract for the new live `PositionContract` layer.
+- Added `D:\SM\src\ops\security_position_contract.rs` and wired it through `D:\SM\src\ops\stock.rs`, `D:\SM\src\ops\stock_execution_and_position_management.rs`, `D:\SM\src\tools\catalog.rs`, `D:\SM\src\tools\dispatcher.rs`, and `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+- Updated `D:\SM\src\ops\security_position_plan.rs` to keep `SecurityPositionPlanDocument` as the pre-trade seed while adding `SecurityPositionContractSeed` plus the Task 2 seed-builder helpers.
+- Updated `D:\SM\progress.md` and `D:\SM\task_plan.md` with the Task 2 execution result and flow-design alignment note.
+### Why
+- The approved post-open design requires `PositionContract` to be the only formal live-governance object after `ApprovedOpenPositionPacket`.
+- The user explicitly confirmed that the pre-trade plan document must remain a seed and must not be reused as the live contract itself.
+- Freezing the live contract now gives later monitoring, rebasing, and adjustment tasks one governed object to build on.
+### Remaining
+- [ ] Start Task 3 and evolve the open snapshot into `ActivePositionBook` semantics.
+- [ ] Decide later whether the live contract should enforce explicit allowed-value enums for fields such as `direction` and `entry_mode`.
+### Risks
+- [ ] This round verified the focused Task 2 contract path and adjacent Task 1 / position-plan regressions, not the full repository test suite.
+- [ ] The first Task 2 delivery keeps `correlation_guardrail` empty and leaves richer rebasing behavior for later dedicated tasks.
+### Closed
+- Task 2 red-green cycle for `PositionContract` is complete.
+- Focused and adjacent verification passed:
+  - `cargo test --test security_position_contract_cli -- --nocapture`
+  - `cargo test --test security_position_plan_cli -- --nocapture`
+  - `cargo test --test security_approved_open_position_packet_cli -- --nocapture`
+- Flow and design remain aligned: `ApprovedOpenPositionPacket -> PositionContract` is now explicit, while active-position-book and monitoring layers remain separate future tasks.
+## 2026-04-18
+### Modified
+- Extended `D:\SM\tests\security_position_contract_cli.rs` with follow-up Task 2 coverage for symbol mismatch, merged risk-budget capping, and legacy risk-budget fallback behavior.
+- Added a unit test in `D:\SM\src\ops\security_position_contract.rs` for `rebase_security_position_contract(...)`.
+- Updated the older fixture in `D:\SM\src\ops\security_execution_record.rs` so `SecurityPositionPlanDocument` includes the new `risk_budget_pct` field.
+### Why
+- The user asked to harden Task 2 before moving on, especially around contract consistency, risk-budget merge rules, and rebasing semantics.
+- The new rebasing test also revealed one adjacent compile-time fixture gap caused by the Task 2 document-shape change.
+### Remaining
+- [ ] Start Task 3 and evolve the open snapshot into `ActivePositionBook` semantics.
+- [ ] Decide later whether Task 2 should add explicit enum validation for fields such as `direction` and `entry_mode`.
+### Risks
+- [ ] The hardening pass verifies focused Task 2 and one rebasing unit path, not the full repository test suite.
+- [ ] The first `PositionContract` still leaves richer correlation/rebase package semantics for later tasks.
+### Closed
+- Task 2 hardening coverage is now in place for symbol consistency, risk-budget merge rules, and rebasing state mutation.
+- Focused verification passed:
+  - `cargo test --test security_position_contract_cli -- --nocapture`
+  - `cargo test rebase_security_position_contract_updates_status_capital_and_timestamp -- --nocapture`
+## 2026-04-18
+### Modified
+- Extended `D:\SM\tests\security_account_open_position_snapshot_cli.rs` with Task 3 coverage for `ActivePositionBook` exposure and multi-position refresh stability.
+- Updated `D:\SM\src\ops\security_account_open_position_snapshot.rs` to add `SecurityActivePositionDocument`, `SecurityActivePositionBookDocument`, `build_active_position_book(...)`, and `refresh_active_position_book(...)`.
+- Kept the existing compatibility snapshot output and added `active_position_book` beside it instead of replacing the older shell.
+### Why
+- The approved plan requires Task 3 to evolve the open snapshot into explicit active-position-book semantics before Task 4 can evaluate positions.
+- The user approved Scheme B, which keeps the existing snapshot path but adds a clearer live-state document in the same owner file.
+### Remaining
+- [ ] Start Task 4 and add the per-position evaluation layer on top of the active-position book and position contracts.
+- [ ] Decide later whether active-position-book should add richer fields such as current market value or contract refs directly.
+### Risks
+- [ ] This round verified the focused Task 3 CLI path only; it did not run the full repository suite.
+- [ ] The current active-book layer sorts by symbol for stability, which may differ from execution insertion order if any future consumer expects original order.
+### Closed
+- Task 3 red-green cycle for `ActivePositionBook` semantics is complete.
+- Focused verification passed: `cargo test --test security_account_open_position_snapshot_cli -- --nocapture`
+- Flow and design remain aligned: snapshot compatibility is preserved while `ActivePositionBook` is now explicit for later monitoring tasks.
+## 2026-04-18
+### Modified
+- Added `D:\SM\task_plan.md`, `D:\SM\findings.md`, and `D:\SM\progress.md` to persist the bank-pool `1d` replay audit process and findings for this session.
+- Generated `D:\SM\tests\runtime_fixtures\exports\bank_1d_q1_2026_backtest_summary.json` by replaying the governed `security_master_scorecard` flow across the full bank pool for `2026Q1`.
+### Why
+- The user asked to verify whether the current bank `1d` strong-vs-weak model can be used in practice, so we needed a real replay instead of another qualitative discussion.
+- Persisting the audit plan and summary now keeps the next retraining/debugging round anchored to one explicit evidence file.
+### Remaining
+- [ ] Decide whether the next round should fix direction inversion first or expand the replay export so daily leader concentration and subindustry breakdowns are stored directly.
+- [ ] If the model remains bank-only, add one governed diagnostic view for parent/child inheritance buckets before the next retrain.
+### Risks
+- [ ] This replay audit validated the existing runtime and model artifact on `2026Q1` only; it does not prove stability outside that window.
+- [ ] The current export is summary-oriented and does not yet persist every daily leaderboard row, so some deeper diagnostics still require one extra export pass.
+### Closed
+- Bank-pool `1d` replay audit completed with `56` dates, `42` bank stocks, `2352` scoring calls, and `0` runtime failures.
+- The current ranking signal did not show usable separation in this window: `Top1 hit rate = 0.50`, `Top3-Bottom3 excess spread = -0.00217`, and low-probability names slightly outperformed high-probability names.
+
+## 2026-04-18
+### Modified
+- Extended `D:\SM\tests\security_account_open_position_snapshot_cli.rs` with two Task 3 regression tests for closed-or-zero-weight filtering and empty-account active-book behavior.
+- Added `D:\SM\tests\security_per_position_evaluation_cli.rs` as the Task 4 red-green CLI contract.
+- Added `D:\SM\src\ops\security_per_position_evaluation.rs` and wired it through `D:\SM\src\ops\stock.rs`, `D:\SM\src\ops\stock_execution_and_position_management.rs`, `D:\SM\src\tools\catalog.rs`, `D:\SM\src\tools\dispatcher.rs`, and `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+### Why
+- The approved post-open pure-data flow requires `PerPositionEvaluation` to sit between `ActivePositionBook` and the later account aggregation / monitoring evidence layers.
+- The user asked to finish Task 3 cleanup and Task 4 together in one pass before moving on.
+### Remaining
+- [ ] Start Task 5 and build the monitoring evidence package on top of per-position evaluations.
+- [ ] Decide later whether Task 4 should add richer risk-pressure fields such as concentration or correlation proxies before account aggregation.
+### Risks
+- [ ] This round verified the focused Task 3 / Task 4 / adjacent Task 2 paths, not the full repository test suite.
+- [ ] The first Task 4 scoring model is intentionally deterministic and lightweight; it is suitable for the pure-data layer but not yet a full portfolio optimizer.
+### Closed
+- Task 3 boundary hardening and Task 4 red-green cycle are complete.
+- Focused verification passed:
+  - `cargo test --test security_account_open_position_snapshot_cli -- --nocapture`
+  - `cargo test --test security_per_position_evaluation_cli -- --nocapture`
+  - `cargo test --test security_position_contract_cli -- --nocapture`
+- Flow and design remain aligned: `ApprovedOpenPositionPacket -> PositionContract -> ActivePositionBook -> PerPositionEvaluation` is now explicit, while account aggregation and monitoring evidence remain the next separate tasks.
+## 2026-04-18
+### Modified
+- Added `D:\SM\tests\security_monitoring_evidence_package_cli.rs` as the Task 5 red-green CLI contract.
+- Added `D:\SM\src\ops\security_monitoring_evidence_package.rs` and wired it through `D:\SM\src\ops\stock.rs`, `D:\SM\src\ops\stock_execution_and_position_management.rs`, `D:\SM\src\tools\catalog.rs`, `D:\SM\src\tools\dispatcher.rs`, and `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+- Updated `D:\SM\src\ops\security_portfolio_position_plan.rs` with reusable monitoring account aggregation and action-candidate helpers.
+### Why
+- The approved post-open data flow requires `MonitoringEvidencePackage` to sit after `PerPositionEvaluation` and before later governance packaging.
+- The user approved scheme B and asked to keep this slice pure-data and separate from committee / chair execution logic.
+### Remaining
+- [ ] Start Task 6 and add the capital rebase layer.
+- [ ] Decide later whether Task 5 should add richer correlation-pressure fields before the capital and adjustment tasks consume the package.
+### Risks
+- [ ] This round verified the focused Task 2 / Task 3 / Task 4 / Task 5 paths, not the full repository test suite.
+- [ ] Windows kept locking the default `target\debug\excel_skill.exe`, so verification used `--target-dir D:\SM\target_task5`; the main code path is verified, but the default local build artifact lock issue remains an environment concern.
+### Closed
+- Task 5 red-green cycle for `MonitoringEvidencePackage` is complete.
+- Focused verification passed:
+  - `cargo test --target-dir D:\SM\target_task5 --test security_monitoring_evidence_package_cli -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task5 --test security_per_position_evaluation_cli -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task5 --test security_account_open_position_snapshot_cli -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task5 --test security_position_contract_cli -- --nocapture`
+- Flow and design remain aligned: `ApprovedOpenPositionPacket -> PositionContract -> ActivePositionBook -> PerPositionEvaluation -> MonitoringEvidencePackage` is now explicit, while capital rebasing and adjustment input remain later separate tasks.
+## 2026-04-18
+### Modified
+- Ran one real governed `bank-parent.v1` `1d` retrain with `exclude_main_model_subindustry_bucket = true` and wrote the experiment outputs under:
+  - `D:\SM\.stockmind_runtime\ablation_runs\subindustry_off_20260418_2240\scorecard_artifacts\`
+  - `D:\SM\.stockmind_runtime\ablation_runs\subindustry_off_20260418_2240\scorecard_training_diagnostics\`
+- Replayed the full `2026Q1` bank pool on both:
+  - baseline model `a_share_equity_1d_direction_head__candidate_2026_04_18T21_15_00_08_00`
+  - ablation model `a_share_equity_1d_direction_head__candidate_2026_04_18T22_40_00_08_00`
+- Saved the A/B replay outputs to:
+  - `D:\SM\tests\runtime_fixtures\exports\bank_1d_q1_2026_backtest_summary_subindustry_off.json`
+  - `D:\SM\tests\runtime_fixtures\exports\bank_1d_q1_2026_backtest_compare_baseline_vs_subindustry_off.json`
+- Updated `D:\SM\findings.md` and `D:\SM\progress.md` with the real ablation evidence.
+### Why
+- The user approved Scheme 1 to test whether the bank `1d` failure was mainly caused by an overly strong `subindustry_bucket` prior.
+- The earlier conclusion was still only a hypothesis until the team had one real retrain plus one real replay under the same bank-pool and `2026Q1` audit window.
+### Remaining
+- [ ] Decide whether the next debug slice should first repair weak dynamic feature directionality or move directly to per-subindustry training.
+- [ ] Decide whether coarse high-weight buckets such as `fundamental_quality_bucket` should be clipped/merged before the next bank rerun.
+### Risks
+- [ ] The ablation run kept `mean_walk_forward_accuracy = 0.5396`, so removing the static prior did not improve the core model body.
+- [ ] This A/B replay still covers `2026-01-05..2026-03-31` only, so it does not prove stability in other market windows.
+### Closed
+- The real ablation retrain completed and diagnostics explicitly recorded `subindustry_bucket` as `excluded_from_main_model_subindustry_ablation`.
+- The full-bank `2026Q1` A/B replay proved that removing `subindustry_bucket` alone does not fix the bank `1d` ranking problem and in this window makes the replay metrics worse.
+
+## 2026-04-19
+### Modified
+- Extended `D:\SM\tests\security_monitoring_evidence_package_cli.rs` with four Task 5 hardening tests covering account mismatches, risk-budget pressure warnings, and ranked candidate ordering.
+### Why
+- The user asked whether Task 5 had enough tests and approved the richer scheme B hardening pass.
+- These tests lock the highest-value Task 5 boundaries before capital rebasing and later adjustment tasks build on the package.
+### Remaining
+- [ ] Start Task 6 and add the capital rebase layer when the user confirms.
+- [ ] Decide later whether Task 5 should add explicit correlation-pressure coverage once that field stops being a placeholder.
+### Risks
+- [ ] Verification again used an alternate `--target-dir` because the default Windows build artifact can remain locked by local processes.
+- [ ] This round hardened Task 5 tests only; it did not expand the full repository suite.
+### Closed
+- Task 5 hardening tests all passed without requiring production-code changes.
+- Focused verification passed:
+  - `cargo test --target-dir D:\SM\target_task5_tests --test security_monitoring_evidence_package_cli -- --nocapture`
+## 2026-04-19
+### Modified
+- Added `D:\SM\tests\security_capital_rebase_cli.rs` as the Task 6 red-green CLI contract.
+- Added `D:\SM\src\ops\security_capital_rebase.rs` and wired it through `D:\SM\src\ops\stock.rs`, `D:\SM\src\ops\stock_execution_and_position_management.rs`, `D:\SM\src\tools\catalog.rs`, `D:\SM\src\tools\dispatcher.rs`, and `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+- Updated `D:\SM\src\ops\security_position_contract.rs` with an override-aware rebasing helper.
+- Updated `D:\SM\src\ops\security_portfolio_position_plan.rs` with reusable capital rebalance simulation rows.
+### Why
+- The approved post-open flow requires capital changes to remain first-class account events and not be collapsed into ordinary position adjustments.
+- The user approved scheme B, which keeps target weights stable by default while allowing event-level max-weight and risk-budget tightening.
+### Remaining
+- [ ] Start Task 7 / Task 8 follow-up for approved downstream adjustment bridging when the user confirms the next slice.
+- [ ] Decide later whether Task 6 should include richer account-goal override fields beyond the current return/drawdown/cash/risk caps.
+### Risks
+- [ ] This round verified focused Task 6 plus adjacent Task 5 / Task 4 / Task 2 paths, not the full repository test suite.
+- [ ] Verification again used an alternate `--target-dir` because the default Windows build artifact can remain locked by local processes.
+### Closed
+- Task 6 red-green cycle for capital rebasing is complete.
+- Focused verification passed:
+  - `cargo test --target-dir D:\SM\target_task6 --test security_capital_rebase_cli -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task6 --test security_monitoring_evidence_package_cli -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task6 --test security_position_contract_cli -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task6 --test security_per_position_evaluation_cli -- --nocapture`
+- Flow and design remain aligned: `ApprovedOpenPositionPacket -> PositionContract -> ActivePositionBook -> PerPositionEvaluation -> MonitoringEvidencePackage -> CapitalEvent -> AccountRebaseSnapshot -> CapitalRebalanceEvidencePackage` is now explicit, while committee approval and adjustment input remain downstream work.
+## 2026-04-19
+### Modified
+- Implemented the bank-first fundamental stack rebuild B1 slice.
+- Extended governed `FundamentalMetrics` with `roa_pct`, `pe_ttm`, `pb`, `dividend_yield`, `log_revenue`, `log_net_profit`, and `pb_vs_roe_gap`.
+- Added deterministic derived-metric finalization for both live fullstack parsing and governed fundamental-history replay.
+- Rebuilt the main-model `F` block to include the new numeric features and exclude `fundamental_status`, `profit_signal`, and `fundamental_quality_bucket` from alpha training.
+- Added/updated regressions in `security_analysis_fullstack_cli`, `security_scorecard_training_cli`, `security_stock_history_governance_cli`, and corrected stale `security_feature_snapshot_cli` expectations.
+- Added design/implementation docs for the approved bank-first rebuild.
+### Why
+- The existing bank fundamental layer was too shallow and overweighted coarse summary buckets.
+- The approved direction was to stabilize banks first with normalized general/value fundamentals before expanding to other industries.
+- Governed live parsing and governed replay needed the same derived metric contract to avoid training/runtime drift.
+### Remaining
+- [ ] Add bank-only prudential metrics such as NIM, NPL, provision coverage, CET1, loan/deposit growth, and cost-to-income.
+- [ ] Run one real bank retrain/backtest on the rebuilt B1/B2 contract and compare walk-forward and cross-sectional spread metrics.
+### Risks
+- [ ] Upstream financial aliases for `pe_ttm`, `pb`, `dividend_yield`, and later bank-only fields may still vary by provider.
+- [ ] `pb_vs_roe_gap` is currently a first-pass deterministic proxy and may need sector-relative refinement after real retraining evidence.
+- [ ] Existing historical rows written before this change may not contain all raw source fields, so replay quality still depends on available stored payload depth.
+### Closed
+- Focused and related regression suites passed for the modified paths.
+
+## 2026-04-19
+### Modified
+- Extended `D:\SM\tests\security_capital_rebase_cli.rs` with six Task 6 boundary-hardening tests for unsupported event types, oversized withdrawals, inflow/outflow normalization, and cross-account rejection.
+- Updated `D:\SM\progress.md`, `D:\SM\task_plan.md`, and `D:\SM\docs\AI_HANDOFF.md` to record the hardened Task 6 boundary and downstream separation rules.
+### Why
+- The user asked to harden Task 6 tests first and then sort out the boundary before moving deeper into later adjustment work.
+- Task 6 is the first account-level capital-rebasing layer, so its non-execution boundary must stay explicit for future AI handoff.
+### Remaining
+- [ ] Start Task 7 / Task 8 only after keeping the Task 6 no-execution boundary intact.
+- [ ] Decide later whether capital-goal override fields need richer coverage once downstream governance bridging is scheduled.
+### Risks
+- [ ] Verification again used an alternate `--target-dir` because the default Windows build artifact can remain locked by local processes.
+- [ ] This round hardened the focused Task 6 boundary only; it did not expand the full repository suite.
+### Closed
+- The new Task 6 boundary tests all passed without requiring production-code changes.
+- Focused verification passed:
+  - `cargo test --target-dir D:\SM\target_task6_tests --test security_capital_rebase_cli -- --nocapture`
+- Flow and handoff remain aligned: Task 6 ends at `CapitalRebalanceEvidencePackage` and does not create execution input.
+## 2026-04-19
+### Modified
+- Ran one real `bank-parent.v1` `1d` retraining pass through `D:\SM\target\debug\excel_skill.exe` and compared it against the `2026-04-18T21:15:00+08:00` bank baseline.
+- Audited `D:\SM\.stockmind_runtime\security_fundamental_history.db`, `D:\SM\findings.md`, `D:\SM\progress.md`, and `D:\SM\task_plan.md` to capture the B1 retrain result and the B2 data-gap verdict.
+### Why
+- The user approved a fresh retrain first and then asked whether B2 still needs after the latest B1 implementation.
+- A trustworthy B2 decision required checking not just the new training artifact, but also whether governed historical financial payloads had actually been refreshed onto the new B1 field contract.
+### Remaining
+- [ ] Refresh governed fundamental-history payloads so existing historical rows actually contain the newly added B1 fields before judging B2 by another retrain.
+- [ ] Add bank-only prudential metrics such as NIM, NPL, provision coverage, CET1, loan growth, deposit growth, and cost-to-income once the user approves the next code change slice.
+### Risks
+- [ ] The current retrain reused stale governed historical financial rows, so most new B1 financial fields were filtered for `insufficient_distinct_values` and the result understates the intended B1 impact.
+- [ ] No bank-only prudential metric ingestion exists yet, so B2 cannot improve bank differentiation until that source-and-parser gap is closed.
+### Closed
+- The fresh retrain completed successfully and matched the weak baseline training quality instead of improving it.
+- The audit established a concrete root cause: governed historical financial storage is still on the legacy payload shape for existing rows, and B2 is still required.
+
+## 2026-04-19
+### Modified
+- Added `D:\SM\tests\post_open_position_data_flow_guard.rs` as a standalone source-guard test for the post-open governance gate.
+- Updated `D:\SM\progress.md`, `D:\SM\task_plan.md`, and `D:\SM\docs\AI_HANDOFF.md` to record the guard-first boundary freeze and the separation from the legacy adjustment recorder.
+### Why
+- The user approved scheme B to keep moving without touching the unrelated modeling workstream that is currently blocking workspace-wide `cargo test`.
+- The biggest immediate drift risk was the old adjustment recorder being mistaken for the planned `AdjustmentInputPackage` bridge.
+### Remaining
+- [ ] Resume formal Task 7 implementation only after the unrelated `security_analysis_fullstack.rs` compile blocker is cleared by the other workstream.
+- [ ] Keep `security_record_position_adjustment` as legacy/manual-only until the real adjustment-input bridge lands.
+### Risks
+- [ ] This round verified a standalone source-guard only; it did not verify the full workspace through `cargo test`.
+- [ ] The approved Task 7 code implementation is still pending, so only the boundary is frozen in this round.
+### Closed
+- Standalone guard verification passed:
+  - `rustc --edition=2021 --test D:\SM\tests\post_open_position_data_flow_guard.rs -o D:\SM\target_task7_guard\post_open_position_data_flow_guard.exe`
+  - `D:\SM\target_task7_guard\post_open_position_data_flow_guard.exe --nocapture`
+- The post-open mainline now has an explicit test freezing the committee/chair gate before `AdjustmentInputPackage`.
+
+## 2026-04-19
+### Modified
+- Updated `D:\SM\docs\plans\2026-04-18-post-open-position-data-system-design.md` with a post-Task-9 expansion blueprint.
+- Added new sections for: system position after Task 9, top-tier capability map, staged roadmap `P10-P22`, and non-negotiable long-term expansion rules.
+### Why
+- The user asked to write the previously discussed top-tier evolution plan back into the original position-management design document.
+- The current minimum lifecycle design needed one explicit explanation that Task 9 is only the coherent baseline, not the institution-grade endpoint.
+### Remaining
+- [ ] If approved later, synchronize the companion graph and implementation plan with the new long-term roadmap instead of leaving the blueprint narrative-only.
+- [ ] Decide later whether the `P10-P22` roadmap should be split into separate dedicated design docs per phase.
+### Risks
+- [ ] This round updated design narrative only; it did not change the machine-readable graph or any implementation code.
+- [ ] Future sessions could overreach and pull LLM into the core sizing chain unless they continue following the new non-negotiable expansion rules.
+### Closed
+- The original post-open design doc now explicitly distinguishes the minimum governed lifecycle from the later top-tier portfolio/risk/execution/learning/LLM roadmap.
+- The long-term boundary is now documented: math stays in the core chain, and LLM stays in the governance layer.
+
+## 2026-04-19
+### Modified
+- Extended `D:\SM\src\ops\security_analysis_fullstack.rs`, `D:\SM\src\ops\security_decision_evidence_bundle.rs`, and `D:\SM\src\ops\security_scorecard_training.rs` so the governed bank pipeline carries six B2 proxy metrics: `total_assets`, `total_asset_growth_pct`, `equity_growth_pct`, `asset_liability_ratio`, `equity_ratio_pct`, and `liability_to_equity_ratio_pct`.
+- Fixed the live backfill path so Eastmoney success no longer prevents Sina-only bank fields from being merged, and tightened the Sina `typecode` matcher to avoid alias collisions.
+- Added focused regression coverage in `D:\SM\tests\security_fundamental_history_live_backfill_cli.rs`, `D:\SM\tests\security_scorecard_training_cli.rs`, and `D:\SM\tests\stock_training_data_backfill_cli.rs`, then completed a real 42-bank refresh plus one real `1d` retrain audit.
+### Why
+- The user approved the `1 -> 2 -> 3` path: refresh governed fundamentals first, land B2 bank proxy metrics second, and retrain/audit third.
+- The earlier B2 verdict was unreliable because the governed history path could return early on Eastmoney success and silently miss Sina-only bank balance-sheet fields required by the new contract.
+### Remaining
+- [ ] Run the next approved feature-governance slice before adding more bank fields: remove or consolidate the strongest collinear pairs such as `asset_liability_ratio` vs `liability_to_equity_ratio_pct` and likely `total_assets` vs `log_net_profit`.
+- [ ] Decide after the next retrain whether bank-only prudential fields like NIM, NPL, provision coverage, CET1, loan/deposit growth, and cost-to-income still need sourcing.
+- [ ] Re-check missing upstream valuation and ROA fields because `pb`, `pe_ttm`, `dividend_yield`, and `roa_pct` are still empty in governed storage after this round.
+### Risks
+- [ ] The B2 metrics were retained by the model, but the real `2026-04-19 12:35 +08:00` retrain did not improve generalization: bank test accuracy fell from `0.484375` to `0.4296875`.
+- [ ] Two new high-correlation pairs are now explicit in diagnostics and can distort feature attribution: `asset_liability_ratio` vs `liability_to_equity_ratio_pct` (~1.0) and `log_net_profit` vs `total_assets` (~0.924).
+- [ ] The current weakness is no longer a pure data-missing problem; continuing to add same-family balance-sheet fields without governance will likely worsen redundancy instead of improving prediction.
+### Closed
+- Real governed coverage for all 42 bank symbols now contains the six new B2 proxy fields across 168 historical rows.
+- Focused regression suites passed for the modified paths, and the real retrain confirmed the B2 fields truly enter the retained feature set.
+## 2026-04-19
+### Modified
+- Added the compact single-source-of-truth set under `D:\SM\docs\`: `project_intent.md`, `contract_registry.md`, `decision_log.md`, `acceptance_criteria.md`, and `response_contract.md`.
+- Updated `D:\SM\docs\AI_HANDOFF.md` with `10.1 Single Source Set` and `10.2 Mandatory Update Rule` so future AI sessions must review and update these files when a task changes intent, contract, decisions, acceptance, or response behavior.
+- Re-checked the new documents against the current post-open position-management mainline and confirmed they align with `D:\SM\docs\plans\2026-04-18-post-open-position-data-system-design.md` and `D:\SM\docs\architecture\post_open_position_data_graph.json`.
+### Why
+- The user required the project to institutionalize the three-layer structure of `Intent`, `Contract`, and `Execution Plan`, plus explicit management of decisions, assumptions, open questions, acceptance gates, and answer contract.
+- Future AI handoff quality was at risk because critical constraints had been spread across natural-language discussion instead of being frozen into a small governed source set.
+### Remaining
+- [ ] If later approved, add lightweight guards or checklist tooling so task completion can mechanically verify that the five single-source files were reviewed and updated when needed.
+- [ ] Keep these five files synchronized whenever future work changes project boundaries, formal objects, design decisions, acceptance rules, or answer behavior.
+### Risks
+- [ ] The current governance layer is documentation-enforced, not yet tool-enforced, so future sessions could still drift if they ignore the documented update rule.
+- [ ] The five-file source set currently governs the post-open controlled slice rather than every repo subsystem, so later expansion will need explicit scope management instead of silent overreach.
+### Closed
+- The project now has a compact governed source set for intent, contract, decision, acceptance, and response constraints.
+- The handoff rules now explicitly require every future development task to review/update these files and record the task in `.trae/CHANGELOG_TASK.md`.
+
+## 2026-04-19
+### Modified
+- Added `D:\SM\tests\security_analysis_fullstack_fundamental_metrics_source_guard.rs` to guard the expanded `FundamentalMetrics` constructor sites inside `D:\SM\src\ops\security_analysis_fullstack.rs`.
+- Verified the current bank fundamental rebuild branch still compiles with `cargo check -q` and the new source-guard test suite.
+### Why
+- The user asked to unblock the unrelated compile drift left by the bank fundamental rebuild while keeping the current Task 7 workstream untouched.
+- The investigated initializer sites are already compile-true in the current workspace, so the safest fix was to freeze them with a regression guard instead of touching business logic again.
+### Remaining
+- [ ] If the bank fundamental contract expands again, update the new source-guard markers together with the constructor changes in the same patch.
+- [ ] Return to the post-open / Task 7 line after this compile guard handoff, because this round did not change that business flow.
+### Risks
+- [ ] The new guard is source-based, so it protects constructor drift but does not validate semantic correctness of each parsed field value.
+- [ ] `cargo check -q` passed in the current workspace, but wider integration behavior still depends on the other in-flight changes already present in the dirty tree.
+### Closed
+- Focused verification passed:
+  - `cargo test --test security_analysis_fullstack_fundamental_metrics_source_guard -- --nocapture`
+  - `cargo check -q`
+- The current workspace no longer has an observable `FundamentalMetrics` compile gap on the bank fundamental rebuild line.
+## 2026-04-19
+### Modified
+- Added `D:\SM\src\ops\security_committee_decision_package.rs` as the independent post-open committee decision package module and exposed it through `D:\SM\src\ops\stock.rs` plus `D:\SM\src\ops\stock_governance_and_positioning.rs`.
+- Updated `D:\SM\src\tools\catalog.rs`, `D:\SM\src\tools\dispatcher.rs`, and `D:\SM\src\tools\dispatcher\stock_ops.rs` so `security_committee_decision_package` is now catalog-visible and callable from the formal stock tool bus.
+- Removed the temporary committee-package shell from `D:\SM\src\ops\security_monitoring_evidence_package.rs` so the governance handoff no longer remains hidden inside the monitoring module.
+- Added backward-compatible serde defaults on late-added fields in `D:\SM\src\ops\security_portfolio_position_plan.rs` so older capital-rebalance evidence samples still deserialize when Task 7 merges optional rebalance evidence.
+- Updated `D:\SM\docs\contract_registry.md`, `D:\SM\docs\decision_log.md`, `D:\SM\docs\AI_HANDOFF.md`, and `D:\SM\docs\architecture\post_open_position_data_graph.json` to reflect the implemented `CommitteeDecisionPackage` boundary and the new code ownership links.
+### Why
+- The unrelated `FundamentalMetrics` compile blocker was already cleared, so the real remaining Task 7 gap became the missing `security_committee_decision_package` implementation and stock tool wiring.
+- The approved scheme B required `CommitteeDecisionPackage` to become a first-class formal object instead of staying as a thin helper inside the monitoring module.
+- Task 7 also needed to preserve the governance gate explicitly: monitoring evidence and optional capital-rebalance evidence may merge into one committee handoff, but they still must not create `AdjustmentInputPackage`.
+### Remaining
+- [ ] The later `AdjustmentInputPackage` bridge is still not implemented and must remain downstream of committee/chair approval.
+- [ ] The broader companion graph still contains historical planned nodes outside this task slice; only the Task 7 committee-package portion was brought into minimum consistency in this round.
+### Risks
+- [ ] `SecurityCapitalRebalanceSimulationItem` now accepts missing late-added fields during deserialization for backward compatibility, so future callers must still prefer emitting the full richer simulation shape instead of relying on defaults.
+- [ ] The current committee package is an evidence-only governance handoff; future sessions could still drift if they mistake this implementation for permission to emit execution-facing adjustment input.
+### Closed
+- Focused Task 7 verification passed:
+  - `cargo test --target-dir D:\SM\target_task7_impl --test security_committee_decision_package_cli -- --nocapture`
+- Neighbor-flow verification stayed green:
+  - `cargo test --target-dir D:\SM\target_task7_impl --test security_capital_rebase_cli -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task7_impl --test security_monitoring_evidence_package_cli -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task7_impl --test security_analysis_fullstack_fundamental_metrics_source_guard -- --nocapture`
+- The committee package now matches the approved business flow: evidence merges into governance review, stays evidence-only, and keeps the gate before any future `AdjustmentInputPackage`.
+
+## 2026-04-19
+### Modified
+- Extended `D:\SM\tests\security_committee_decision_package_cli.rs` with two additional governance-boundary tests.
+- Added one richer-payload test so the committee package now exercises a full `SecurityCapitalRebalanceSimulationItem` shape instead of relying only on the backward-compatible default-field path.
+- Added one governance-gate test so upstream evidence carrying execution-like flags still results in an evidence-only `security_committee_decision_package` output.
+### Why
+- After Task 7 landed, two residual risks remained: future callers could depend only on the default-field compatibility path for capital rebalance evidence, and later changes could accidentally relay execution-facing flags through the committee package.
+- The user explicitly asked to freeze these two risks with focused tests before moving on.
+### Remaining
+- [ ] The real `AdjustmentInputPackage` bridge is still a later task and remains intentionally unimplemented.
+- [ ] If future richer capital-rebalance payload fields are added again, expand the richer-payload fixture in the same test file so committee-package coverage stays aligned.
+### Risks
+- [ ] These new tests freeze the current committee-package boundary, but they do not yet verify a downstream adjustment bridge because that bridge still does not exist.
+- [ ] The richer payload is still a fixture-level sample; if the capital-rebalance contract expands further, the sample can drift unless updated together with the contract.
+### Closed
+- Focused verification passed:
+  - `cargo test --target-dir D:\SM\target_task7_tests2 --test security_committee_decision_package_cli -- --nocapture`
+- The five single-source-of-truth files were re-checked for this round and required no content change because the task only strengthened test coverage around already-documented boundaries.
+
+## 2026-04-19
+### Modified
+- Re-ran the approved `bank-parent.v1` `1d` scheme-A experiment with `exclude_main_model_fundamental_group = true` through `D:\SM\target\debug\excel_skill.exe`.
+- Produced an isolated ablation output set under `D:\SM\.stockmind_runtime\ablation_runs\fundamental_off_20260419_1545`.
+- Updated `D:\SM\findings.md`, `D:\SM\progress.md`, and `D:\SM\task_plan.md` with the new comparison against the latest `2026-04-19T12:35:00+08:00` bank baseline.
+### Why
+- The user explicitly asked to test whether the current bank `1d` failure mainly comes from dirty or overweighted fundamental features before continuing the larger bank fundamental rebuild.
+- The safest way to answer that question was one governed ablation rerun that removes the whole `F` block from the main model while keeping diagnostics auditable.
+### Remaining
+- [ ] Shift the next root-cause pass toward label design, split coverage, and market-state interaction, because the F-group ablation did not restore generalization.
+- [ ] Decide whether the bank fundamental rebuild should continue as a secondary data-quality track or pause until the label/split line is audited further.
+### Risks
+- [ ] Although explicit high-correlation pairs dropped from `2` to `0`, `mean_walk_forward_accuracy` worsened from `0.5396341463414634` to `0.5304878048780488`, so removing fundamentals alone can make the model thinner without making it smarter.
+- [ ] The current bank `1d` weakness still appears regime-sensitive: `technical_only` and `bull_trend` slices remain weak even after the F block is removed.
+### Closed
+- The real F-group ablation rerun is complete and its outputs are isolated for future audit.
+- The project record now explicitly states that current fundamentals are not the primary explanation for the bank `1d` model failure.
+
+## 2026-04-19
+### Modified
+- Audited the whole retained technical feature family (`T/Q/V`) in the latest bank `1d` baseline instead of only the top four technical drivers.
+- Updated `D:\SM\findings.md`, `D:\SM\progress.md`, and `D:\SM\task_plan.md` with the new technical-feature governance audit conclusions.
+### Why
+- The user clarified that the issue is systemic: even if the current top technical drivers are fixed, other retained indicators can surface with the same forward-meaning problem afterward.
+- The safest next step was to audit the technical family as one governed surface and identify which features are current-state descriptors versus forward-direction signals.
+### Remaining
+- [ ] Turn the current audit into one explicit technical-feature governance proposal before any code change.
+- [ ] After the technical governance method is validated on bank `1d`, extend the same audit method to fundamentals and event/disclosure features.
+### Risks
+- [ ] Several retained technical features still compress opposite forward meanings into one coarse bucket, especially `volume_confirmation`.
+- [ ] `momentum_signal` currently appears semantically reversed for the bank `1d` task, so point-fixing one feature without family-level governance can still leave the model unstable.
+### Closed
+- The current project record now distinguishes a technical-feature governance problem from a narrow one bad indicator problem.
+- The bank `1d` next-step recommendation is now grounded in a full `T/Q/V` audit instead of only head-driver intuition.
+## 2026-04-19
+### Modified
+- Added the formal `D:\SM\src\ops\security_adjustment_input_package.rs` module and exposed it on the stock boundary, grouped execution gateway, public catalog, dispatcher, and stock dispatcher route.
+- Added the execution-preview adapter `adapt_adjustment_input_package_to_execution_record_request()` in `D:\SM\src\ops\security_execution_record.rs`.
+- Updated the post-open single-source documents and graph companion so `AdjustmentInputPackage` is now recorded as an implemented approved-only bridge instead of a planned object.
+### Why
+- Task 7 needed the real approved downstream bridge after `CommitteeDecisionPackage`, while keeping the legacy adjustment recorder frozen as a compatibility-only consumer.
+- The user explicitly approved scheme B: formal contract first, execution and legacy recorder as downstream preview shapes, with no silent side effects.
+### Remaining
+- [ ] The bridge still previews downstream request shapes only; it does not yet orchestrate runtime execution or persistence side effects.
+- [ ] Future work still needs the real governance-output payload shape from the committee/chair line instead of the current minimal approved-governance fixture.
+### Risks
+- [ ] If later governance payload fields are renamed without updating the bridge contract, the adapter can drift even though the current CLI coverage stays green.
+- [ ] `requested_adjustment_type` and `plan_alignment` are currently validated against a fixed string set; new business labels must update both contract code and tests together.
+### Closed
+- Focused verification passed:
+  - `cargo test --target-dir D:\SM\target_task8_red --test security_adjustment_input_package_cli -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task8_red --test security_committee_decision_package_cli -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task8_red --test security_execution_record_cli -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task8_red --test security_monitoring_evidence_package_cli -- --nocapture`
+- Graph companion validation passed:
+  - `Get-Content -Raw D:\SM\docs\architecture\post_open_position_data_graph.json | ConvertFrom-Json`
+- The five source-of-truth files were reviewed in this round; `contract_registry.md`, `decision_log.md`, and `acceptance_criteria.md` changed, while `project_intent.md` and `response_contract.md` required no content change.
+
+## 2026-04-19
+### Modified
+- Fixed the four `security_chair_resolution_cli` ETF/proxy-history regressions by updating:
+  - `D:\SM\src\ops\security_scorecard.rs`
+  - `D:\SM\src\ops\security_decision_evidence_bundle.rs`
+  - `D:\SM\src\ops\security_external_proxy_backfill.rs`
+  - `D:\SM\src\ops\security_decision_committee.rs`
+- Added focused unit coverage in `D:\SM\src\ops\security_decision_evidence_bundle.rs` for:
+  - ETF alias normalization
+  - ETF proxy-complete evidence quality
+  - latest ETF proxy date anchoring
+- Updated `D:\SM\docs\contract_registry.md`, `D:\SM\docs\decision_log.md`, `D:\SM\docs\acceptance_criteria.md`, `D:\SM\docs\AI_HANDOFF.md`, and `D:\SM\docs\architecture\post_open_position_data_graph.json` to freeze the new ETF runtime rules.
+### Why
+- Task 7 verification exposed four old ETF/proxy-history failures that blocked broader chair-line confidence and would have made later Task 8 handoff drift-prone.
+- The user explicitly required these fixes to be written back as source-of-truth rules instead of staying as undocumented tactical patches.
+### Remaining
+- [ ] `project_intent.md` and `response_contract.md` were reviewed and did not need content changes in this round.
+- [ ] Full-workspace `cargo test` was not run; verification stayed on the affected chair/evidence/committee surfaces.
+### Risks
+- [ ] New ETF families will still need explicit alias normalization and proxy-family definitions; otherwise the same drift class can return under different labels.
+- [ ] The ETF proxy-complete replacement rule is intentionally narrow; future sessions must not over-extend it to ordinary equities.
+### Closed
+- Focused verification passed:
+  - `cargo test --target-dir D:\SM\target_task7_final --lib security_decision_evidence_bundle::tests -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task7_final --test security_chair_resolution_cli -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task7_final --test security_decision_committee_cli -- --nocapture`
+- Machine-readable graph validation should continue to parse after the ETF runtime note update.
+
+## 2026-04-19
+### Modified
+- Upgraded `D:\SM\tests\post_open_position_data_flow_guard.rs` from the pre-bridge assumption set to the current Task 7 mainline state.
+- Replaced the old adjustment bridge must not be wired yet assertions with current guard rules:
+  - `security_adjustment_input_package` must stay exposed on the public stock boundary, catalog, and dispatcher
+  - the bridge must remain preview-only
+  - the legacy adjustment recorder must remain separate compatibility infrastructure
+  - design / graph / handoff / contract texts must still preserve the committee/chair governance gate
+### Why
+- Task 8 is the integration-guard slice for the whole post-open flow, and the old guard had become stale after Task 7 formally landed `AdjustmentInputPackage`.
+- Leaving the old guard in place would make the test suite reject the now-approved mainline instead of protecting it.
+### Remaining
+- [ ] `project_intent.md`, `contract_registry.md`, `decision_log.md`, `acceptance_criteria.md`, and `response_contract.md` were reviewed for this round and did not require content changes.
+- [ ] Task 9 still needs the broader focused-regression bundle and handoff refresh beyond the guard itself.
+### Risks
+- [ ] If future sessions change the bridge from preview-only into execution orchestration without updating this guard, the test will become stale in the opposite direction.
+- [ ] The guard intentionally checks contract-level strings and ownership edges, so file/method renames must be updated together with the graph/doc sources.
+### Closed
+- Focused verification passed:
+  - `cargo test --target-dir D:\SM\target_task8_guard_red --test post_open_position_data_flow_guard -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task8_guard_green --test post_open_position_data_flow_guard -- --nocapture`
+
+## 2026-04-19
+### Modified
+- Synced `D:\SM\docs\project_intent.md` wording so the intent now says committee/chair governance must complete before `AdjustmentInputPackage` may be built or consumed, instead of describing it as not yet existing.
+### Why
+- The formal bridge landed in code during the same task, so the old intent phrasing became stale and could mislead the next AI session.
+### Remaining
+- [ ] Keep future intent wording aligned when the bridge moves from preview-only into real execution orchestration.
+### Risks
+- [ ] If future sessions update contracts without rechecking `project_intent.md`, the intent layer can drift even when code and tests are correct.
+### Closed
+- The intent layer now matches the implemented approved-only bridge boundary.
+
+## 2026-04-19
+### Modified
+- Extended `D:\SM\src\ops\security_adjustment_input_package.rs` so `security_adjustment_input_package` now accepts either one compatibility `governance_approval` payload or one formal `governance_artifacts` bundle.
+- Added artifact-driven governance assembly types and helpers in `D:\SM\src\ops\security_adjustment_input_package.rs`: `SecurityAdjustmentGovernanceArtifacts`, `SecurityAdjustmentSizingDecision`, `resolve_governance_approval()`, and `build_governance_approval_from_artifacts()`.
+- Expanded `D:\SM\tests\security_adjustment_input_package_cli.rs` with red-green coverage for the new real-artifact path and ref-drift rejection semantics.
+- Updated `D:\SM\docs\contract_registry.md`, `D:\SM\docs\decision_log.md`, `D:\SM\docs\acceptance_criteria.md`, `D:\SM\docs\AI_HANDOFF.md`, and `D:\SM\docs\architecture\post_open_position_data_graph.json` to record the new contract boundary.
+### Why
+- Task 7 still needed to replace the hand-filled governance fixture with a formal assembly path rooted in real approval/chair/condition artifacts.
+- The user fixed the business rule that governance lineage and mathematical sizing must stay connected but not over-fused, so the bridge now assembles approval lineage from artifacts while keeping `sizing_decision` explicit.
+### Remaining
+- [ ] The direct `governance_approval` path is still a compatibility route and can be retired only after upstream callers switch to the artifact-driven path.
+- [ ] Runtime execution and persistence orchestration are still out of scope; the bridge remains preview-only.
+- [ ] The unrelated `security_chair_resolution_cli` ETF/proxy-history failures are still open outside this task.
+### Risks
+- [ ] If `submit_approval_output` changes its `decision_ref` / `approval_ref` / `position_plan` field shape without updating this bridge, the artifact-driven path will hard-fail.
+- [ ] Future sessions may incorrectly assume `chair_resolution` or `condition_review` already contain the full adjustment math and try to remove `sizing_decision`.
+### Closed
+- Focused red-green verification passed for the new bridge path:
+  - `cargo test --target-dir D:\SM\target_task7_artifact_red --test security_adjustment_input_package_cli -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task7_artifact_green --test security_adjustment_input_package_cli -- --nocapture`
+  - `cargo test --target-dir D:\SM\target_task7_artifact_green --test security_condition_review_cli --test security_committee_decision_package_cli --test security_execution_record_cli -- --nocapture`
+- Machine-readable graph validation should continue to parse through PowerShell JSON conversion after the graph companion update.
+## 2026-04-19
+### Modified
+- Added `D:\SM\docs\plans\2026-04-19-technical-feature-governance-design.md` and `D:\SM\docs\plans\2026-04-19-technical-feature-governance-implementation-plan.md` to freeze the approved scheme-B technical-governance slice.
+- Extended `D:\SM\src\ops\technical_consultation_basic.rs` with the first direction-aware technical family:
+  - `trend_direction_strength`
+  - `volume_confirmation_direction`
+  - `momentum_continuation_signal`
+  - `volatility_regime_signal`
+- Updated `D:\SM\src\ops\security_decision_evidence_bundle.rs` to project the new technical fields into the governed raw feature seed.
+- Updated `D:\SM\src\ops\security_scorecard_training.rs` so the trainer now:
+  - registers the new direction-aware technical fields in the formal feature contract
+  - excludes `trend_strength`, `volume_confirmation`, `momentum_signal`, and `atr_ratio_14` from the main model with `excluded_from_main_model_legacy_technical_semantics`
+- Updated `D:\SM\tests\security_scorecard_training_cli.rs` and added new unit coverage in `technical_consultation_basic.rs` / `security_scorecard_training.rs` for the new technical-governance contract.
+- Ran one real `bank-parent.v1` `1d` retrain and produced:
+  - `D:\SM\.stockmind_runtime\scorecard_artifacts\a_share_equity_1d_direction_head__candidate_2026_04_19T20_30_00_08_00.json`
+  - `D:\SM\.stockmind_runtime\scorecard_training_diagnostics\a_share_equity_1d_direction_head__candidate_2026_04_19T20_30_00_08_00.json`
+  - `D:\SM\.stockmind_runtime\scorecard_model_registry\a_share_equity_1d_direction_head__candidate_2026_04_19T20_30_00_08_00.json`
+### Why
+- The user approved scheme B: stop treating the bank `1d` problem as one or two bad indicators and instead build a governed technical-feature recovery method.
+- The latest audit showed the old coarse technical fields compress opposite forward meanings, so they needed to stay auditable but leave the main model.
+### Remaining
+- [ ] Fix bucket-support sparsity so the new direction-aware technical fields can survive the real train-time support gate instead of being filtered for `insufficient_bin_support`.
+- [ ] Re-run the next real retrain after support geometry is adjusted and compare whether the model finally retains the new technical family.
+### Risks
+- [ ] The real rerun did not improve generalization yet: `mean_walk_forward_accuracy` fell from `0.5396341463414634` to `0.4878048780487805`, although `test.accuracy` improved slightly from `0.4296875` to `0.4375`.
+- [ ] The semantic rewrite is wired correctly, but the new technical fields are still too sparse for the current support threshold, so the main model is not truly using them yet.
+### Closed
+- Focused and adjacent verification passed:
+  - `cargo test technical_consultation_basic --lib -- --nocapture`
+  - `cargo test security_scorecard_training --lib -- --nocapture`
+  - `cargo test --test security_scorecard_training_cli -- --nocapture`
+  - `cargo test --test security_feature_snapshot_cli -- --nocapture`
+  - `cargo test --test security_analysis_fullstack_cli -- --nocapture`
+- The legacy coarse technical fields now leave the main model cleanly while staying visible in diagnostics.
+## 2026-04-19
+### Modified
+- Extended `D:\SM\docs\plans\2026-04-19-technical-feature-governance-design.md` and `D:\SM\docs\plans\2026-04-19-technical-feature-governance-implementation-plan.md` with the approved Scheme C follow-up.
+- Updated `D:\SM\src\ops\technical_consultation_basic.rs` to coarsen the new directional technical vocabulary:
+  - `trend_direction_strength -> bullish_directional / bearish_directional / range_or_weak`
+  - `volume_confirmation_direction -> bullish_participation / bearish_participation / neutral_or_fading`
+  - `momentum_continuation_signal -> bullish_continuation / bearish_continuation / exhausted_or_neutral`
+  - `volatility_regime_signal -> stable_trend / stress_regime / range_chop`
+- Updated `D:\SM\src\ops\security_scorecard_training.rs` to resolve sparse-support threshold per feature and apply a dedicated relaxed threshold to:
+  - `trend_direction_strength`
+  - `volume_confirmation_direction`
+  - `momentum_continuation_signal`
+  - `volatility_regime_signal`
+- Added/updated TDD coverage in:
+  - `D:\SM\src\ops\technical_consultation_basic.rs`
+  - `D:\SM\src\ops\security_scorecard_training.rs`
+- Rebuilt `excel_skill` and completed one real `bank-parent.v1` `1d` rerun:
+  - `D:\SM\.stockmind_runtime\scorecard_artifacts\a_share_equity_1d_direction_head__candidate_2026_04_19T22_45_00_08_00.json`
+  - `D:\SM\.stockmind_runtime\scorecard_training_diagnostics\a_share_equity_1d_direction_head__candidate_2026_04_19T22_45_00_08_00.json`
+  - `D:\SM\.stockmind_runtime\scorecard_model_registry\a_share_equity_1d_direction_head__candidate_2026_04_19T22_45_00_08_00.json`
+### Why
+- The first direction-aware technical rerun was wired correctly but failed to change the real main model because all four new technical fields were filtered for `insufficient_bin_support`.
+- The approved Scheme C response was to solve both sides of the blocker together:
+  - coarsen buckets
+  - relax sparse support only for the new directional technical family
+### Remaining
+- [ ] Decide whether to remove retained `trend_bias` now that `trend_direction_strength` is alive and currently perfectly correlated with it in diagnostics.
+- [ ] Decide whether to do one more coarsening pass for `volume_confirmation_direction` and `volatility_regime_signal`, which still fail sparse support even after Scheme C.
+### Risks
+- [ ] `production_readiness` remains `caution` after the Scheme C rerun.
+- [ ] `trend_bias` and `trend_direction_strength` now appear as a perfect high-correlation pair in the real retained model.
+- [ ] `volume_confirmation_direction` and `volatility_regime_signal` still do not survive the real bank-pool support gate.
+### Closed
+- TDD cycle completed and verified with:
+  - `cargo test trend_direction_strength --lib -- --nocapture`
+  - `cargo test volume_confirmation_direction --lib -- --nocapture`
+  - `cargo test momentum_continuation_signal --lib -- --nocapture`
+  - `cargo test volatility_regime_signal --lib -- --nocapture`
+  - `cargo test governance_policy_uses_dedicated_sparse_support_for_directional_technical_features --lib -- --nocapture`
+  - `cargo test governance_policy_keeps_global_sparse_support_for_ordinary_features --lib -- --nocapture`
+  - `cargo test technical_consultation_basic --lib -- --nocapture`
+  - `cargo test security_scorecard_training --lib -- --nocapture`
+  - `cargo test --test security_scorecard_training_cli -- --nocapture`
+- Real rerun improved the previous `2026-04-19T20:30:00+08:00` result:
+  - `test.accuracy = 0.4375 -> 0.46875`
+  - `mean_walk_forward_accuracy = 0.4878048780487805 -> 0.5060975609756098`
+  - retained feature count `17 -> 19`
+## 2026-04-19
+### Modified
+- Normalized `.trae/CHANGELOG_TASK.md` into a stable UTF-8 task journal shape with English section headers (`Modified`, `Why`, `Remaining`, `Risks`, `Closed`).
+- Restored the first clean historical segment from `HEAD`, repaired later malformed heading blocks, and rewrote one fully corrupted replay/pipeline entry into an English summary so the document remains readable.
+- Split merged date headings and removed several structure-drift artifacts that had caused later sections to collapse into the wrong heading labels.
+### Why
+- The task journal had accumulated mojibake and malformed section boundaries, which made downstream AI handoff and human review unreliable.
+- The user explicitly asked to clean the file, and allowed English replacements where damaged Chinese could not be trusted.
+### Remaining
+- [ ] If desired, we can still do a second-pass editorial cleanup that converts the remaining older Chinese content to English prose for fully uniform style.
+### Risks
+- [ ] PowerShell `Get-Content` can still render some valid UTF-8 Chinese as mojibake in this terminal, so file-content verification should prefer UTF-8-aware editors or Python reads over console appearance alone.
+- [ ] The journal now has stable structure again, but historical wording remains mixed Chinese/English by design because this pass prioritized integrity over stylistic rewriting.
+### Closed
+- Verified there are no merged date headings left in `.trae/CHANGELOG_TASK.md`.
+- Verified there are no obviously malformed `### Closed` sections immediately followed by unchecked bullets.
+- Verified the cleaned file reads as UTF-8 through Python and preserves the updated task history.
+## 2026-04-19
+### Modified
+- Added `D:\SM\tests\security_closed_position_archive_cli.rs` as the Task 9 red-green contract for catalog visibility, closed-record success, optional review/contract enrichment, and hard-fail identity drift.
+- Added `D:\SM\src\ops\security_closed_position_archive.rs` and wired the new tool through `D:\SM\src\ops\stock.rs`, `D:\SM\src\ops\stock_execution_and_position_management.rs`, `D:\SM\src\tools\catalog.rs`, `D:\SM\src\tools\dispatcher.rs`, and `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+- Updated post-open source-of-truth documents so `ClosedPositionArchive` is no longer planned-only:
+  - `D:\SM\docs\contract_registry.md`
+  - `D:\SM\docs\decision_log.md`
+  - `D:\SM\docs\acceptance_criteria.md`
+  - `D:\SM\docs\AI_HANDOFF.md`
+  - `D:\SM\docs\architecture\post_open_position_data_graph.json`
+  - `D:\SM\docs\plans\2026-04-18-post-open-position-data-system-implementation-plan.md`
+  - `D:\SM\task_plan.md`
+  - `D:\SM\progress.md`
+### Why
+- Task 9 was the last missing formal object in the minimum coherent post-open lifecycle, so leaving `ClosedPositionArchive` as design-only would keep the lifecycle incomplete.
+- The approved seam is closure-state driven, which means the archive must anchor on the closed execution record and only optionally enrich from review or contract context.
+### Remaining
+- [ ] If later sessions add more archive-specific runtime persistence or reporting, keep the graph JSON line-level mappings aligned with the new symbols in the same task.
+### Risks
+- [ ] The archive currently depends on execution-record/account identity being populated correctly; if future callers produce blank execution-record `account_id`, archive creation will hard-fail by design.
+- [ ] Future refactors must update both the graph JSON and source-of-truth contract docs together, otherwise graph-first code reading may drift again.
+### Closed
+- Verified RED first with `cargo test --test security_closed_position_archive_cli -- --nocapture`, which failed on `unsupported tool: security_closed_position_archive` before implementation.
+- Verified GREEN and focused regression with:
+  - `cargo test --test security_closed_position_archive_cli -- --nocapture`
+  - `cargo test --test security_account_open_position_snapshot_cli -- --nocapture`
+  - `cargo test --test security_adjustment_input_package_cli -- --nocapture`
+  - `cargo test --test security_post_trade_review_cli -- --nocapture`
+## 2026-04-19
+### Modified
+- Reorganized the live `D:\SM\docs\` tree into the approved audit taxonomy:
+  - `overview`
+  - `governance`
+  - `product`
+  - `plans/design`
+  - `plans/execution`
+  - `evidence`
+  - `handoff`
+  - `skills`
+  - `archive`
+- Rewrote the repository `README.md` as a pure entry document for navigation and reading order, and added bucket-level `README.md` files so each document class has an explicit audit entry point.
+- Moved the existing live documents into their new buckets, removed the old `docs/architecture` and `docs/fix` layout, and updated high-signal repository references to the new canonical paths.
+- Clarified `D:\SM\docs\handoff\AI_HANDOFF.md` so the two `D:\Rust\Excel_Skill\...` paths are explicitly marked as external historical references, while the current `D:\SM` canonical documents are listed beside them.
+### Why
+- The previous `docs/` layout had become too flat and mixed design, governance, handoff, and archive material together, which made quality audit and AI handoff harder than necessary.
+- The approved Scheme B goal was not only to move files, but to turn documentation layout into a stable navigation contract that later agents can follow without guessing.
+### Remaining
+- [ ] Decide later whether `docs/evidence/` should absorb additional verification artifacts beyond its current index-only placeholder role.
+### Risks
+- [ ] Historical records in `.trae/CHANGELOG_TASK.md` intentionally still contain legacy paths because rewriting history would damage traceability.
+- [ ] Some design and execution plans still describe the old layout as migration background; that wording is intentional and should not be mistaken for active repository navigation.
+### Closed
+- Verified the `docs/` tree matches the approved taxonomy buckets and contains bucket-level entry `README.md` files.
+- Verified active markdown references no longer point to the old `docs/architecture` or `docs/fix` locations.
+- Verified `D:\SM\docs\governance\post_open_position_data_graph.json` still parses successfully after the document moves.
+## 2026-04-19
+### Modified
+- Hardened Task 9 closure-archive coverage in `D:\SM\tests\security_closed_position_archive_cli.rs` with five additional CLI boundary tests for:
+  - missing `actual_exit_date`
+  - missing `exit_reason`
+  - missing execution-record `account_id`
+  - `post_trade_review.execution_record_ref` mismatch
+  - `position_contract.account_id` mismatch
+### Why
+- `ClosedPositionArchive` was already implemented, but the CLI regression layer still did not lock several explicit hard-fail branches that exist in the archive validator.
+- This round keeps Task 9 honest as the final closed-position object in the minimum coherent post-open lifecycle by freezing incomplete closure facts and cross-source identity drift at the test boundary.
+### Remaining
+- [ ] If later sessions add archive consumers such as query/report/export tools, keep these same hard-fail assumptions visible instead of reinterpreting the archive as a soft summary object.
+### Risks
+- [ ] This round adds coverage only; it does not yet add downstream archive indexing, reporting, or persistence beyond the current formal object builder.
+### Closed
+- Verified with:
+  - `cargo test --test security_closed_position_archive_cli -- --nocapture`
+  - `cargo test --test security_post_trade_review_cli -- --nocapture`
+- Result: all `10` Task 9 archive tests passed, so no production-code change was required in this hardening slice.
+## 2026-04-19
+### Modified
+- Added the approved report-layer design document `D:\SM\docs\plans\design\2026-04-19-account-closed-position-review-report-design.md` for the first account-interval retrospective report object.
+- Wrote the same constraints back into the governed source-of-truth set:
+  - `D:\SM\docs\product\project_intent.md`
+  - `D:\SM\docs\governance\contract_registry.md`
+  - `D:\SM\docs\governance\decision_log.md`
+  - `D:\SM\docs\governance\acceptance_criteria.md`
+  - `D:\SM\docs\governance\response_contract.md`
+- Updated `D:\SM\docs\handoff\AI_HANDOFF.md` so future sessions know the next approved downstream consumer after `Task 9` is `AccountClosedPositionReviewReport`, and that it is design-approved but not yet implemented.
+### Why
+- The user explicitly required the report work to be split into auditable documents instead of leaving key rules inside one natural-language discussion.
+- This round freezes the first report-layer boundary before any implementation planning so later AI sessions can distinguish archive truth, optional review enrichment, and account-interval reporting responsibilities.
+### Remaining
+- [ ] Create the implementation plan for `AccountClosedPositionReviewReport` after the user confirms the design baseline is complete.
+- [ ] When implementation starts, add the report object to the graph/ownership artifacts if the user wants the machine-readable flow extended to include downstream consumers.
+### Risks
+- [ ] The report-layer object is approved only at design level; no code or tests exist yet.
+- [ ] Future sessions could still over-fuse report generation with archive mutation or governance execution if they skip the updated source-of-truth files.
+### Closed
+- Verified the new design document exists and is referenced by the relevant governed source-of-truth files.
+- Verified handoff now explicitly distinguishes `ClosedPositionArchive` from the planned downstream `AccountClosedPositionReviewReport`.
+## 2026-04-19
+### Modified
+- Corrected the retrospective-reporting direction after the user clarified that this line must stay pure mathematical / pure data support.
+- Rewrote `D:\SM\docs\plans\design\2026-04-19-account-closed-position-review-report-design.md` into a boundary note that freezes:
+  - structured retrospective data support stays in the core
+  - final audit/report writing belongs to later Skill-layer consumers
+- Wrote the correction back into:
+  - `D:\SM\docs\product\project_intent.md`
+  - `D:\SM\docs\governance\contract_registry.md`
+  - `D:\SM\docs\governance\decision_log.md`
+  - `D:\SM\docs\governance\acceptance_criteria.md`
+  - `D:\SM\docs\governance\response_contract.md`
+  - `D:\SM\docs\handoff\AI_HANDOFF.md`
+### Why
+- The earlier design direction had promoted account-interval retrospective reporting into a formal core object, but the user explicitly corrected that report writing should be handled later by Skill and must not blur into the mathematical core.
+- This correction keeps the post-open line aligned with the fixed architecture rule: pure data/mathematical support first, narrative/report generation later.
+### Remaining
+- [ ] If future work needs deterministic retrospective selectors or aggregates, define them explicitly as structured data support rather than as report-writing objects.
+### Risks
+- [ ] The filename of the existing design note still reflects the earlier reporting topic even though its content is now a boundary note; future sessions must read the current content instead of inferring intent from the filename alone.
+### Closed
+- Verified the governed source-of-truth files no longer treat `AccountClosedPositionReviewReport` as a current formal mathematical-core object.
+- Verified handoff now states that retrospective reporting belongs to later Skill-layer consumers.
+## 2026-04-19
+### Modified
+- Reworked `D:\SM\README.md` from a document-tree-first entry into a business-facing repository entry for the post-open mainline.
+- Added a compact mainline-status summary and one explicit business usage flow from `ApprovedOpenPositionPacket` through `ClosedPositionArchive`.
+- Clarified in `D:\SM\README.md` that retrospective reporting remains outside the mathematical core and belongs to later Skill-layer consumers.
+- Updated `D:\SM\docs\overview\README.md` so it explicitly stays focused on documentation architecture while the root README owns the business-facing entry role.
+### Why
+- The user clarified that AI handoff already has its own dedicated document, so the root README should serve business understanding and usage flow instead of duplicating handoff/navigation concerns.
+- This keeps the repository entry aligned with the current architecture: pure-data core first, reporting later, and clear separation between business flow and document taxonomy.
+### Remaining
+- [ ] If the mainline grows beyond `Task 9`, refresh the README status section so it continues to reflect the actual implemented lifecycle instead of becoming stale.
+### Risks
+- [ ] The README now intentionally emphasizes business flow over engineering onboarding, so future edits should avoid drifting it back into a second handoff document.
+### Closed
+- Verified `D:\SM\README.md` now presents repository purpose, mainline status, business usage flow, current boundaries, and deeper reading links.
+- Verified `D:\SM\docs\overview\README.md` now explicitly positions itself as the documentation-architecture entry rather than the business workflow entry.
+## 2026-04-19
+### Modified
+- Added the approved next-stage design baseline `D:\SM\docs\plans\design\2026-04-19-p10-p12-institution-grade-portfolio-core-design.md`.
+- Captured the next-stage expansion decision in `D:\SM\docs\governance\decision_log.md`:
+  - `P10-P12` is the next approved stage after `Task 9`
+  - `P10` = account objective normalization
+  - `P11` = unified portfolio replacement solver
+  - `P12` = governed portfolio allocation decision
+- Updated `D:\SM\docs\handoff\AI_HANDOFF.md` so future sessions know `P10-P12` is approved in design but still planned-only.
+### Why
+- The user asked to continue beyond the mainline closure and refine the existing `P10-P22` roadmap using the project standards and stage-complete delivery logic.
+- This round freezes the next expansion stage clearly enough that later implementation planning can start from one approved portfolio-core contract instead of ad hoc roadmap memory.
+### Remaining
+- [ ] Write the dedicated implementation plan for `P10-P12`.
+- [ ] Decide whether to split that implementation plan into three task slices immediately or keep one stage-wide execution plan first.
+### Risks
+- [ ] The new stage objects are design-approved only; they are not current formal contracts yet and must not be treated as implemented.
+- [ ] Future sessions could still drift if they skip the explicit planned-only note and register `P10-P12` objects too early.
+### Closed
+- Verified the new design document exists and contains the approved `P10 / P11 / P12` decomposition.
+- Verified `contract_registry.md` still does not register `AccountObjectiveContract`, `PortfolioCandidateSet`, `PortfolioReplacementPlan`, or `PortfolioAllocationDecision` as current formal contracts.
+- Verified `decision_log.md` and `AI_HANDOFF.md` both now state that `P10-P12` is the next approved but still planned-only expansion stage.
+## 2026-04-19
+### Modified
+- Added the execution plan `D:\SM\docs\plans\execution\2026-04-19-p10-p12-institution-grade-portfolio-core-implementation-plan.md`.
+- Split `P10-P12` into implementation-ready tasks for:
+  - `P10` account objective contract
+  - `P10` candidate-set normalization
+  - `P11` unified portfolio replacement plan
+  - `P12` portfolio allocation decision
+  - stage flow guard
+  - governance write-back
+  - final focused verification sweep
+### Why
+- The approved stage design now needed one concrete execution path so later implementation does not drift into ad hoc file choices, partial TDD, or premature contract registration.
+- This plan keeps the future-stage boundary clean by specifying when governance files should change and when they should remain untouched.
+### Remaining
+- [ ] Choose an execution mode for the plan: subagent-driven in this session, or separate execution session.
+### Risks
+- [ ] The plan assumes the new portfolio-core modules will live as dedicated files instead of being merged into `security_portfolio_position_plan.rs`; if implementation discovers a hard blocker, the design docs and plan will need synchronized revision.
+### Closed
+- Verified the implementation plan file exists and follows the required header/structure.
+- Verified the plan explicitly distinguishes planned-only stage objects from later governance registration work.
+## 2026-04-19
+### Modified
+- Added `D:\SM\src\ops\security_account_objective_contract.rs` to land the first implemented `P10` contract pair:
+  - `SecurityAccountObjectiveContractDocument`
+  - `SecurityPortfolioCandidateSet`
+- Wired the new public tool `security_account_objective_contract` through:
+  - `D:\SM\src\ops\stock.rs`
+  - `D:\SM\src\ops\stock_execution_and_position_management.rs`
+  - `D:\SM\src\tools\catalog.rs`
+  - `D:\SM\src\tools\dispatcher.rs`
+  - `D:\SM\src\tools\dispatcher\stock_ops.rs`
+- Verified the dedicated CLI regression file `D:\SM\tests\security_account_objective_contract_cli.rs` now passes end to end.
+### Why
+- The approved `P10-P12` implementation plan starts with one account-level objective shell and one governed candidate set before any unified replacement solver is introduced.
+- This change freezes the first executable `P10` boundary so later work can build on a real account objective contract instead of a planned-only design note.
+### Remaining
+- [ ] Extend `D:\SM\src\ops\security_account_objective_contract.rs` for Task 2 candidate-set thickening, including richer normalization and additional drift guards if new tests require them.
+- [ ] Land `P11` unified portfolio replacement math and `P12` allocation decision after the next RED tests are written and verified.
+- [ ] Perform the later governance write-back task so source-of-truth registry documents reflect the implemented stage objects at the approved time.
+### Risks
+- [ ] `P10` currently validates the approved-candidate-only boundary and basic account/objective guards, but it does not yet solve duplicate-symbol drift or full candidate competition semantics; those remain Task 2 scope.
+- [ ] Governance source-of-truth files still treat `P10-P12` as planned-only at the stage level, so future sessions must not infer that `P11/P12` are already implemented.
+### Closed
+- Verified `cargo test --test security_account_objective_contract_cli -- --nocapture` passed with `6 passed; 0 failed`.
+- Verified the new tool appears in the public tool catalog and no longer falls through to `unsupported tool`.
+- Verified the implemented boundary matches the approved `P10` design slice only: governed inputs in, account objective plus candidate set out, with hard-fail on cross-account drift, missing capital base, conflicting constraints, and non-approved entrants.
+## 2026-04-19
+### Modified
+- Extended `D:\SM\tests\security_account_objective_contract_cli.rs` for `Task 2` candidate-set normalization coverage:
+  - row-level normalization metadata on live and approved entrant rows
+  - duplicate-symbol drift rejection
+  - explicit mixed-account candidate rejection
+- Updated `D:\SM\src\ops\security_account_objective_contract.rs` so the `PortfolioCandidateSet` rows now preserve:
+  - `candidate_status`
+  - `account_id`
+  - `capital_base_amount`
+  - `selection_boundary_ref`
+- Added duplicate symbol hard-fail inside the `P10` candidate-set normalization boundary.
+### Why
+- `Task 2` in the approved `P10-P12` implementation plan requires a thicker candidate-set contract before any `P11` unified replacement solver can safely consume it.
+- This keeps row identity and boundary metadata explicit instead of forcing later math to infer live-vs-new status from array location or external context.
+### Remaining
+- [ ] If `P11` needs a single merged candidate vector instead of parallel live/new arrays, add that shape only after writing the next RED tests.
+- [ ] Land the `P11` unified replacement plan contract and solver entry; `Task 2` does not include allocation solving.
+- [ ] Revisit whether additional duplicate drift guards are needed for future optional inputs such as account-rebase-driven entrants.
+### Risks
+- [ ] The current `P10` candidate set still keeps live rows and approved entrant rows in separate arrays; that is sufficient for the approved Task 2 contract, but a later solver may still want one more explicit merged projection.
+- [ ] Duplicate-symbol rejection currently protects the normalized candidate set surface only; it does not yet encode any later replacement preference or incumbent-vs-entrant tie-break semantics.
+### Closed
+- Verified the new `Task 2` RED tests failed for the expected reasons before implementation: missing row metadata and missing duplicate-symbol rejection.
+- Verified `cargo test --test security_account_objective_contract_cli -- --nocapture` passed with `9 passed; 0 failed`.
+- Verified the implementation still stays inside `P10` and does not pull `P11/P12` solver or governance behavior into the mathematical core.
+## 2026-04-19
+### Modified
+- Reused the validated April replay baseline `D:\SM\.stockmind_runtime\analysis\bank_1d_april_replay_old_vs_new_2026_04_19_1903.json` and added one new three-way comparison artifact:
+  - `D:\SM\.stockmind_runtime\analysis\bank_1d_april_replay_old_vs_full_vs_techonly_2026_04_19_1856.json`
+- Completed the first same-window bank-pool `1d` April replay for the pure-technical ablation model:
+  - model path `D:\SM\.stockmind_runtime\ablation_runs\fundamental_off_20260419_1545\scorecard_artifacts\a_share_equity_1d_direction_head__candidate_2026_04_19T15_45_00_08_00.json`
+- Re-ran fresh verification for the runtime feature-projection fix and replay artifact health:
+  - `cargo test build_raw_feature_snapshot_includes_bank_volume_percentile_for_bank_runtime_scoring --lib -- --nocapture`
+  - `cargo test --test security_scorecard_cli -- --nocapture`
+  - analysis JSON integrity probe for the new three-way replay artifact
+### Why
+- The active recovery path is now explicitly `1d -> technical-side repair first`, while the user asked to keep fundamentals temporarily out of the main judgment.
+- After the runtime `bank_volume_percentile_3d` null bug was fixed, the next lowest-cost high-signal step was to replay the already-trained pure-technical ablation under the repaired runtime instead of starting another retraining branch.
+### Remaining
+- [ ] Explain the three-way April replay outcome to the user in one concise table plus root-cause wording, especially why pure-technical improves hit-rate/correlation but still leaves long-short spread negative.
+- [ ] Decide whether the next technical cleanup should target bottom-bucket discrimination, probability dispersion, or repeated top-rank concentration around a small symbol subset.
+- [ ] If the user wants event attribution, add a dated external timeline for the April strait-risk window and mark which replay dates likely overlap macro shock rather than model failure.
+### Risks
+- [ ] The pure-technical model still does not flip `avg_long_short_excess_1d` positive, so it cannot yet be described as a recovered ranking model.
+- [ ] The pure-technical replay now shows stronger `Top3` hit-rate but much lower universe probability dispersion, which suggests the model is better at avoiding some bad tops while still weak at confidently isolating the worst names.
+- [ ] Top-rank concentration shifted rather than disappeared: the replay repeatedly places `601916.SH` at the top, so there is still a concentration / calibration risk to audit before any production recovery claim.
+### Closed
+- Verified the repaired runtime still projects `bank_volume_percentile_3d` into live scoring and the focused regression remains green.
+- Verified the new three-way replay artifact contains `462` scored rows, `11` evaluable dates, and `bank_volume_percentile_3d_null_rate = 0.0` for the pure-technical branch.
+- Verified the pure-technical branch improved versus the old baseline on:
+  - `top3_member_hit_rate: 0.3636 -> 0.6061`
+  - `pearson_prob_vs_excess: -0.0333 -> 0.0314`
+  while `avg_long_short_excess_1d` remained negative at `-0.00168`.
+## 2026-04-19
+### Modified
+- Added the new `P11` CLI contract test file `D:\SM\tests\security_portfolio_replacement_plan_cli.rs`.
+- Added the first unified replacement-plan module `D:\SM\src\ops\security_portfolio_replacement_plan.rs`.
+- Wired the new public tool `security_portfolio_replacement_plan` through:
+  - `D:\SM\src\ops\stock.rs`
+  - `D:\SM\src\ops\stock_execution_and_position_management.rs`
+  - `D:\SM\src\tools\catalog.rs`
+  - `D:\SM\src\tools\dispatcher.rs`
+  - `D:\SM\src\tools\dispatcher\stock_ops.rs`
+- Landed the first deterministic `P11` replacement-plan output sections:
+  - `current_weights`
+  - `target_weights`
+  - `entry_actions`
+  - `trim_actions`
+  - `exit_actions`
+  - `replacement_pairs`
+  - `capital_migration_plan`
+### Why
+- `Task 3` in the approved `P10-P12` implementation plan requires one formal `P11` contract that consumes only the implemented `P10` outputs and freezes the first account-level unified replacement solve.
+- This change creates the minimum deterministic solver pass needed to move from “account objective + candidate set” into one governed replacement plan without pulling execution friction, stress scenarios, or LLM logic into the mathematical core.
+### Remaining
+- [ ] Harden `D:\SM\src\ops\security_portfolio_replacement_plan.rs` in `Task 4` for richer solver boundaries such as rebase-aware migration, more explicit no-feasible-solution branches, and simultaneous add + replace + exit cases.
+- [ ] Land the `P12` portfolio allocation decision contract after the next RED tests are written and verified.
+- [ ] Perform the later governance write-back task so source-of-truth registry documents reflect implemented `P11` objects only at the approved stage.
+### Risks
+- [ ] The current `P11` solver is intentionally minimal and deterministic: it does not yet include Kelly integration, volatility targeting, stress filtering, or multi-objective optimization beyond the first constraint checks.
+- [ ] `replacement_pairs` currently link trim-derived outgoing weight to approved entrant rows in a simple deterministic way; future hardening may need richer incumbent-vs-entrant matching semantics.
+- [ ] The current contract keeps `P11` inside the pure mathematical core and does not yet freeze any final governed allocation decision; future sessions must not confuse this with `P12`.
+### Closed
+- Verified the new `Task 3` RED tests failed for the expected reason before implementation: `unsupported tool: security_portfolio_replacement_plan`.
+- Verified `cargo test --test security_portfolio_replacement_plan_cli -- --nocapture` passed with `5 passed; 0 failed`.
+- Verified `cargo test --test security_account_objective_contract_cli --test security_portfolio_replacement_plan_cli -- --nocapture` passed with `14 passed; 0 failed`.
+- Verified the implemented boundary matches the approved `P11` design slice only: it consumes the formal `P10` outputs, emits one unified replacement plan, and hard-fails on infeasible allocation, weight non-conservation, and cross-account drift.
+## 2026-04-19
+### Modified
+- Extended `D:\SM\tests\security_portfolio_replacement_plan_cli.rs` for `Task 4` P11 hardening coverage:
+  - row-level approved-candidate boundary drift rejection
+  - rebase-aware capital migration metadata
+  - structured conflict-resolution summary
+  - simultaneous add + replace + exit action summary
+- Updated `D:\SM\src\ops\security_portfolio_replacement_plan.rs` so the `P11` contract now also preserves:
+  - row-level candidate/live boundary validation
+  - optional `account_rebase_snapshot` context
+  - `capital_base_amount_before/after`
+  - `rebase_policy`
+  - `rebase_context_applied`
+  - `solver_action_summary`
+  - `conflict_resolution_summary`
+- Updated `D:\SM\docs\handoff\AI_HANDOFF.md` to freeze the current stage boundary:
+  - `P10 / Task 1-2` implemented
+  - `P11 / Task 3-4` implemented
+  - `P12` not implemented
+### Why
+- `Task 4` is the approved hardening pass that closes `P11`, so the replacement-plan solver needed to become more auditable and more explicit about candidate boundaries, rebase context, and mixed action outcomes.
+- The upload handoff also needed to reflect that `P10` and `P11` are now implemented while `P12` remains future work.
+### Remaining
+- [ ] Start `P12 / Task 5` with a new RED test for the governed portfolio allocation decision contract.
+- [ ] Later governance write-back still needs to move implemented stage objects into the formal source-of-truth registry at the approved time.
+- [ ] If future solver work introduces real Kelly or volatility-target inputs, replace the current fallback-only conflict summary with metric-backed resolution traces.
+### Risks
+- [ ] The current conflict-resolution summary is still deterministic fallback metadata; it does not yet represent a full multi-objective optimizer with real Kelly/vol-target inputs.
+- [ ] `P11` is now considered closed for the current implementation plan, but broader repository regression is still not claimed because the workspace contains unrelated active work.
+- [ ] The branch worktree still contains many unrelated dirty files and runtime artifacts, so upload should stage only the current delivery slice.
+### Closed
+- Verified the new `Task 4` RED tests failed for the expected reasons before implementation: missing row-level boundary rejection, missing rebase metadata, missing conflict summary, and missing structured mixed-action summary.
+- Verified `cargo test --test security_portfolio_replacement_plan_cli -- --nocapture` passed with `9 passed; 0 failed`.
+- Verified `cargo test --test security_account_objective_contract_cli --test security_portfolio_replacement_plan_cli -- --nocapture` passed with `18 passed; 0 failed`.
+- Verified `P11` now matches the approved current-scope closeout: approved-candidate boundary, no-feasible-solution path, capital migration after rebase input, conflict-resolution summary, and simultaneous add + replace + exit handling.
+## 2026-04-19
+### Modified
+- Prepared the `P10/P11` delivery slice for safe Git upload by isolating only the account-objective and portfolio-replacement implementation files plus their routing and focused handoff artifacts.
+### Why
+- The active worktree contains many unrelated runtime artifacts and parallel dirty files, so upload preparation had to stay slice-scoped instead of assuming the whole tree was reviewable.
+### Remaining
+- [ ] Run fresh focused verification against the isolated staged slice before commit and push.
+- [ ] Push only the approved `P10/P11` delivery branch contents; do not widen the staged set to unrelated active work.
+### Risks
+- [ ] The broader repository still contains unrelated dirty changes and untracked artifacts that are intentionally excluded from this upload.
+### Closed
+- The upload-prep boundary is now explicitly recorded as `P10/P11` only.

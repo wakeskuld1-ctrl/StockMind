@@ -98,6 +98,22 @@ pub mod security_execution_record;
 #[path = "security_execution_journal.rs"]
 pub mod security_execution_journal;
 
+// 2026-04-19 CST: Added because Task 1 of P10-P12 now lands the formal
+// account-level objective shell above the existing post-open position objects.
+// Reason: the portfolio-core expansion starts by freezing one governed account
+// optimization problem before any unified replacement solver is added.
+// Purpose: expose the account objective contract on the formal stock boundary.
+#[path = "security_account_objective_contract.rs"]
+pub mod security_account_objective_contract;
+
+// 2026-04-19 CST: Added because Task 3 now lands the first formal P11
+// unified replacement solver above the P10 objective and candidate set.
+// Reason: the approved stage plan separates the replacement solve from both
+// account-objective normalization and later allocation decision freeze.
+// Purpose: expose the portfolio replacement plan on the formal stock boundary.
+#[path = "security_portfolio_replacement_plan.rs"]
+pub mod security_portfolio_replacement_plan;
+
 // 2026-04-14 CST: Added because round 2 plan B now starts extracting the formal
 // execution-record builder layer into dedicated internal modules.
 // Purpose: let the stock boundary host the new formal assembler/resolver slices

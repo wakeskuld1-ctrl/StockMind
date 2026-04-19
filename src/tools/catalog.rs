@@ -34,6 +34,14 @@ pub const STOCK_TOOL_NAMES: &[&str] = &[
     "security_execution_record",
     "security_execution_journal",
     "security_account_open_position_snapshot",
+    // 2026-04-19 CST: Added because P10 now starts the portfolio-core expansion
+    // from one account-level objective contract on the public stock tool surface.
+    // Purpose: make the first P10 contract discoverable from the catalog.
+    "security_account_objective_contract",
+    // 2026-04-19 CST: Added because Task 3 now exposes the first P11 unified
+    // replacement solver on the public stock tool surface.
+    // Purpose: make the portfolio replacement contract discoverable from the catalog.
+    "security_portfolio_replacement_plan",
     "security_record_position_adjustment",
     // post_trade: review and conclusion after the in-trade loop.
     "security_post_trade_review",
