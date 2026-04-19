@@ -2,6 +2,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::ops::stock::security_approved_open_position_packet::SecurityApprovedOpenPositionPacketDocument;
 use crate::ops::stock::security_decision_briefing::{
     SecurityDecisionBriefingError, SecurityDecisionBriefingRequest, SecurityDecisionBriefingResult,
     security_decision_briefing,
@@ -152,6 +153,8 @@ pub struct SecurityPositionPlanDocument {
     pub starter_position_pct: f64,
     pub max_position_pct: f64,
     #[serde(default)]
+    pub risk_budget_pct: f64,
+    #[serde(default)]
     pub entry_tranche_pct: f64,
     #[serde(default)]
     pub add_tranche_pct: f64,
@@ -182,6 +185,24 @@ pub struct SecurityPositionPlanDocument {
 pub struct SecurityPositionPlanResult {
     pub briefing_core: SecurityDecisionBriefingResult,
     pub position_plan_document: SecurityPositionPlanDocument,
+}
+
+// 2026-04-18 CST: Added because Task 2 needs a small stable bridge object
+// between the pre-trade plan document and the post-open live contract layer.
+// Reason: the user explicitly asked us not to rename the pre-trade plan into
+// the live contract, so the mapping itself must become a named seam.
+// Purpose: freeze the first machine-readable seed that `PositionContract` consumes.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SecurityPositionContractSeed {
+    pub position_plan_ref: String,
+    pub symbol: String,
+    pub analysis_date: String,
+    pub entry_mode: String,
+    pub risk_budget_pct: f64,
+    #[serde(default)]
+    pub liquidity_guardrail: Option<String>,
+    #[serde(default)]
+    pub concentration_guardrail: Option<String>,
 }
 
 // 2026-04-14 CST: 这里补回旧版 Tool 错误类型，原因是 execution_journal 已经把 position plan
@@ -329,6 +350,9 @@ pub fn build_security_position_plan_document(
         entry_mode: position_plan.entry_mode.clone(),
         starter_position_pct: position_plan.starter_position_pct,
         max_position_pct: position_plan.max_position_pct,
+        risk_budget_pct: derive_default_position_plan_document_risk_budget_pct(
+            &position_plan.position_risk_grade,
+        ),
         entry_tranche_pct,
         add_tranche_pct,
         reduce_tranche_pct,
@@ -360,6 +384,65 @@ pub fn build_security_position_plan_document(
         regime_adjustment: position_plan.regime_adjustment.clone(),
         execution_notes: position_plan.execution_notes.clone(),
         rationale: position_plan.rationale.clone(),
+    }
+}
+
+// 2026-04-18 CST: Added because Task 2 needs one explicit mapping from the
+// pre-trade position-plan document into the post-open contract seed layer.
+// Reason: this preserves the user's approved boundary: seed formation stays in
+// `security_position_plan`, while live contract formation stays elsewhere.
+// Purpose: expose the document-to-seed adapter without widening the public plan object.
+pub fn build_position_contract_seed_from_position_plan_document(
+    position_plan_document: &SecurityPositionPlanDocument,
+) -> SecurityPositionContractSeed {
+    SecurityPositionContractSeed {
+        position_plan_ref: position_plan_document.position_plan_id.clone(),
+        symbol: position_plan_document.symbol.clone(),
+        analysis_date: position_plan_document.analysis_date.clone(),
+        entry_mode: position_plan_document.entry_mode.clone(),
+        risk_budget_pct: if position_plan_document.risk_budget_pct > 0.0 {
+            position_plan_document.risk_budget_pct
+        } else {
+            derive_default_position_plan_document_risk_budget_pct(
+                &position_plan_document.position_risk_grade,
+            )
+        },
+        liquidity_guardrail: normalize_optional_text(&position_plan_document.liquidity_cap),
+        concentration_guardrail: Some(format!(
+            "single_position_cap={:.2}%; tranche_template={}",
+            position_plan_document.max_position_pct * 100.0,
+            position_plan_document.tranche_template
+        )),
+    }
+}
+
+// 2026-04-18 CST: Added because Task 2 also needs the seed layer to merge the
+// post-open approved packet limits with the pre-trade plan seed.
+// Reason: live contract formation should happen after both approval and plan
+// seed are visible, not from either one independently.
+// Purpose: centralize the first packet-plus-seed merge rule for Task 2.
+pub fn build_position_contract_seed_from_documents(
+    approved_open_position_packet: &SecurityApprovedOpenPositionPacketDocument,
+    position_plan_document: &SecurityPositionPlanDocument,
+) -> SecurityPositionContractSeed {
+    let base_seed =
+        build_position_contract_seed_from_position_plan_document(position_plan_document);
+    let capped_risk_budget_pct = base_seed
+        .risk_budget_pct
+        .min(approved_open_position_packet.max_single_trade_risk_budget_pct);
+
+    SecurityPositionContractSeed {
+        position_plan_ref: base_seed.position_plan_ref,
+        symbol: base_seed.symbol,
+        analysis_date: base_seed.analysis_date,
+        entry_mode: approved_open_position_packet.recommended_entry_mode.clone(),
+        risk_budget_pct: capped_risk_budget_pct,
+        liquidity_guardrail: base_seed.liquidity_guardrail,
+        concentration_guardrail: Some(format!(
+            "single_position_cap={:.2}%; sector_cap={:.2}%",
+            approved_open_position_packet.max_single_position_pct * 100.0,
+            approved_open_position_packet.max_sector_exposure_pct * 100.0
+        )),
     }
 }
 
@@ -396,6 +479,34 @@ fn normalize_created_at(value: &str) -> String {
         Utc::now().to_rfc3339()
     } else {
         value.trim().to_string()
+    }
+}
+
+// 2026-04-18 CST: Added because Task 2 needs one stable fallback for older
+// position-plan documents that did not persist risk budget explicitly.
+// Reason: the live contract layer still needs a deterministic risk-budget seed
+// even when the source document came from the earlier compatibility builder.
+// Purpose: preserve backward compatibility while the new post-open layers land.
+fn derive_default_position_plan_document_risk_budget_pct(position_risk_grade: &str) -> f64 {
+    match position_risk_grade {
+        "low" => 0.003,
+        "medium" => 0.006,
+        "high" => 0.01,
+        _ => 0.006,
+    }
+}
+
+// 2026-04-18 CST: Added because the new seed layer should avoid keeping empty
+// strings as optional guardrail content.
+// Reason: downstream contract documents should not need to distinguish between
+// blank text and absent optional guardrail values.
+// Purpose: normalize optional seed strings in one place.
+fn normalize_optional_text(value: &str) -> Option<String> {
+    let normalized = value.trim().to_string();
+    if normalized.is_empty() {
+        None
+    } else {
+        Some(normalized)
     }
 }
 

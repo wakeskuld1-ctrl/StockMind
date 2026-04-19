@@ -15,6 +15,15 @@ use crate::ops::stock::stock_execution_and_position_management::security_account
 use crate::ops::stock::stock_execution_and_position_management::security_portfolio_replacement_plan::{
     SecurityPortfolioReplacementPlanRequest, security_portfolio_replacement_plan,
 };
+use crate::ops::stock::stock_execution_and_position_management::security_position_contract::{
+    SecurityPositionContractRequest, build_security_position_contract,
+};
+use crate::ops::stock::stock_execution_and_position_management::security_monitoring_evidence_package::{
+    SecurityMonitoringEvidencePackageRequest, build_security_monitoring_evidence_package,
+};
+use crate::ops::stock::stock_execution_and_position_management::security_capital_rebase::{
+    SecurityCapitalRebaseRequest, security_capital_rebase,
+};
 use crate::ops::stock::stock_pre_trade::security_analysis_contextual::{
     SecurityAnalysisContextualRequest, security_analysis_contextual,
 };
@@ -705,6 +714,42 @@ pub(super) fn dispatch_security_portfolio_replacement_plan(args: Value) -> ToolR
     };
 
     match security_portfolio_replacement_plan(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_position_contract(args: Value) -> ToolResponse {
+    let request = match serde_json::from_value::<SecurityPositionContractRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match build_security_position_contract(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_monitoring_evidence_package(args: Value) -> ToolResponse {
+    let request = match serde_json::from_value::<SecurityMonitoringEvidencePackageRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match build_security_monitoring_evidence_package(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_capital_rebase(args: Value) -> ToolResponse {
+    let request = match serde_json::from_value::<SecurityCapitalRebaseRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_capital_rebase(&request) {
         Ok(result) => ToolResponse::ok_serialized(&result),
         Err(error) => ToolResponse::error(error.to_string()),
     }

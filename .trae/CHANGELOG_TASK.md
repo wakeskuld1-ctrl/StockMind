@@ -1943,3 +1943,19 @@
 - [ ] The broader repository still contains unrelated dirty changes and untracked artifacts that are intentionally excluded from this upload.
 ### Closed
 - The upload-prep boundary is now explicitly recorded as `P10/P11` only.
+## 2026-04-20
+### Modified
+- Rebuilt a clean upload branch `codex/p10-p11-clean-upload-20260420` from `origin/main` in isolated worktree `C:\wt\smu`.
+- Cherry-picked the `P10/P11` portfolio-core contract delivery without carrying the earlier runtime-data commit that contained local `.stockmind_runtime` databases and backfill artifacts.
+- Updated `D:\SM\docs\handoff\AI_HANDOFF.md` in the clean branch so the handoff explicitly documents the upload branch, isolated worktree, and the exclusion of runtime database artifacts.
+### Why
+- The original delivery branch could not be pushed safely because an earlier local-data commit contained multi-GB runtime databases that are reproducible artifacts rather than source-controlled code.
+- The user approved a clean-upload path that preserves code, tests, and handoff material while excluding machine-local training/runtime outputs.
+### Remaining
+- [ ] Run fresh focused verification in the clean upload worktree before pushing.
+- [ ] Push only the clean upload branch and confirm the remote branch name for downstream review.
+### Risks
+- [ ] The clean branch does not include local runtime databases or replay artifacts, so anyone reproducing those results must regenerate them from the documented pipeline.
+- [ ] The original working tree at `D:\SM` still contains unrelated dirty changes that remain outside this upload.
+### Closed
+- The Git delivery boundary is now explicitly frozen as code/tests/handoff only, with `.stockmind_runtime` database payloads excluded from versioned upload.

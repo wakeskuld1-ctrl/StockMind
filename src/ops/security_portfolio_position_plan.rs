@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::ops::stock::security_account_open_position_snapshot::SecurityAccountOpenPositionSnapshotDocument;
+use crate::ops::stock::security_per_position_evaluation::SecurityPerPositionEvaluation;
+use crate::ops::stock::security_position_contract::SecurityPositionContract;
 use crate::ops::stock::security_position_plan::SecurityPositionPlanDocument;
 
 // 2026-04-09 CST: 这里新增账户当前持仓输入合同，原因是账户级仓位管理必须先知道“现有仓位占了多少”；
@@ -152,6 +154,83 @@ pub struct SecurityPortfolioPositionPlanDocument {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SecurityPortfolioPositionPlanResult {
     pub portfolio_position_plan: SecurityPortfolioPositionPlanDocument,
+}
+
+// 2026-04-18 CST: Added because Task 5 needs one explicit account-level
+// monitoring aggregation object built from per-position evaluations.
+// Reason: the monitoring evidence package should reuse account math from this
+// file instead of duplicating weight, return, and warning calculations.
+// Purpose: define the reusable account-aggregation shape for Task 5 and later tasks.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct SecurityMonitoringAccountAggregation {
+    pub active_position_count: usize,
+    pub total_active_weight_pct: f64,
+    pub weighted_expected_return_pct: f64,
+    pub weighted_expected_drawdown_pct: f64,
+    pub total_risk_budget_pct: f64,
+    pub concentration_warnings: Vec<String>,
+    pub correlation_warnings: Vec<String>,
+    pub risk_budget_warnings: Vec<String>,
+    pub aggregation_summary: String,
+}
+
+// 2026-04-18 CST: Added because Task 5 also needs compact ranked action
+// candidates derived from the per-position evaluation layer.
+// Reason: future committee review should read one normalized candidate shape
+// for add/trim/replace/exit instead of interpreting score maps manually.
+// Purpose: define the reusable candidate summary object for monitoring packages.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct SecurityMonitoringActionCandidate {
+    pub symbol: String,
+    pub score: f64,
+    pub recommended_action: String,
+    pub current_weight_pct: f64,
+    pub target_weight_pct: f64,
+    pub current_vs_target_gap_pct: f64,
+    pub per_position_evaluation_ref: String,
+}
+
+// 2026-04-18 CST: Added because the monitoring evidence package should carry a
+// normalized action-candidate section produced by reusable portfolio helpers.
+// Reason: later tasks should extend this object instead of rebuilding four ranked lists ad hoc.
+// Purpose: define the reusable action-simulation payload for Task 5.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct SecurityAdjustmentSimulationData {
+    pub top_add_candidates: Vec<SecurityMonitoringActionCandidate>,
+    pub top_trim_candidates: Vec<SecurityMonitoringActionCandidate>,
+    pub top_replace_candidates: Vec<SecurityMonitoringActionCandidate>,
+    pub top_exit_candidates: Vec<SecurityMonitoringActionCandidate>,
+}
+
+// 2026-04-19 CST: Added because Task 6 needs one reusable per-contract delta
+// view when capital rebasing changes account baselines and live contract caps.
+// Reason: the capital rebalance evidence package should reuse a stable simulation
+// item shape instead of rebuilding before/after deltas inline.
+// Purpose: define the reusable capital rebalance simulation row.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct SecurityCapitalRebalanceSimulationItem {
+    pub symbol: String,
+    pub target_weight_pct_before: f64,
+    pub target_weight_pct_after: f64,
+    pub max_weight_pct_before: f64,
+    pub max_weight_pct_after: f64,
+    pub risk_budget_pct_before: f64,
+    pub risk_budget_pct_after: f64,
+    pub intended_principal_amount_before: f64,
+    pub intended_principal_amount_after: f64,
+    // 2026-04-19 CST: Added serde default because Task 7 committee-package
+    // consumers must be able to deserialize earlier capital-rebalance evidence
+    // samples that were created before the richer simulation payload landed.
+    // Reason: the governance handoff should accept the existing evidence shape
+    // instead of failing before it can validate committee-level boundaries.
+    // Purpose: keep backward-compatible evidence parsing while newer builders
+    // still emit the richer fields explicitly.
+    #[serde(default)]
+    pub principal_delta_amount: f64,
+    #[serde(default)]
+    pub simulation_action_hint: String,
+    #[serde(default)]
+    pub position_contract_ref: String,
 }
 
 #[derive(Debug, Error)]
@@ -646,4 +725,220 @@ fn default_max_portfolio_risk_budget_pct() -> f64 {
 
 fn default_max_single_trade_risk_budget_pct() -> f64 {
     0.02
+}
+
+// 2026-04-18 CST: Added because Task 5 should reuse account-level weight,
+// return, and warning math in the existing portfolio helper owner file.
+// Reason: this avoids cloning portfolio semantics into the monitoring package module.
+// Purpose: build the first reusable monitoring account aggregation from evaluated holdings.
+pub fn build_monitoring_account_aggregation(
+    per_position_evaluations: &[SecurityPerPositionEvaluation],
+    position_contracts: &[SecurityPositionContract],
+) -> SecurityMonitoringAccountAggregation {
+    let active_position_count = per_position_evaluations.len();
+    let total_active_weight_pct = round_pct(
+        per_position_evaluations
+            .iter()
+            .map(|evaluation| evaluation.current_weight_pct)
+            .sum(),
+    );
+
+    let weighted_expected_return_pct = if total_active_weight_pct <= f64::EPSILON {
+        0.0
+    } else {
+        round_pct(
+            per_position_evaluations
+                .iter()
+                .map(|evaluation| {
+                    evaluation.current_weight_pct * evaluation.updated_expected_return_pct
+                })
+                .sum::<f64>()
+                / total_active_weight_pct,
+        )
+    };
+    let weighted_expected_drawdown_pct = if total_active_weight_pct <= f64::EPSILON {
+        0.0
+    } else {
+        round_pct(
+            per_position_evaluations
+                .iter()
+                .map(|evaluation| {
+                    evaluation.current_weight_pct * evaluation.updated_expected_drawdown_pct
+                })
+                .sum::<f64>()
+                / total_active_weight_pct,
+        )
+    };
+    let total_risk_budget_pct = round_pct(
+        position_contracts
+            .iter()
+            .filter(|contract| {
+                per_position_evaluations
+                    .iter()
+                    .any(|evaluation| evaluation.symbol == contract.symbol)
+            })
+            .map(|contract| contract.risk_budget_pct)
+            .sum(),
+    );
+
+    let mut concentration_warnings = Vec::new();
+    for evaluation in per_position_evaluations {
+        if evaluation.current_weight_pct > evaluation.target_weight_pct + 1e-9 {
+            concentration_warnings.push(format!("single_name_over_target:{}", evaluation.symbol));
+        }
+        if evaluation.current_weight_pct > evaluation.max_weight_pct + 1e-9 {
+            concentration_warnings.push(format!("single_name_over_max:{}", evaluation.symbol));
+        }
+    }
+    concentration_warnings.sort();
+    concentration_warnings.dedup();
+
+    let correlation_warnings = Vec::new();
+    let mut risk_budget_warnings = Vec::new();
+    if total_risk_budget_pct > 0.10 {
+        risk_budget_warnings.push("risk_budget_pressure_high".to_string());
+    }
+
+    SecurityMonitoringAccountAggregation {
+        active_position_count,
+        total_active_weight_pct,
+        weighted_expected_return_pct,
+        weighted_expected_drawdown_pct,
+        total_risk_budget_pct,
+        concentration_warnings,
+        correlation_warnings,
+        risk_budget_warnings,
+        aggregation_summary: format!(
+            "monitoring aggregation covers {} active positions with {:.2}% total active weight",
+            active_position_count,
+            total_active_weight_pct * 100.0
+        ),
+    }
+}
+
+// 2026-04-18 CST: Added because Task 5 should keep action-candidate ranking
+// logic in the existing portfolio math owner file.
+// Reason: later monitoring, rebalance, and adjustment tasks will all need one
+// reusable ranked action section derived from per-position evaluations.
+// Purpose: build the first reusable ranked action-candidate payload.
+pub fn build_adjustment_simulation_data(
+    per_position_evaluations: &[SecurityPerPositionEvaluation],
+) -> SecurityAdjustmentSimulationData {
+    let mut add_candidates = build_ranked_candidates(per_position_evaluations, |evaluation| {
+        evaluation.action_scores.add_score
+    });
+    let mut trim_candidates = build_ranked_candidates(per_position_evaluations, |evaluation| {
+        evaluation.action_scores.trim_score
+    });
+    let mut replace_candidates = build_ranked_candidates(per_position_evaluations, |evaluation| {
+        evaluation.action_scores.replace_score
+    });
+    let mut exit_candidates = build_ranked_candidates(per_position_evaluations, |evaluation| {
+        evaluation.action_scores.exit_score
+    });
+
+    add_candidates.truncate(3);
+    trim_candidates.truncate(3);
+    replace_candidates.truncate(3);
+    exit_candidates.truncate(3);
+
+    SecurityAdjustmentSimulationData {
+        top_add_candidates: add_candidates,
+        top_trim_candidates: trim_candidates,
+        top_replace_candidates: replace_candidates,
+        top_exit_candidates: exit_candidates,
+    }
+}
+
+fn build_ranked_candidates<F>(
+    per_position_evaluations: &[SecurityPerPositionEvaluation],
+    score_selector: F,
+) -> Vec<SecurityMonitoringActionCandidate>
+where
+    F: Fn(&SecurityPerPositionEvaluation) -> f64,
+{
+    let mut candidates = per_position_evaluations
+        .iter()
+        .map(|evaluation| SecurityMonitoringActionCandidate {
+            symbol: evaluation.symbol.clone(),
+            score: score_selector(evaluation),
+            recommended_action: evaluation.recommended_action.clone(),
+            current_weight_pct: evaluation.current_weight_pct,
+            target_weight_pct: evaluation.target_weight_pct,
+            current_vs_target_gap_pct: evaluation.current_vs_target_gap_pct,
+            per_position_evaluation_ref: evaluation.per_position_evaluation_id.clone(),
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| {
+        right
+            .score
+            .total_cmp(&left.score)
+            .then_with(|| left.symbol.cmp(&right.symbol))
+    });
+    candidates
+}
+
+fn round_pct(value: f64) -> f64 {
+    (value * 10000.0).round() / 10000.0
+}
+
+// 2026-04-19 CST: Added because Task 6 needs one reusable helper that turns
+// before/after contracts into governed rebalance deltas.
+// Reason: the capital rebase package should reuse portfolio math ownership in this
+// file instead of duplicating before/after contract comparison logic elsewhere.
+// Purpose: build the reusable capital rebalance simulation rows.
+pub fn build_capital_rebalance_simulation(
+    original_contracts: &[SecurityPositionContract],
+    rebased_contracts: &[SecurityPositionContract],
+) -> Vec<SecurityCapitalRebalanceSimulationItem> {
+    let mut simulation = original_contracts
+        .iter()
+        .filter_map(|original_contract| {
+            let rebased_contract = rebased_contracts
+                .iter()
+                .find(|candidate| candidate.symbol == original_contract.symbol)?;
+            let principal_delta_amount = round_amount(
+                rebased_contract.intended_principal_amount
+                    - original_contract.intended_principal_amount,
+            );
+            let simulation_action_hint = if principal_delta_amount > 0.0 {
+                "capital_scale_up".to_string()
+            } else if principal_delta_amount < 0.0 {
+                "capital_scale_down".to_string()
+            } else if (rebased_contract.max_weight_pct - original_contract.max_weight_pct).abs()
+                > f64::EPSILON
+                || (rebased_contract.risk_budget_pct - original_contract.risk_budget_pct).abs()
+                    > f64::EPSILON
+            {
+                "constraint_reset".to_string()
+            } else {
+                "no_change".to_string()
+            };
+
+            Some(SecurityCapitalRebalanceSimulationItem {
+                symbol: original_contract.symbol.clone(),
+                target_weight_pct_before: round_pct(original_contract.target_weight_pct),
+                target_weight_pct_after: round_pct(rebased_contract.target_weight_pct),
+                max_weight_pct_before: round_pct(original_contract.max_weight_pct),
+                max_weight_pct_after: round_pct(rebased_contract.max_weight_pct),
+                risk_budget_pct_before: round_pct(original_contract.risk_budget_pct),
+                risk_budget_pct_after: round_pct(rebased_contract.risk_budget_pct),
+                intended_principal_amount_before: round_amount(
+                    original_contract.intended_principal_amount,
+                ),
+                intended_principal_amount_after: round_amount(
+                    rebased_contract.intended_principal_amount,
+                ),
+                principal_delta_amount,
+                simulation_action_hint,
+                position_contract_ref: original_contract.position_contract_id.clone(),
+            })
+        })
+        .collect::<Vec<_>>();
+    simulation.sort_by(|left, right| left.symbol.cmp(&right.symbol));
+    simulation
+}
+
+fn round_amount(value: f64) -> f64 {
+    (value * 100.0).round() / 100.0
 }

@@ -98,6 +98,15 @@ pub mod security_execution_record;
 #[path = "security_execution_journal.rs"]
 pub mod security_execution_journal;
 
+// 2026-04-18 CST: Added because Task 1 introduces the only formal approved
+// post-open intake packet before any downstream contract or monitoring objects land.
+// Reason: the user approved keeping post-open math and governance evidence on a
+// pure data path that starts from one stable approved packet.
+// Purpose: expose the approved intake contract on the stock boundary while later
+// grouped gateways keep ownership of the in-trade loop semantics.
+#[path = "security_approved_open_position_packet.rs"]
+pub mod security_approved_open_position_packet;
+
 // 2026-04-19 CST: Added because Task 1 of P10-P12 now lands the formal
 // account-level objective shell above the existing post-open position objects.
 // Reason: the portfolio-core expansion starts by freezing one governed account
@@ -113,6 +122,38 @@ pub mod security_account_objective_contract;
 // Purpose: expose the portfolio replacement plan on the formal stock boundary.
 #[path = "security_portfolio_replacement_plan.rs"]
 pub mod security_portfolio_replacement_plan;
+
+// 2026-04-18 CST: Added because Task 2 now lands the only formal live
+// governance object between approved intake and active holdings.
+// Reason: the user fixed `PositionContract` as a new object that must stay
+// distinct from the pre-trade position-plan document.
+// Purpose: expose the post-open contract module on the stock boundary.
+#[path = "security_position_contract.rs"]
+pub mod security_position_contract;
+
+// 2026-04-18 CST: Added because Task 4 now lands the formal single-position
+// evaluation object between the active book and later monitoring evidence.
+// Reason: the approved post-open data flow requires a dedicated evaluation layer
+// instead of folding action scoring into snapshot or aggregation logic.
+// Purpose: expose the per-position evaluation module on the stock boundary.
+#[path = "security_per_position_evaluation.rs"]
+pub mod security_per_position_evaluation;
+
+// 2026-04-18 CST: Added because Task 5 now lands the standardized monitoring
+// evidence package above per-position evaluations.
+// Reason: the approved post-open data flow needs one formal committee-facing
+// evidence artifact before later simulation and governance packaging steps.
+// Purpose: expose the monitoring evidence package module on the stock boundary.
+#[path = "security_monitoring_evidence_package.rs"]
+pub mod security_monitoring_evidence_package;
+
+// 2026-04-19 CST: Added because Task 6 now lands the account-level capital
+// rebasing chain as its own formal post-open module.
+// Reason: capital events must stay separate from ordinary add/trim logic and
+// should not be hidden inside monitoring or execution files.
+// Purpose: expose the capital rebase module on the stock boundary.
+#[path = "security_capital_rebase.rs"]
+pub mod security_capital_rebase;
 
 // 2026-04-14 CST: Added because round 2 plan B now starts extracting the formal
 // execution-record builder layer into dedicated internal modules.
@@ -248,6 +289,13 @@ pub mod security_fundamental_history_live_backfill;
 // Purpose: make announcement-history live backfill discoverable and routable from the stock boundary.
 #[path = "security_disclosure_history_live_backfill.rs"]
 pub mod security_disclosure_history_live_backfill;
+
+// 2026-04-18 CST: Added because scheme C2 now needs a formal corporate-action
+// backfill entry on the stock boundary before training-data completion starts.
+// Purpose: expose governed dividend and bonus/split import through the same
+// stock-domain gateway as the other dated history backfill tools.
+#[path = "security_corporate_action_backfill.rs"]
+pub mod security_corporate_action_backfill;
 
 // 2026-04-10 CST: 这里补挂轻量会后结论对象模块，原因是方案A要先把远端缺失的独立对象能力最小并回，
 // 目的：在保留现有 record_post_meeting_conclusion 主链不动的前提下，补齐新的 post_meeting_conclusion 合同层。

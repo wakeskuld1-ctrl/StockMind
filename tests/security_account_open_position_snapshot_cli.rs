@@ -280,6 +280,303 @@ fn tool_catalog_includes_security_account_open_position_snapshot() {
     );
 }
 
+// 2026-04-18 CST: Added because Task 3 needs the existing snapshot tool to
+// expose one explicit active-position-book layer for later monitoring tasks.
+// Reason: the approved design separates the compatibility snapshot shell from
+// the live active-position semantics that downstream evaluation will consume.
+// Purpose: freeze the first public `ActivePositionBook` projection at the CLI surface.
+#[test]
+fn security_account_open_position_snapshot_exposes_active_position_book_for_monitoring() {
+    let runtime_db_path = create_test_runtime_db("security_active_position_book_single");
+    let server =
+        prepare_security_environment(&runtime_db_path, "security_active_position_book_single");
+    let execution_db_path = runtime_db_path
+        .parent()
+        .expect("runtime db path should have parent")
+        .join("security_execution.db");
+    let envs = security_envs_with_execution_db(&server, &execution_db_path);
+    seed_execution_record(
+        &runtime_db_path,
+        &execution_record_fixture(
+            "601916.SH",
+            "acct-demo-active-001",
+            "bank",
+            "2025-09-18",
+            62.40,
+            0.12,
+            "open",
+        ),
+    );
+    seed_corporate_action(
+        &runtime_db_path,
+        SecurityCorporateActionRow {
+            symbol: "601916.SH".to_string(),
+            effective_date: "2025-09-22".to_string(),
+            action_type: "split".to_string(),
+            cash_dividend_per_share: 0.0,
+            split_ratio: 1.5,
+            bonus_ratio: 0.0,
+            source: "security_active_position_book_single_fixture".to_string(),
+            payload_json: "{\"split_ratio\":1.5}".to_string(),
+        },
+    );
+    seed_corporate_action(
+        &runtime_db_path,
+        SecurityCorporateActionRow {
+            symbol: "601916.SH".to_string(),
+            effective_date: "2025-09-25".to_string(),
+            action_type: "cash_dividend".to_string(),
+            cash_dividend_per_share: 0.18,
+            split_ratio: 1.0,
+            bonus_ratio: 0.0,
+            source: "security_active_position_book_single_fixture".to_string(),
+            payload_json: "{\"cash_dividend_per_share\":0.18}".to_string(),
+        },
+    );
+
+    let snapshot_request = json!({
+        "tool": "security_account_open_position_snapshot",
+        "args": {
+            "account_id": "acct-demo-active-001",
+            "created_at": "2026-04-16T09:35:00+08:00"
+        }
+    });
+    let snapshot_output =
+        run_cli_with_json_runtime_and_envs(&snapshot_request.to_string(), &runtime_db_path, &envs);
+
+    assert_eq!(snapshot_output["status"], "ok");
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["document_type"],
+        json!("security_active_position_book")
+    );
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["active_position_count"],
+        json!(1)
+    );
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["active_positions"][0]["symbol"],
+        json!("601916.SH")
+    );
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["active_positions"][0]["current_weight_pct"],
+        json!(0.12)
+    );
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["active_positions"][0]["source_execution_record_ref"],
+        json!("record-601916.SH-open")
+    );
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["active_positions"][0]["resolved_trade_date"],
+        json!("2026-02-24")
+    );
+    assert!(
+        snapshot_output["data"]["active_position_book"]["active_positions"][0]["holding_total_return_pct"]
+            .as_f64()
+            .expect("holding total return should exist")
+            > 0.0
+    );
+    assert!(
+        snapshot_output["data"]["active_position_book"]["active_positions"][0]["breakeven_price"]
+            .as_f64()
+            .expect("breakeven price should exist")
+            < 41.50
+    );
+}
+
+// 2026-04-18 CST: Added because Task 3 also needs the active-position-book
+// refresh path to stay stable when one account carries multiple live positions.
+// Reason: later per-position evaluation and account aggregation will depend on
+// deterministic symbol/ref coverage across repeated refreshes.
+// Purpose: lock the multi-position active book semantics before Task 4 starts.
+#[test]
+fn security_account_open_position_snapshot_refreshes_active_position_book_for_multiple_open_positions()
+ {
+    let runtime_db_path = create_test_runtime_db("security_active_position_book_multi");
+    let server =
+        prepare_security_environment(&runtime_db_path, "security_active_position_book_multi");
+    let execution_db_path = runtime_db_path
+        .parent()
+        .expect("runtime db path should have parent")
+        .join("security_execution.db");
+    let envs = security_envs_with_execution_db(&server, &execution_db_path);
+    seed_execution_record(
+        &runtime_db_path,
+        &execution_record_fixture(
+            "601916.SH",
+            "acct-demo-active-002",
+            "bank",
+            "2025-09-18",
+            62.40,
+            0.12,
+            "open",
+        ),
+    );
+    seed_execution_record(
+        &runtime_db_path,
+        &execution_record_fixture(
+            "600919.SH",
+            "acct-demo-active-002",
+            "bank",
+            "2025-09-18",
+            11.20,
+            0.08,
+            "open",
+        ),
+    );
+
+    let snapshot_request = json!({
+        "tool": "security_account_open_position_snapshot",
+        "args": {
+            "account_id": "acct-demo-active-002",
+            "created_at": "2026-04-16T10:05:00+08:00"
+        }
+    });
+    let snapshot_output =
+        run_cli_with_json_runtime_and_envs(&snapshot_request.to_string(), &runtime_db_path, &envs);
+
+    assert_eq!(snapshot_output["status"], "ok");
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["active_position_count"],
+        json!(2)
+    );
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["source_execution_record_refs"],
+        json!(["record-600919.SH-open", "record-601916.SH-open"])
+    );
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["active_positions"][0]["symbol"],
+        json!("600919.SH")
+    );
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["active_positions"][1]["symbol"],
+        json!("601916.SH")
+    );
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["active_positions"][0]["current_weight_pct"],
+        json!(0.08)
+    );
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["active_positions"][1]["current_weight_pct"],
+        json!(0.12)
+    );
+}
+
+// 2026-04-18 CST: Added because the active-position-book semantics must keep
+// closed or fully reduced positions out of the monitoring surface.
+// Reason: Task 4 and Task 5 should consume only live holdings instead of
+// re-filtering zero-weight rows every time.
+// Purpose: freeze the current-position-based inclusion rule at the CLI boundary.
+#[test]
+fn security_account_open_position_snapshot_excludes_closed_or_zero_weight_positions_from_active_book()
+ {
+    let runtime_db_path = create_test_runtime_db("security_active_position_book_filters_closed");
+    let server = prepare_security_environment(
+        &runtime_db_path,
+        "security_active_position_book_filters_closed",
+    );
+    let execution_db_path = runtime_db_path
+        .parent()
+        .expect("runtime db path should have parent")
+        .join("security_execution.db");
+    let envs = security_envs_with_execution_db(&server, &execution_db_path);
+    seed_execution_record(
+        &runtime_db_path,
+        &execution_record_fixture(
+            "601916.SH",
+            "acct-demo-active-003",
+            "bank",
+            "2025-09-18",
+            62.40,
+            0.12,
+            "open",
+        ),
+    );
+    seed_execution_record(
+        &runtime_db_path,
+        &execution_record_fixture(
+            "600919.SH",
+            "acct-demo-active-003",
+            "bank",
+            "2025-09-18",
+            11.20,
+            0.00,
+            "closed",
+        ),
+    );
+
+    let snapshot_request = json!({
+        "tool": "security_account_open_position_snapshot",
+        "args": {
+            "account_id": "acct-demo-active-003",
+            "created_at": "2026-04-16T10:15:00+08:00"
+        }
+    });
+    let snapshot_output =
+        run_cli_with_json_runtime_and_envs(&snapshot_request.to_string(), &runtime_db_path, &envs);
+
+    assert_eq!(snapshot_output["status"], "ok");
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["active_position_count"],
+        json!(1)
+    );
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["active_positions"][0]["symbol"],
+        json!("601916.SH")
+    );
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["source_execution_record_refs"],
+        json!(["record-601916.SH-open"])
+    );
+}
+
+// 2026-04-18 CST: Added because later monitoring aggregation must tolerate an
+// account that currently has no live holdings.
+// Reason: the pure-data loop should return one explicit empty active book
+// instead of making downstream callers infer emptiness from errors.
+// Purpose: lock the empty-account active-position-book contract before Task 4 starts.
+#[test]
+fn security_account_open_position_snapshot_returns_empty_active_book_for_account_without_open_positions()
+ {
+    let runtime_db_path = create_test_runtime_db("security_active_position_book_empty_account");
+    let server = prepare_security_environment(
+        &runtime_db_path,
+        "security_active_position_book_empty_account",
+    );
+    let execution_db_path = runtime_db_path
+        .parent()
+        .expect("runtime db path should have parent")
+        .join("security_execution.db");
+    let envs = security_envs_with_execution_db(&server, &execution_db_path);
+
+    let snapshot_request = json!({
+        "tool": "security_account_open_position_snapshot",
+        "args": {
+            "account_id": "acct-demo-active-empty",
+            "created_at": "2026-04-16T10:25:00+08:00"
+        }
+    });
+    let snapshot_output =
+        run_cli_with_json_runtime_and_envs(&snapshot_request.to_string(), &runtime_db_path, &envs);
+
+    assert_eq!(snapshot_output["status"], "ok");
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["account_id"],
+        json!("acct-demo-active-empty")
+    );
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["active_position_count"],
+        json!(0)
+    );
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["active_positions"],
+        json!([])
+    );
+    assert_eq!(
+        snapshot_output["data"]["active_position_book"]["source_execution_record_refs"],
+        json!([])
+    );
+}
+
 #[test]
 fn security_account_open_position_snapshot_reads_runtime_and_feeds_portfolio_plan() {
     let runtime_db_path = create_test_runtime_db("security_account_open_position_snapshot_ready");

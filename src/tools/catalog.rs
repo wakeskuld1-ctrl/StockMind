@@ -38,6 +38,9 @@ pub const STOCK_TOOL_NAMES: &[&str] = &[
     // from one account-level objective contract on the public stock tool surface.
     // Purpose: make the first P10 contract discoverable from the catalog.
     "security_account_objective_contract",
+    "security_position_contract",
+    "security_monitoring_evidence_package",
+    "security_capital_rebase",
     // 2026-04-19 CST: Added because Task 3 now exposes the first P11 unified
     // replacement solver on the public stock tool surface.
     // Purpose: make the portfolio replacement contract discoverable from the catalog.

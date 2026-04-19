@@ -6,7 +6,7 @@
 - Active main project path: `D:\SM`
 - Main upstream repo: `https://github.com/wakeskuld1-ctrl/StockMind.git`
 - Mainline branch source: `main`
-- Current working branch: `codex/reconcile-local-features-20260417`
+- Current working branch for the clean upload slice: `codex/p10-p11-clean-upload-20260420`
 
 This repository is now the primary delivery line for the standalone stock and ETF analysis product.
 
@@ -68,13 +68,16 @@ Important note:
 
 ## 5. Current Working Tree Status
 
-At the time of this handoff, `D:\SM` still has local uncommitted changes:
+At the time of this handoff, the upload branch was rebuilt in a clean isolated worktree so the pushed slice can exclude local runtime artifacts and database byproducts.
 
-- modified: `src/ops/security_chair_resolution.rs`
-- modified: `tests/security_chair_resolution_cli.rs`
-- untracked: `.trae/`
+- Clean upload worktree path: `C:\wt\smu`
+- Upload branch goal: ship `P10/P11` portfolio-core code, tests, and handoff docs only
+- Explicitly excluded from this upload: `.stockmind_runtime/` databases, replay artifacts, and other machine-local training outputs
 
-Do not discard these changes unless the user explicitly asks for it.
+Important boundary:
+
+- the original main workspace `D:\SM` may still contain unrelated local changes and runtime artifacts
+- do not assume those runtime databases were uploaded; they were intentionally excluded from the clean Git delivery
 
 ## 6. Relationship Between Repos
 

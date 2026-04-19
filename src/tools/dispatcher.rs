@@ -12,13 +12,7 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         "import_stock_price_history" => {
             stock_ops::dispatch_import_stock_price_history(request.args)
         }
-        "import_stock_price_history_legacy_db" => {
-            stock_ops::dispatch_import_stock_price_history_legacy_db(request.args)
-        }
         "sync_stock_price_history" => stock_ops::dispatch_sync_stock_price_history(request.args),
-        "security_corporate_action_backfill" => {
-            stock_ops::dispatch_security_corporate_action_backfill(request.args)
-        }
         "security_fundamental_history_live_backfill" => {
             stock_ops::dispatch_security_fundamental_history_live_backfill(request.args)
         }
@@ -99,6 +93,9 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         "security_portfolio_replacement_plan" => {
             stock_ops::dispatch_security_portfolio_replacement_plan(request.args)
         }
+        "security_position_contract" => {
+            stock_ops::dispatch_security_position_contract(request.args)
+        }
         "security_execution_record" => stock_ops::dispatch_security_execution_record(request.args),
         "security_execution_journal" => {
             stock_ops::dispatch_security_execution_journal(request.args)
@@ -106,6 +103,10 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         "security_account_open_position_snapshot" => {
             stock_ops::dispatch_security_account_open_position_snapshot(request.args)
         }
+        "security_monitoring_evidence_package" => {
+            stock_ops::dispatch_security_monitoring_evidence_package(request.args)
+        }
+        "security_capital_rebase" => stock_ops::dispatch_security_capital_rebase(request.args),
         "security_record_position_adjustment" => {
             stock_ops::dispatch_security_record_position_adjustment(request.args)
         }
