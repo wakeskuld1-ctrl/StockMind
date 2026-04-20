@@ -9,7 +9,10 @@ use crate::ops::stock::security_decision_evidence_bundle::{
     SecurityDecisionEvidenceBundleError, SecurityDecisionEvidenceBundleRequest,
     SecurityExternalProxyInputs, build_evidence_bundle_feature_seed, derive_event_density_bucket,
     derive_flow_status, derive_industry_bucket, derive_instrument_subscope, derive_market_regime,
-    derive_valuation_status, security_decision_evidence_bundle,
+    derive_bollinger_position_bucket_20d, derive_mean_reversion_bucket_20d,
+    derive_mean_reversion_deviation_bucket_20d, derive_mean_reversion_normalized_distance_20d,
+    derive_quality_bucket, derive_range_position_bucket_14d, derive_valuation_status,
+    security_decision_evidence_bundle,
 };
 use crate::ops::stock::security_symbol_taxonomy::resolve_effective_security_routing;
 
@@ -150,11 +153,40 @@ fn build_group_features(raw_features_json: &BTreeMap<String, Value>) -> BTreeMap
         "V".to_string(),
         json!({
             "valuation_status": raw_features_json.get("valuation_status").cloned().unwrap_or(Value::Null),
+            "close_vs_sma20": raw_features_json.get("close_vs_sma20").cloned().unwrap_or(Value::Null),
+            "mean_reversion_normalized_distance_20d": raw_features_json.get("mean_reversion_normalized_distance_20d").cloned().unwrap_or(Value::Null),
+            "bollinger_position_20d": raw_features_json.get("bollinger_position_20d").cloned().unwrap_or(Value::Null),
+            "range_position_14d": raw_features_json.get("range_position_14d").cloned().unwrap_or(Value::Null),
+            "mean_reversion_state_20d": raw_features_json.get("mean_reversion_state_20d").cloned().unwrap_or(Value::Null),
+            "mean_reversion_deviation_20d": raw_features_json.get("mean_reversion_deviation_20d").cloned().unwrap_or(Value::Null),
+            "quality_bucket": raw_features_json.get("quality_bucket").cloned().unwrap_or(Value::Null),
         }),
     );
     groups.insert("T".to_string(), json!({
         "technical_alignment": raw_features_json.get("technical_alignment").cloned().unwrap_or(Value::Null),
         "technical_status": raw_features_json.get("technical_status").cloned().unwrap_or(Value::Null),
+    }));
+    groups.insert("D".to_string(), json!({
+        "trend_direction_state": raw_features_json.get("trend_direction_state").cloned().unwrap_or(Value::Null),
+        "trend_direction_strength": raw_features_json.get("trend_direction_strength").cloned().unwrap_or(Value::Null),
+        "volume_direction_state": raw_features_json.get("volume_direction_state").cloned().unwrap_or(Value::Null),
+        "breakout_direction": raw_features_json.get("breakout_direction").cloned().unwrap_or(Value::Null),
+        "breakout_stage": raw_features_json.get("breakout_stage").cloned().unwrap_or(Value::Null),
+        "alignment_direction": raw_features_json.get("alignment_direction").cloned().unwrap_or(Value::Null),
+        "alignment_consistency": raw_features_json.get("alignment_consistency").cloned().unwrap_or(Value::Null),
+        "market_direction_regime": raw_features_json.get("market_direction_regime").cloned().unwrap_or(Value::Null),
+        "market_volatility_regime": raw_features_json.get("market_volatility_regime").cloned().unwrap_or(Value::Null),
+        "flow_direction_state": raw_features_json.get("flow_direction_state").cloned().unwrap_or(Value::Null),
+        "mean_reversion_direction_state": raw_features_json.get("mean_reversion_direction_state").cloned().unwrap_or(Value::Null),
+        "range_position_direction_state": raw_features_json.get("range_position_direction_state").cloned().unwrap_or(Value::Null),
+        "bollinger_position_direction_state": raw_features_json.get("bollinger_position_direction_state").cloned().unwrap_or(Value::Null),
+        "bollinger_midline_direction_state": raw_features_json.get("bollinger_midline_direction_state").cloned().unwrap_or(Value::Null),
+        "rsrs_direction_state": raw_features_json.get("rsrs_direction_state").cloned().unwrap_or(Value::Null),
+        "divergence_direction_state": raw_features_json.get("divergence_direction_state").cloned().unwrap_or(Value::Null),
+        "timing_direction_state": raw_features_json.get("timing_direction_state").cloned().unwrap_or(Value::Null),
+        "rsi_direction_state": raw_features_json.get("rsi_direction_state").cloned().unwrap_or(Value::Null),
+        "rsi_extreme_state": raw_features_json.get("rsi_extreme_state").cloned().unwrap_or(Value::Null),
+        "macd_histogram_direction": raw_features_json.get("macd_histogram_direction").cloned().unwrap_or(Value::Null),
     }));
     groups.insert(
         "Q".to_string(),
@@ -364,6 +396,51 @@ fn enrich_raw_features_json(
             .and_then(Value::as_f64),
         raw_features_json.get("roe_pct").and_then(Value::as_f64),
     );
+    let bollinger_position_20d = derive_bollinger_position_bucket_20d(
+        raw_features_json
+            .get("bollinger_position_signal")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+    );
+    let range_position_14d = derive_range_position_bucket_14d(
+        raw_features_json
+            .get("range_position_signal")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+    );
+    let mean_reversion_state_20d = derive_mean_reversion_bucket_20d(
+        raw_features_json
+            .get("mean_reversion_signal")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+    );
+    // 2026-04-20 CST: Updated because the approved Nikkei retraining route now bins the
+    // ATR-normalized MA20 gap instead of the raw percentage gap.
+    // Reason: snapshot replay must expose the same normalized distance that training consumes.
+    // Purpose: keep replay and retraining aligned on one volatility-adjusted mean-reversion contract.
+    let mean_reversion_normalized_distance_20d = raw_features_json
+        .get("mean_reversion_normalized_distance_20d")
+        .and_then(Value::as_f64)
+        .unwrap_or_else(|| {
+            derive_mean_reversion_normalized_distance_20d(
+                raw_features_json
+                    .get("close_vs_sma20")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0),
+                raw_features_json
+                    .get("atr_ratio_14")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0),
+            )
+        });
+    let mean_reversion_deviation_20d =
+        derive_mean_reversion_deviation_bucket_20d(mean_reversion_normalized_distance_20d);
+    let quality_bucket = derive_quality_bucket(
+        raw_features_json
+            .get("fundamental_quality_bucket")
+            .and_then(Value::as_str)
+            .unwrap_or("balanced"),
+    );
 
     // 2026-04-16 CST: Added because A-1a promotes request-side regime and industry routing into
     // the canonical raw snapshot rather than leaving them stranded in grouped views only.
@@ -398,6 +475,34 @@ fn enrich_raw_features_json(
     raw_features_json.insert(
         "valuation_status".to_string(),
         Value::String(valuation_status),
+    );
+    // 2026-04-20 CST: Added because Task A splits the old valuation_status bundle into
+    // user-reviewable sub-factors before the next Nikkei retraining pass.
+    // Purpose: keep snapshot replay aligned with the new training contract instead of asking
+    // downstream consumers to reverse-engineer one mixed valuation label.
+    raw_features_json.insert(
+        "bollinger_position_20d".to_string(),
+        Value::String(bollinger_position_20d.to_string()),
+    );
+    raw_features_json.insert(
+        "range_position_14d".to_string(),
+        Value::String(range_position_14d.to_string()),
+    );
+    raw_features_json.insert(
+        "mean_reversion_state_20d".to_string(),
+        Value::String(mean_reversion_state_20d.to_string()),
+    );
+    raw_features_json.insert(
+        "mean_reversion_normalized_distance_20d".to_string(),
+        json!(mean_reversion_normalized_distance_20d),
+    );
+    raw_features_json.insert(
+        "mean_reversion_deviation_20d".to_string(),
+        Value::String(mean_reversion_deviation_20d.to_string()),
+    );
+    raw_features_json.insert(
+        "quality_bucket".to_string(),
+        Value::String(quality_bucket.to_string()),
     );
     raw_features_json
 }
@@ -442,6 +547,16 @@ fn derive_market(symbol: &str) -> String {
 }
 
 fn derive_instrument_type(symbol: &str) -> String {
+    // 2026-04-20 CST: Added because Task 1 freezes non-equity identity before
+    // any downstream snapshot can be used for Nikkei or gold training.
+    // Purpose: classify explicit index and FX suffixes ahead of the old ETF/equity fallback.
+    let normalized_symbol = symbol.trim().to_uppercase();
+    if normalized_symbol.ends_with(".IDX") {
+        return "INDEX".to_string();
+    }
+    if normalized_symbol.ends_with(".FX") {
+        return "FX".to_string();
+    }
     let code = symbol.split('.').next().unwrap_or_default();
     if code.starts_with('5') || code.starts_with('1') {
         "ETF".to_string()

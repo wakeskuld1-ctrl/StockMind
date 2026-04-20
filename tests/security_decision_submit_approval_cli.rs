@@ -1415,7 +1415,13 @@ fn security_decision_submit_approval_scorecard_consumes_gold_etf_manual_proxy_in
             "model_sha256": null,
             "intercept": 0.0,
             "base_score": 600.0,
+            // 2026-04-20 CST: Added because ETF scorecard runtime now requires the
+            // shared differentiating context fields in addition to pool-specific proxy inputs.
+            // Purpose: keep submit_approval fixtures aligned with the same ETF guard contract
+            // already exercised by chair/fullstack ETF model fixtures.
             "features": [
+                { "feature_name": "etf_context_status", "group_name": "X", "bins": [] },
+                { "feature_name": "etf_asset_scope", "group_name": "X", "bins": [] },
                 { "feature_name": "volume_ratio_20", "group_name": "T", "bins": [] },
                 { "feature_name": "mfi_14", "group_name": "T", "bins": [] },
                 { "feature_name": "cci_20", "group_name": "T", "bins": [] },
@@ -1554,7 +1560,13 @@ fn security_decision_submit_approval_scorecard_consumes_treasury_etf_manual_prox
             "model_sha256": null,
             "intercept": 0.0,
             "base_score": 600.0,
+            // 2026-04-20 CST: Added because ETF scorecard runtime now requires the
+            // shared differentiating context fields in addition to pool-specific proxy inputs.
+            // Purpose: keep submit_approval fixtures aligned with the same ETF guard contract
+            // already exercised by chair/fullstack ETF model fixtures.
             "features": [
+                { "feature_name": "etf_context_status", "group_name": "X", "bins": [] },
+                { "feature_name": "etf_asset_scope", "group_name": "X", "bins": [] },
                 { "feature_name": "close_vs_sma200", "group_name": "T", "bins": [] },
                 { "feature_name": "boll_width_ratio_20", "group_name": "T", "bins": [] },
                 { "feature_name": "atr_14", "group_name": "T", "bins": [] },

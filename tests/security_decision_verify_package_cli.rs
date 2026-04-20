@@ -327,6 +327,7 @@ fn create_minimal_verifiable_package_fixture(
             model_version: Some("v1".to_string()),
             training_window: Some("2024-01-01..2025-12-31".to_string()),
             oot_window: Some("2026-01-01..2026-03-31".to_string()),
+            target_label_definition: Some("positive_return_10d".to_string()),
             positive_label_definition: Some("10d_profit".to_string()),
             instrument_subscope: Some("a_share_bank".to_string()),
             binning_version: Some("bin-v1".to_string()),

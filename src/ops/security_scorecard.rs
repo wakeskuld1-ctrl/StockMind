@@ -8,7 +8,11 @@ use thiserror::Error;
 use crate::ops::stock::security_decision_evidence_bundle::{
     ETF_DIFFERENTIATING_FEATURES, build_evidence_bundle_feature_seed, derive_event_density_bucket,
     derive_flow_status, derive_industry_bucket, derive_instrument_subscope, derive_market_regime,
-    derive_valuation_status, is_etf_symbol, required_etf_feature_family, resolve_etf_subscope,
+    derive_bollinger_position_bucket_20d, derive_mean_reversion_bucket_20d,
+    derive_mean_reversion_deviation_bucket_20d, derive_mean_reversion_normalized_distance_20d,
+    derive_quality_bucket, derive_range_position_bucket_14d, derive_valuation_status,
+    is_etf_symbol, normalize_etf_subscope_alias, required_etf_feature_family,
+    resolve_etf_subscope,
 };
 use crate::ops::stock::security_legacy_committee_compat::LegacySecurityDecisionCommitteeResult as SecurityDecisionCommitteeResult;
 use crate::ops::stock::security_symbol_taxonomy::resolve_effective_security_routing;
@@ -55,6 +59,9 @@ pub struct SecurityScorecardModelBinding {
     pub model_version: Option<String>,
     pub training_window: Option<String>,
     pub oot_window: Option<String>,
+    #[serde(default)]
+    pub target_label_definition: Option<String>,
+    #[serde(default)]
     pub positive_label_definition: Option<String>,
     pub instrument_subscope: Option<String>,
     pub binning_version: Option<String>,
@@ -105,6 +112,8 @@ pub struct SecurityScorecardModelArtifact {
     pub label_definition: String,
     #[serde(default)]
     pub target_head: Option<String>,
+    #[serde(default)]
+    pub target_label_definition: Option<String>,
     #[serde(default)]
     pub prediction_mode: Option<String>,
     #[serde(default)]
@@ -199,6 +208,7 @@ pub fn build_security_scorecard(
                 model_version: None,
                 training_window: None,
                 oot_window: None,
+                target_label_definition: None,
                 positive_label_definition: None,
                 instrument_subscope: None,
                 binning_version: None,
@@ -246,6 +256,7 @@ pub fn build_security_scorecard(
                 model_version: Some(model.model_version.clone()),
                 training_window: model.training_window.clone(),
                 oot_window: model.oot_window.clone(),
+                target_label_definition: model.target_label_definition.clone(),
                 positive_label_definition: model.positive_label_definition.clone(),
                 instrument_subscope: model.instrument_subscope.clone(),
                 binning_version: model.binning_version.clone(),
@@ -314,6 +325,7 @@ pub fn build_security_scorecard(
             model_version: Some(model.model_version.clone()),
             training_window: model.training_window.clone(),
             oot_window: model.oot_window.clone(),
+            target_label_definition: model.target_label_definition.clone(),
             positive_label_definition: model.positive_label_definition.clone(),
             instrument_subscope: model.instrument_subscope.clone(),
             binning_version: model.binning_version.clone(),
@@ -495,6 +507,51 @@ fn build_raw_feature_snapshot(
         snapshot.get("net_profit_yoy_pct").and_then(Value::as_f64),
         snapshot.get("roe_pct").and_then(Value::as_f64),
     );
+    let bollinger_position_20d = derive_bollinger_position_bucket_20d(
+        snapshot
+            .get("bollinger_position_signal")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+    );
+    let range_position_14d = derive_range_position_bucket_14d(
+        snapshot
+            .get("range_position_signal")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+    );
+    let mean_reversion_state_20d = derive_mean_reversion_bucket_20d(
+        snapshot
+            .get("mean_reversion_signal")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+    );
+    // 2026-04-20 CST: Updated because the approved Nikkei retraining route now bins the
+    // ATR-normalized MA20 gap instead of the raw percentage gap.
+    // Reason: runtime scorecards must expose the same normalized distance that training reads.
+    // Purpose: keep live scoring snapshots aligned with the volatility-adjusted mean-reversion contract.
+    let mean_reversion_normalized_distance_20d = snapshot
+        .get("mean_reversion_normalized_distance_20d")
+        .and_then(Value::as_f64)
+        .unwrap_or_else(|| {
+            derive_mean_reversion_normalized_distance_20d(
+                snapshot
+                    .get("close_vs_sma20")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0),
+                snapshot
+                    .get("atr_ratio_14")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0),
+            )
+        });
+    let mean_reversion_deviation_20d =
+        derive_mean_reversion_deviation_bucket_20d(mean_reversion_normalized_distance_20d);
+    let quality_bucket = derive_quality_bucket(
+        snapshot
+            .get("fundamental_quality_bucket")
+            .and_then(Value::as_str)
+            .unwrap_or("balanced"),
+    );
     // 2026-04-16 CST: Added because runtime scorecard must consume the same thickened
     // segmentation vocabulary that snapshot/training now freeze.
     // Reason: otherwise replay/training/runtime would drift on market regime and Q/V proxy fields.
@@ -525,6 +582,33 @@ fn build_raw_feature_snapshot(
     snapshot.insert(
         "valuation_status".to_string(),
         Value::String(valuation_status),
+    );
+    // 2026-04-20 CST: Added because Task A splits valuation_status into user-reviewable
+    // position/quality buckets before the next Nikkei retraining pass.
+    // Purpose: keep runtime scorecard raw snapshots aligned with the new training contract.
+    snapshot.insert(
+        "bollinger_position_20d".to_string(),
+        Value::String(bollinger_position_20d.to_string()),
+    );
+    snapshot.insert(
+        "range_position_14d".to_string(),
+        Value::String(range_position_14d.to_string()),
+    );
+    snapshot.insert(
+        "mean_reversion_state_20d".to_string(),
+        Value::String(mean_reversion_state_20d.to_string()),
+    );
+    snapshot.insert(
+        "mean_reversion_normalized_distance_20d".to_string(),
+        json!(mean_reversion_normalized_distance_20d),
+    );
+    snapshot.insert(
+        "mean_reversion_deviation_20d".to_string(),
+        Value::String(mean_reversion_deviation_20d.to_string()),
+    );
+    snapshot.insert(
+        "quality_bucket".to_string(),
+        Value::String(quality_bucket.to_string()),
     );
     snapshot.insert("warn_count".to_string(), json!(warn_count));
     snapshot.insert(
@@ -639,7 +723,9 @@ fn etf_cross_section_guard_status(
     } else if let (Some(runtime_subscope), Some(model_subscope)) =
         (runtime_subscope, model.instrument_subscope.as_deref())
     {
-        if runtime_subscope != model_subscope {
+        if normalize_etf_subscope_alias(runtime_subscope)
+            != normalize_etf_subscope_alias(model_subscope)
+        {
             Some("cross_section_invalid".to_string())
         } else {
             None
@@ -871,6 +957,7 @@ mod tests {
             model_version: "candidate_20260411".to_string(),
             label_definition: "security_forward_outcome.v1".to_string(),
             target_head: None,
+            target_label_definition: None,
             prediction_mode: None,
             prediction_baseline: None,
             training_window: None,
@@ -905,10 +992,17 @@ mod tests {
                 },
             ],
         };
+        // 2026-04-20 CST: Expanded the ETF guard fixture because the runtime gate
+        // now keys off ETF differentiating evidence instead of plain technical-only fields.
+        // Reason: keep the red test aligned with the current ETF evidence contract.
+        // Purpose: ensure the generic model is rejected when a live ETF snapshot carries
+        // ETF-specific runtime facts but the bound artifact still lacks that family.
         let raw_snapshot = BTreeMap::from([
             ("close_vs_sma50".to_string(), json!(0.012)),
             ("volume_ratio_20".to_string(), json!(1.18)),
             ("rsrs_zscore_18_60".to_string(), json!(0.76)),
+            ("etf_context_status".to_string(), json!("ready")),
+            ("etf_asset_scope".to_string(), json!("bond")),
         ]);
 
         assert_eq!(
@@ -929,6 +1023,7 @@ mod tests {
             model_version: "candidate_20260411".to_string(),
             label_definition: "security_forward_outcome.v1".to_string(),
             target_head: None,
+            target_label_definition: None,
             prediction_mode: None,
             prediction_baseline: None,
             training_window: None,
@@ -972,17 +1067,19 @@ mod tests {
     }
 
     #[test]
-    fn etf_runtime_guard_rejects_treasury_binding_without_treasury_feature_family() {
-        // 2026-04-11 CST: Add a red test for subscope-specific ETF feature families, reason:
-        // a treasury ETF artifact that only carries equity-ETF-style features still remains a
-        // structurally wrong quantitative binding even if its declared subscope says treasury.
-        // Purpose: force runtime governance to validate the minimum treasury ETF factor family
-        // instead of trusting the artifact's subscope label alone.
+    fn etf_cross_section_guard_accepts_treasury_alias_when_sector_profile_normalizes_to_bond_family() {
+        // 2026-04-20 CST: Updated because the ETF subscope contract now normalizes
+        // legacy treasury labels onto the shared bond ETF family before cross-section checks.
+        // Reason: once alias normalization landed, `treasury_etf` vs `bond_etf_peer`
+        // should no longer look like structurally different ETF pools.
+        // Purpose: lock the new positive guard behavior while the separate feature-family
+        // tests continue to validate treasury proxy completeness.
         let model = SecurityScorecardModelArtifact {
             model_id: "a_share_etf_treasury_etf_10d_direction_head".to_string(),
             model_version: "candidate_20260411".to_string(),
             label_definition: "security_forward_outcome.v1".to_string(),
             target_head: None,
+            target_label_definition: None,
             prediction_mode: None,
             prediction_baseline: None,
             training_window: None,
@@ -1022,7 +1119,7 @@ mod tests {
 
         assert_eq!(
             etf_cross_section_guard_status("511010.SH", &raw_snapshot, &model),
-            Some("cross_section_invalid".to_string())
+            None
         );
     }
 

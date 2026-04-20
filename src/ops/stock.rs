@@ -123,6 +123,30 @@ pub mod security_account_objective_contract;
 #[path = "security_portfolio_replacement_plan.rs"]
 pub mod security_portfolio_replacement_plan;
 
+// 2026-04-20 CST: Added because P12 now lands the minimum governed final
+// allocation decision layer above the implemented P10 and P11 contracts.
+// Reason: the approved route completes the portfolio-core chain with one
+// explicit decision freeze instead of another solver pass.
+// Purpose: expose the portfolio allocation decision on the formal stock boundary.
+#[path = "security_portfolio_allocation_decision.rs"]
+pub mod security_portfolio_allocation_decision;
+
+// 2026-04-20 CST: Added because the next approved downstream step after P12 is
+// one execution-preview bridge, not direct runtime execution.
+// Reason: the user approved a side-effect-free consumer of the governed
+// allocation decision before any new execution-writing stage.
+// Purpose: expose the portfolio execution preview on the formal stock boundary.
+#[path = "security_portfolio_execution_preview.rs"]
+pub mod security_portfolio_execution_preview;
+
+// 2026-04-20 CST: Added because P13 now introduces the first formal request
+// bridge downstream of the standardized preview document.
+// Reason: the approved next step after preview standardization is request
+// packaging, not direct runtime execution or an approval detour.
+// Purpose: expose the portfolio execution request package on the formal stock boundary.
+#[path = "security_portfolio_execution_request_package.rs"]
+pub mod security_portfolio_execution_request_package;
+
 // 2026-04-18 CST: Added because Task 2 now lands the only formal live
 // governance object between approved intake and active holdings.
 // Reason: the user fixed `PositionContract` as a new object that must stay

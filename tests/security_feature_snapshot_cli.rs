@@ -253,6 +253,59 @@ fn security_feature_snapshot_freezes_raw_and_group_features_with_hash() {
     assert!(raw_features["rsi_14"].is_number());
     assert_eq!(raw_features["shareholder_return_status"], "dividend_only");
     assert_eq!(raw_features["fundamental_quality_bucket"], "strong");
+    // 2026-04-20 CST: Added because Task A splits the opaque valuation_status bundle into
+    // four independently reviewable raw factors before the next Nikkei retraining pass.
+    // Purpose: lock the normalized position/quality buckets into the canonical snapshot so
+    // training and review can ask "which layer helped" instead of rereading one mixed label.
+    let bollinger_position_signal = raw_features["bollinger_position_signal"]
+        .as_str()
+        .expect("bollinger_position_signal should be a string");
+    let expected_bollinger_bucket = if bollinger_position_signal.contains("upper") {
+        "upper"
+    } else if bollinger_position_signal.contains("lower") {
+        "lower"
+    } else {
+        "middle"
+    };
+    assert_eq!(
+        raw_features["bollinger_position_20d"],
+        expected_bollinger_bucket
+    );
+    let range_position_signal = raw_features["range_position_signal"]
+        .as_str()
+        .expect("range_position_signal should be a string");
+    let expected_range_bucket = if range_position_signal.contains("overbought") {
+        "high"
+    } else if range_position_signal.contains("oversold") {
+        "low"
+    } else {
+        "middle"
+    };
+    assert_eq!(raw_features["range_position_14d"], expected_range_bucket);
+    // 2026-04-20 CST: Updated because the approved Nikkei retraining route now normalizes
+    // MA20 deviation by ATR14 before binning.
+    // Reason: the snapshot test must prove the bucket comes from a volatility-adjusted
+    // distance field rather than the former raw percentage threshold.
+    // Purpose: lock the normalized raw factor and its replay bucket into one governed contract.
+    let mean_reversion_normalized_distance_20d = raw_features["mean_reversion_normalized_distance_20d"]
+        .as_f64()
+        .expect("mean_reversion_normalized_distance_20d should be numeric");
+    let expected_mean_reversion_bucket = if mean_reversion_normalized_distance_20d < -2.6 {
+        "strong_down"
+    } else if mean_reversion_normalized_distance_20d < -0.15 {
+        "weak_down"
+    } else if mean_reversion_normalized_distance_20d <= 0.15 {
+        "neutral"
+    } else if mean_reversion_normalized_distance_20d <= 2.6 {
+        "weak_up"
+    } else {
+        "strong_up"
+    };
+    assert_eq!(
+        raw_features["mean_reversion_deviation_20d"],
+        expected_mean_reversion_bucket
+    );
+    assert_eq!(raw_features["quality_bucket"], "strong");
     let group_features = output["data"]["group_features_json"]
         .as_object()
         .expect("group features should be an object");
@@ -266,6 +319,76 @@ fn security_feature_snapshot_freezes_raw_and_group_features_with_hash() {
     assert_ne!(group_features["Q"]["flow_status"], "not_populated_v1");
     assert_eq!(group_features["Q"]["event_density_bucket"], "light");
     assert_ne!(group_features["V"]["valuation_status"], "not_populated_v1");
+    assert_eq!(
+        group_features["V"]["bollinger_position_20d"],
+        expected_bollinger_bucket
+    );
+    assert_eq!(group_features["V"]["range_position_14d"], expected_range_bucket);
+    assert_eq!(
+        group_features["V"]["mean_reversion_deviation_20d"],
+        expected_mean_reversion_bucket
+    );
+    assert_eq!(group_features["V"]["quality_bucket"], "strong");
+}
+
+#[test]
+fn security_feature_snapshot_classifies_idx_subject_as_index_instead_of_equity() {
+    // 2026-04-20 CST: Added because Task 1 must lock the minimum non-equity typing contract
+    // before Nikkei training work starts to depend on it.
+    // Purpose: prove a .IDX subject no longer reports the legacy equity instrument identity.
+    let runtime_db_path = create_test_runtime_db("security_feature_snapshot_index_identity");
+
+    let index_csv = create_stock_history_csv(
+        "security_feature_snapshot_index_identity",
+        "nikkei.csv",
+        &build_confirmed_breakout_rows(260, 32500.0),
+    );
+    import_history_csv(&runtime_db_path, &index_csv, "NK225.IDX");
+
+    let server = spawn_http_route_server(vec![
+        (
+            "/financials",
+            "HTTP/1.1 406 Not Acceptable",
+            "<html><body>financials unavailable for index fixture</body></html>",
+            "text/html",
+        ),
+        (
+            "/announcements",
+            "HTTP/1.1 200 OK",
+            r#"{"data":{"list":[]}}"#,
+            "application/json",
+        ),
+    ]);
+
+    let request = json!({
+        "tool": "security_feature_snapshot",
+        "args": {
+            "symbol": "NK225.IDX",
+            "market_symbol": "NK225.IDX",
+            "sector_symbol": "NK225.IDX",
+            "stop_loss_pct": 0.05,
+            "target_return_pct": 0.12
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &[
+            (
+                "EXCEL_SKILL_EASTMONEY_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
+                "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+        ],
+    );
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    assert_eq!(output["data"]["instrument_type"], "INDEX");
+    assert_eq!(output["data"]["raw_features_json"]["subject_asset_class"], "index");
 }
 
 #[test]

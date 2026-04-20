@@ -33,6 +33,9 @@ flowchart TD
 | `2026-04-15-stock-business-flow-baseline.md` | `src/tools/catalog.rs` grouped order | `tests/stock_catalog_grouping_source_guard.rs` |
 | `2026-04-16-stock-modeling-lifecycle-split-design.md` | `src/ops/stock_modeling_and_training.rs`, `stock_online_scoring_and_aggregation.rs`, `stock_model_lifecycle.rs` | `tests/stock_modeling_training_split_source_guard.rs` |
 | `2026-04-16-security-legacy-committee-governance-design.md` | legacy freeze + formal governance mainline | `tests/security_legacy_committee_application_surface_guard.rs`, `tests/security_legacy_committee_dependency_gate.rs`, `tests/security_legacy_committee_public_catalog_guard.rs` |
+| `2026-04-20-p12-governed-portfolio-allocation-decision-design.md`, `2026-04-20-p12-enhanced-allocation-refinement-design.md` | formal `P10 -> P11 -> P12` portfolio-core chain | `tests/security_portfolio_core_chain_source_guard.rs` |
+| `2026-04-20-post-p12-portfolio-execution-preview-design.md`, `2026-04-20-post-p12-execution-request-preview-standardization-design.md` | side-effect-free post-`P12` execution preview bridge with nested request-aligned preview rows | `tests/security_portfolio_execution_preview_cli.rs` |
+| `2026-04-20-p13-portfolio-execution-request-bridge-design.md` | formal side-effect-free request bridge downstream of the standardized preview document | `tests/security_portfolio_execution_request_package_cli.rs` |
 | `docs/AI_HANDOFF.md` | current split-repo boundary rules | all source-guard tests above reference this handoff baseline |
 
 ## Acceptance levels
@@ -72,6 +75,9 @@ cargo test --test security_decision_package_revision_cli -- --nocapture
 cargo test --test security_lifecycle_validation_cli -- --nocapture
 cargo test --test security_post_meeting_conclusion_cli -- --nocapture
 cargo test --test security_post_trade_review_cli -- --nocapture
+cargo test --test security_portfolio_core_chain_source_guard -- --nocapture
+cargo test --test security_portfolio_execution_preview_cli -- --nocapture
+cargo test --test security_portfolio_execution_request_package_cli -- --nocapture
 ```
 
 What this proves:
@@ -80,6 +86,9 @@ What this proves:
 - package revision still binds to the governed stock lifecycle
 - execution record and post-trade review still round-trip through the lifecycle slice
 - post-meeting conclusion still lands as a formal artifact and can revise package state
+- the formal portfolio-core chain stays locked to `P10 -> P11 -> P12` document consumption and public-tool order
+- the post-`P12` execution preview bridge stays preview-only and consumes only the governed allocation decision document
+- the `P13` request bridge stays side-effect free and consumes only the standardized preview document
 
 ### Level 3: repository acceptance
 
@@ -96,6 +105,9 @@ Current reference baseline from local verification in this repo:
 
 - full `cargo test -- --nocapture` completed successfully
 - observed runtime was about 4 minutes 48 seconds on the current local machine
+
+Use `docs/handoff/CURRENT_STATUS.md` for the latest branch-health truth.
+This checklist remains the acceptance target map, not an automatically current status snapshot.
 
 ## Runtime ownership acceptance
 

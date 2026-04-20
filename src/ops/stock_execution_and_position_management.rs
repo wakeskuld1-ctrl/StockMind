@@ -24,6 +24,24 @@ pub use super::security_account_objective_contract;
 // to the P10 account objective boundary it consumes.
 // Purpose: make the P11 replacement plan reachable through the grouped execution gateway.
 pub use super::security_portfolio_replacement_plan;
+// 2026-04-20 CST: Added because P12 now introduces the final governed
+// allocation decision freeze after the implemented replacement plan stage.
+// Reason: the grouped in-trade gateway should expose the whole P10 -> P11 ->
+// P12 portfolio-core chain on one explicit execution-and-position surface.
+// Purpose: make the P12 allocation decision reachable through the grouped gateway.
+pub use super::security_portfolio_allocation_decision;
+// 2026-04-20 CST: Added because the approved next step after P12 is one
+// side-effect-free execution preview bridge.
+// Reason: grouping it here keeps the downstream preview on the same explicit
+// execution-and-position surface without bypassing the portfolio-core chain.
+// Purpose: make the post-P12 preview bridge reachable through the grouped gateway.
+pub use super::security_portfolio_execution_preview;
+// 2026-04-20 CST: Added because P13 now extends the explicit post-P12 path
+// from preview into one formal request-package bridge.
+// Reason: grouping it here keeps the request bridge on the same execution-and-
+// position surface without implying runtime execution facts.
+// Purpose: make the P13 request bridge reachable through the grouped gateway.
+pub use super::security_portfolio_execution_request_package;
 pub use super::security_execution_journal;
 pub use super::security_execution_record;
 // 2026-04-18 CST: Added because Task 2 introduces the live contract object that

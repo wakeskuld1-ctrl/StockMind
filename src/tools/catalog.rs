@@ -45,6 +45,18 @@ pub const STOCK_TOOL_NAMES: &[&str] = &[
     // replacement solver on the public stock tool surface.
     // Purpose: make the portfolio replacement contract discoverable from the catalog.
     "security_portfolio_replacement_plan",
+    // 2026-04-20 CST: Added because P12 now exposes the final governed
+    // allocation decision on the public stock tool surface.
+    // Purpose: make the portfolio-core decision-freeze contract discoverable from the catalog.
+    "security_portfolio_allocation_decision",
+    // 2026-04-20 CST: Added because the first downstream post-P12 bridge should
+    // remain discoverable as a preview-only stock tool.
+    // Purpose: make the execution preview bridge visible without implying real execution.
+    "security_portfolio_execution_preview",
+    // 2026-04-20 CST: Added because P13 now introduces one formal request
+    // package stage after the preview-only bridge.
+    // Purpose: make the request bridge discoverable without implying real execution facts.
+    "security_portfolio_execution_request_package",
     "security_record_position_adjustment",
     // post_trade: review and conclusion after the in-trade loop.
     "security_post_trade_review",

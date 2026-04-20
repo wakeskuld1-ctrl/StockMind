@@ -1,24 +1,42 @@
 # StockMind AI Handoff
 
+## Status And Precedence
+
+This file contains useful historical and architectural handoff context, but it is not the current branch-health truth file.
+
+Use these sources in this order:
+
+1. `README.md`
+2. `docs/product/project_intent.md`
+3. `docs/governance/contract_registry.md`
+4. `docs/governance/decision_log.md`
+5. `docs/governance/acceptance_criteria.md`
+6. `docs/governance/response_contract.md`
+7. `docs/handoff/CURRENT_STATUS.md`
+8. `docs/handoff/HANDOFF_ISSUES.md`
+9. this file for broader background
+
+If any historical note in this file conflicts with the current branch output, the current branch output wins.
+
 ## 1. Current Mainline
 
 - Date: 2026-04-17
-- Active main project path: `D:\SM`
+- Active main project repo: current `StockMind` workspace
 - Main upstream repo: `https://github.com/wakeskuld1-ctrl/StockMind.git`
 - Mainline branch source: `main`
 - Current working branch for the clean upload slice: `codex/p10-p11-clean-upload-20260420`
 
 This repository is now the primary delivery line for the standalone stock and ETF analysis product.
 
-The old local repository `D:\Rust\Excel_Skill` is no longer the main development flow. It remains a reference source for selective capability backport only.
+The old local `Excel_Skill` workspace is no longer the main development flow. It remains a reference source for selective capability backport only.
 
 ## 2. Architecture Boundary
 
 Follow this rule going forward:
 
-1. Keep `D:\SM` as the only mainline implementation repo.
+1. Keep this `StockMind` repository as the only mainline implementation repo.
 2. Do not perform broad refactors unless a change is truly blocked by the current structure.
-3. If an old capability in `D:\Rust\Excel_Skill` is still valuable, backport only the minimum useful slice.
+3. If an old capability in the external `Excel_Skill` reference workspace is still valuable, backport only the minimum useful slice.
 4. Do not re-import old Excel, table, or generic foundation packages into `StockMind` as a full bundle.
 
 Reason:
@@ -29,12 +47,12 @@ Reason:
 
 ## 3. What Was Backported In This Round
 
-The current round already merged a small governed chair-resolution slice from the old repository into `D:\SM`.
+The current round already merged a small governed chair-resolution slice from the old repository into this `StockMind` repository.
 
 Updated files:
 
-- `D:\SM\src\ops\security_chair_resolution.rs`
-- `D:\SM\tests\security_chair_resolution_cli.rs`
+- `src/ops/security_chair_resolution.rs`
+- `tests/security_chair_resolution_cli.rs`
 
 Backported output fields on chair resolution:
 
@@ -54,7 +72,7 @@ This was intentionally a minimal backport instead of a structural rewrite.
 
 ## 4. Verified Result
 
-Focused tests already passed in `D:\SM`:
+Focused tests already passed in this repository:
 
 ```powershell
 cargo test security_chair_resolution_downgrades_to_abstain_when_scorecard_model_is_unavailable --test security_chair_resolution_cli -- --nocapture
@@ -70,50 +88,50 @@ Important note:
 
 At the time of this handoff, the upload branch was rebuilt in a clean isolated worktree so the pushed slice can exclude local runtime artifacts and database byproducts.
 
-- Clean upload worktree path: `C:\wt\smu`
+- Clean upload worktree: temporary isolated worktree used only for the clean upload slice
 - Upload branch goal: ship `P10/P11` portfolio-core code, tests, and handoff docs only
 - Explicitly excluded from this upload: `.stockmind_runtime/` databases, replay artifacts, and other machine-local training outputs
 
 Important boundary:
 
-- the original main workspace `D:\SM` may still contain unrelated local changes and runtime artifacts
+- the original main workspace may still contain unrelated local changes and runtime artifacts
 - do not assume those runtime databases were uploaded; they were intentionally excluded from the clean Git delivery
 
 ## 6. Relationship Between Repos
 
-### `D:\SM`
+### Current `StockMind` Repo
 
 This is the active standalone product repo and should be treated as the only primary engineering line.
 
-### `D:\Rust\Excel_Skill`
+### External `Excel_Skill` Reference Workspace
 
 This is now a reference repo only.
 
 Useful reference materials already written there:
 
-- External historical reference only: `D:\Rust\Excel_Skill\docs\plans\2026-04-17-stockmind-mainline-reconciliation-design.md`
-- External historical reference only: `D:\Rust\Excel_Skill\docs\plans\2026-04-17-stockmind-mainline-reconciliation-plan.md`
+- External historical reference only: `docs/plans/2026-04-17-stockmind-mainline-reconciliation-design.md` in the `Excel_Skill` reference workspace
+- External historical reference only: `docs/plans/2026-04-17-stockmind-mainline-reconciliation-plan.md` in the `Excel_Skill` reference workspace
 
-Current `D:\SM` canonical documents for this line of work:
+Current canonical documents in this repository for this line of work:
 
-- `D:\SM\docs\plans\design\2026-04-18-post-open-position-data-system-design.md`
-- `D:\SM\docs\plans\execution\2026-04-18-post-open-position-data-system-implementation-plan.md`
+- `docs/plans/design/2026-04-18-post-open-position-data-system-design.md`
+- `docs/plans/execution/2026-04-18-post-open-position-data-system-implementation-plan.md`
 
-Use the external repo only to inspect old capability behavior, then backport only the needed slice into `D:\SM`. Treat the `D:\SM\docs\...` documents above as the current authoritative path for this repository.
+Use the external repo only to inspect old capability behavior, then backport only the needed slice into this repository. Treat the `docs/...` documents above as the current authoritative path for this repository.
 
-### `D:\Rust\Stock`
+### External `Stock` Reference Workspace
 
 This is a separate Rust workspace with real data access skeleton and local persisted market data.
 
-It is not the same project as `D:\SM`, and it should not be merged wholesale into `StockMind`.
+It is not the same project as this repository, and it should not be merged wholesale into `StockMind`.
 
 Use it as a reference source for market data adapter patterns, storage shape, and service wiring.
 
-## 7. Audit Of `D:\Rust\Stock`
+## 7. Audit Of The External `Stock` Reference Workspace
 
 ### Workspace shape
 
-`D:\Rust\Stock\Cargo.toml` defines a Rust workspace with:
+`Cargo.toml` in the external `Stock` workspace defines a Rust workspace with:
 
 - `server`
 - `domain`
@@ -121,7 +139,7 @@ Use it as a reference source for market data adapter patterns, storage shape, an
 
 ### Environment contract
 
-`D:\Rust\Stock\.env.example` currently contains:
+`.env.example` in the external `Stock` workspace currently contains:
 
 ```env
 DATABASE_URL=sqlite:stock.db
@@ -132,7 +150,7 @@ This means the project is designed to run against a local SQLite database and op
 
 ### Real data wiring
 
-`D:\Rust\Stock\server\src\main.rs` shows that the running server uses:
+`server/src/main.rs` in the external `Stock` workspace shows that the running server uses:
 
 - market source: `SinaMarketSource`
 - repository: `SqliteStockRepository`
@@ -150,7 +168,7 @@ It also exposes these API routes:
 
 ### Adapter inventory
 
-`D:\Rust\Stock\infra\src\adapter\` currently contains:
+`infra/src/adapter/` in the external `Stock` workspace currently contains:
 
 - `sina.rs`
 - `eastmoney.rs`
@@ -167,7 +185,7 @@ Observed adapter relationship:
 
 ### SQLite persistence shape
 
-`D:\Rust\Stock\infra\src\repository\sqlite.rs` initializes and maintains a fairly broad local schema, including:
+`infra/src/repository/sqlite.rs` in the external `Stock` workspace initializes and maintains a fairly broad local schema, including:
 
 - `stocks`
 - `klines`
@@ -182,7 +200,7 @@ Observed adapter relationship:
 - `portfolio_opt_task`
 - `portfolio_opt_result`
 
-This confirms that `D:\Rust\Stock` is already more than a toy fetcher. It includes real local persistence for market data, analysis artifacts, and trade simulation records.
+This confirms that the external `Stock` workspace is already more than a toy fetcher. It includes real local persistence for market data, analysis artifacts, and trade simulation records.
 
 ### Local data artifacts
 
@@ -195,17 +213,17 @@ The project root currently contains local runtime artifacts such as:
 
 This further confirms that the workspace already carries a practical local-data and model-serving skeleton.
 
-## 8. Recommended Use Of `D:\Rust\Stock`
+## 8. Recommended Use Of The External `Stock` Reference Workspace
 
-Use `D:\Rust\Stock` for reference in these scenarios:
+Use the external `Stock` workspace for reference in these scenarios:
 
-- when `D:\SM` needs a cleaner market data adapter design reference
+- when this repository needs a cleaner market data adapter design reference
 - when we need to study SQLite table design for historical market data persistence
 - when we want to copy a small proven pattern for Sina, EastMoney, or Tushare integration
 
-Do not use `D:\Rust\Stock` for these actions by default:
+Do not use the external `Stock` workspace for these actions by default:
 
-- full repository merge into `D:\SM`
+- full repository merge into this repository
 - direct module transplant without boundary review
 - copying Python-side workflow assumptions into the mainline product path
 
@@ -213,9 +231,9 @@ Do not use `D:\Rust\Stock` for these actions by default:
 
 Default next-step order:
 
-1. Continue implementation in `D:\SM`
+1. Continue implementation in this `StockMind` repository
 2. Respect the current architecture boundary and avoid non-essential refactors
-3. If more local capability is needed, inspect `D:\Rust\Excel_Skill` first for business logic and inspect `D:\Rust\Stock` for data adapter/storage patterns
+3. If more local capability is needed, inspect the external `Excel_Skill` workspace first for business logic and inspect the external `Stock` workspace for data adapter/storage patterns
 4. Backport only the minimum vertical slice needed for the next user-facing capability
 5. Run focused tests first, then decide whether broader regression is needed
 
@@ -232,8 +250,8 @@ For any future work related to:
 
 the next AI must follow this document as the controlling business-flow reference:
 
-- `D:\SM\docs\plans\design\2026-04-18-post-open-position-data-system-design.md`
-- `D:\SM\docs\governance\post_open_position_data_graph.json`
+- `docs/plans/design/2026-04-18-post-open-position-data-system-design.md`
+- `docs/governance/post_open_position_data_graph.json`
 
 This rule is mandatory unless the user explicitly approves a business-flow change.
 
@@ -264,7 +282,7 @@ For Task 6 specifically, the next AI must remember:
 
 The 2026-04-19 guard-first follow-up also fixed these operating rules:
 
-- `D:\SM\tests\post_open_position_data_flow_guard.rs` is now the minimal source-guard for the post-open governance gate
+- `tests/post_open_position_data_flow_guard.rs` is now the minimal source-guard for the post-open governance gate
 - `MonitoringEvidencePackage` and `CapitalRebalanceEvidencePackage` must continue to flow into committee/chair review before `AdjustmentInputPackage`
 - `security_record_position_adjustment.rs` remains a legacy compatibility recorder and must stay separate from the now-implemented `security_adjustment_input_package.rs`
 - the 2026-04-19 Task 7 follow-up landed `security_committee_decision_package` as the first implemented post-open committee handoff
@@ -294,12 +312,23 @@ The 2026-04-19 guard-first follow-up also fixed these operating rules:
   - `P11 / Task 3-4`: implemented
     - tool: `security_portfolio_replacement_plan`
     - outputs: unified replacement plan with current/target weights, action sections, capital migration summary, rebase-aware context, conflict-resolution summary, and structured action summary
-  - `P12`: not implemented yet
-- future sessions must not treat `P12` as implemented just because `P10` and `P11` are now live
-- the following focused verification commands were green at the current handoff point:
+  - `P12 / Task 5`: implemented on 2026-04-20
+    - tool: `security_portfolio_allocation_decision`
+    - outputs: governed final allocation decision with baseline target allocations, refined final target allocations, baseline/residual cash, structured constraint checks, readiness/blockers, refinement summary, and upstream lineage refs
+- post-`P12` downstream preview bridge: implemented on 2026-04-20
+  - tool: `security_portfolio_execution_preview`
+  - outputs: preview-only per-symbol execution rows, buy/sell/hold counts, readiness/blockers, and one `portfolio_allocation_decision_ref`
+- future sessions must not treat `P12` as a second replacement solver: the current approved route is a bounded refinement layer that only deploys baseline residual cash plus remaining turnover slack, never trims baseline targets in this round, and still consumes only formal `P10`/`P11` artifacts
+- `tests/security_portfolio_core_chain_source_guard.rs` is now the dedicated source guard for the formal `P10 -> P11 -> P12` portfolio-core chain
+- `security_portfolio_execution_preview` is preview-only and must not call runtime execution, persistence, or direct `security_execution_record` writes
+- the following focused verification commands were green during the latest successful preview/portfolio-core closeout checks:
   - `cargo test --test security_account_objective_contract_cli -- --nocapture`
   - `cargo test --test security_portfolio_replacement_plan_cli -- --nocapture`
-  - `cargo test --test security_account_objective_contract_cli --test security_portfolio_replacement_plan_cli -- --nocapture`
+  - `$env:CARGO_TARGET_DIR='E:\SM\target_p12_enhanced'; cargo test --test security_portfolio_allocation_decision_cli -- --nocapture`
+  - `$env:CARGO_TARGET_DIR='E:\SM\target_p12_enhanced'; cargo test --test security_account_objective_contract_cli --test security_portfolio_replacement_plan_cli --test security_portfolio_allocation_decision_cli -- --nocapture`
+  - `cargo test --test security_portfolio_execution_preview_cli -- --nocapture`
+  - `cargo test --test security_portfolio_core_chain_source_guard -- --nocapture`
+- current full-repository regression truth now belongs to `docs/handoff/CURRENT_STATUS.md` and `docs/handoff/HANDOFF_ISSUES.md`; do not treat this historical summary as proof that the branch is still repository-wide green
 - `security_record_position_adjustment.rs` remains the downstream legacy compatibility recorder and must not be treated as the new mainline just because the bridge now exists
 - the 2026-04-19 ETF/proxy-history chair failures are now fixed and must remain frozen as runtime rules:
   - ETF alias strings such as `treasury_etf` / `gold_etf` must normalize before scorecard subscope comparison
@@ -319,11 +348,11 @@ Do not silently invent a parallel flow, shortcut the intake contract, or collaps
 
 For future work on this project, the following five files are now the compact single-source-of-truth set for intent, contract, decisions, acceptance, and answer delivery:
 
-- `D:\SM\docs\product\project_intent.md`
-- `D:\SM\docs\governance\contract_registry.md`
-- `D:\SM\docs\governance\decision_log.md`
-- `D:\SM\docs\governance\acceptance_criteria.md`
-- `D:\SM\docs\governance\response_contract.md`
+- `docs/product/project_intent.md`
+- `docs/governance/contract_registry.md`
+- `docs/governance/decision_log.md`
+- `docs/governance/acceptance_criteria.md`
+- `docs/governance/response_contract.md`
 
 They answer:
 
@@ -348,10 +377,10 @@ If code changes are made without checking and updating the relevant files, the t
 
 These points should be treated as stable operating memory for the next AI session:
 
-- Mainline is `D:\SM`, not `D:\Rust\Excel_Skill`
-- `D:\Rust\Excel_Skill` is reference-only
-- `D:\Rust\Stock` is a separate data-access reference project
+- Mainline is this `StockMind` repository, not the external `Excel_Skill` workspace
+- the external `Excel_Skill` workspace is reference-only
+- the external `Stock` workspace is a separate data-access reference project
 - Do not keep refactoring the architecture unless there is a real blocker
 - Future work should follow the established architecture, not restart it
 - Prefer minimal backport, focused verification, and continuous delivery
-- For post-open-position and position-management work, follow `D:\SM\docs\plans\design\2026-04-18-post-open-position-data-system-design.md` unless the user explicitly changes the business flow
+- For post-open-position and position-management work, follow `docs/plans/design/2026-04-18-post-open-position-data-system-design.md` unless the user explicitly changes the business flow

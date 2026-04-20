@@ -8,7 +8,11 @@ use crate::ops::stock::security_analysis_contextual::{
     SecurityAnalysisContextualError, SecurityAnalysisContextualRequest,
     SecurityAnalysisContextualResult, security_analysis_contextual,
 };
+use crate::ops::stock::security_decision_evidence_bundle::SecurityExternalProxyInputs;
 use crate::ops::stock::security_disclosure_history_backfill::load_historical_disclosure_context;
+use crate::ops::stock::security_external_proxy_backfill::{
+    load_historical_external_proxy_snapshot, load_latest_external_proxy_snapshot,
+};
 use crate::ops::stock::security_fundamental_history_backfill::load_historical_fundamental_context;
 use crate::ops::stock::stock_analysis_data_guard::StockAnalysisDateGuard;
 use crate::ops::stock::technical_consultation_basic::{
@@ -255,6 +259,18 @@ pub struct GovernedDisclosureHistoryRow {
     pub source: String,
 }
 
+// 2026-04-20 CST: Added because the frozen P10/P11 ETF contract now treats a complete
+// governed proxy family as first-class research evidence when stock-only info is absent.
+// Reason: chair/committee regressions showed the chain still fell back to unavailable
+// stock semantics even after governed ETF proxy history was already bound.
+// Purpose: keep the proxy payload and its resolved date together while fullstack decides
+// whether ETF information can be promoted from degraded to governed-available.
+#[derive(Debug, Clone, PartialEq)]
+struct GovernedEtfProxySnapshot {
+    as_of_date: String,
+    inputs: SecurityExternalProxyInputs,
+}
+
 pub fn security_analysis_fullstack(
     request: &SecurityAnalysisFullstackRequest,
 ) -> Result<SecurityAnalysisFullstackResult, SecurityAnalysisFullstackError> {
@@ -270,11 +286,23 @@ pub fn security_analysis_fullstack(
     let technical_context = security_analysis_contextual(&technical_request)?;
     // 2026-04-13 CST: 这里先在技术分析后同步装配 ETF 专项事实层，原因是 ETF 后续要和技术面共享同一分析日期与证据版本。
     // 目的：把 ETF 信息厚度直接纳入 fullstack 主对象，而不是留在 briefing 层做隐式补充。
-    let etf_context = fetch_etf_context(&request.symbol);
+    let mut etf_context = fetch_etf_context(&request.symbol);
+    // 2026-04-20 CST: Added because ETF governed proxy history can now replace the
+    // old "stock-only info missing => fullstack degraded" behavior for P10/P11 closeout.
+    // Reason: the governed proxy backfill already resolves exact/latest dates and should
+    // promote ETF info layers before committee/chair freeze the evidence bundle.
+    // Purpose: centralize the ETF proxy-complete recovery decision in fullstack instead
+    // of patching chair output after the research contract is already frozen.
+    let governed_etf_proxy = resolve_governed_etf_proxy_snapshot(request);
+    let etf_proxy_subscope = derive_etf_proxy_subscope(request, &etf_context);
+    let has_complete_governed_etf_proxy = governed_etf_proxy
+        .as_ref()
+        .map(|snapshot| governed_etf_proxy_family_is_complete(&snapshot.inputs, &etf_proxy_subscope))
+        .unwrap_or(false);
     // 2026-04-17 CST: Reason=once governed history exists, validation and replay should
     // read that frozen evidence before touching live providers again. Purpose=restore the
     // governed-history precedence contract for both fundamentals and disclosures.
-    let fundamental_context = match load_historical_fundamental_context(
+    let mut fundamental_context = match load_historical_fundamental_context(
         &request.symbol,
         request.as_of_date.as_deref(),
     ) {
@@ -284,7 +312,7 @@ pub fn security_analysis_fullstack(
             Err(error) => build_unavailable_fundamental_context(error.to_string()),
         },
     };
-    let disclosure_context = match load_historical_disclosure_context(
+    let mut disclosure_context = match load_historical_disclosure_context(
         &request.symbol,
         request.as_of_date.as_deref(),
         request.disclosure_limit.max(1),
@@ -297,6 +325,35 @@ pub fn security_analysis_fullstack(
             }
         }
     };
+    // 2026-04-20 CST: Added because ETF proxy-complete runs must stop reporting
+    // stock-only missing data once the governed ETF proxy family is fully bound.
+    // Reason: the frozen handoff contract explicitly allows proxy-complete ETF evidence
+    // to substitute for stock fundamentals/disclosures in committee and chair flows.
+    // Purpose: promote the minimum governed ETF research surface in one place without
+    // changing the stock path or requiring callers to special-case unavailable contexts.
+    if has_complete_governed_etf_proxy {
+        let proxy_as_of_date = governed_etf_proxy
+            .as_ref()
+            .map(|snapshot| snapshot.as_of_date.as_str())
+            .unwrap_or_else(|| technical_context.analysis_date.as_str());
+        if fundamental_context.status != "available" {
+            fundamental_context = build_governed_etf_proxy_fundamental_context(
+                &request.symbol,
+                proxy_as_of_date,
+                &etf_proxy_subscope,
+            );
+        }
+        if disclosure_context.status != "available" {
+            disclosure_context = build_governed_etf_proxy_disclosure_context(
+                &request.symbol,
+                proxy_as_of_date,
+                &etf_proxy_subscope,
+            );
+        }
+        if etf_context.status != "available" {
+            etf_context = build_governed_etf_proxy_etf_context(&request.symbol, &etf_proxy_subscope);
+        }
+    }
     let cross_border_context =
         build_cross_border_context(request, &technical_context, &etf_context);
     let industry_context = build_industry_context(&technical_context);
@@ -311,7 +368,20 @@ pub fn security_analysis_fullstack(
     );
     // 2026-04-08 CST: 这里沿用技术上下文的统一日期生成 fullstack 顶层合同字段，原因是聚合链路必须对齐同一分析时点；
     // 目的：确保顶层 fullstack 合同能稳定暴露 `analysis_date / evidence_version`，供更高层直接复用。
-    let analysis_date = technical_context.analysis_date.clone();
+    // 2026-04-20 CST: Added because latest ETF requests without explicit as_of_date must
+    // anchor their top-level analysis date to the resolved governed proxy date.
+    // Reason: the technical context may resolve to a later calendar date than the latest
+    // governed ETF proxy snapshot, which previously broke chair-level replay semantics.
+    // Purpose: freeze the public fullstack date to the ETF proxy anchor when that is the
+    // actual governed evidence date consumed by downstream scorecard and chair flows.
+    let analysis_date = if request.as_of_date.is_none() && has_complete_governed_etf_proxy {
+        governed_etf_proxy
+            .as_ref()
+            .map(|snapshot| snapshot.as_of_date.clone())
+            .unwrap_or_else(|| technical_context.analysis_date.clone())
+    } else {
+        technical_context.analysis_date.clone()
+    };
     let evidence_version = format!(
         "security-analysis-fullstack:{}:{}:v1",
         request.symbol, analysis_date
@@ -1794,6 +1864,192 @@ fn build_integrated_conclusion(
         headline,
         rationale,
         risk_flags,
+    }
+}
+
+// 2026-04-20 CST: Added because ETF governed proxy history now needs one canonical
+// fullstack loader instead of separate chair-only and snapshot-only interpretations.
+// Reason: P10/P11 regressions showed latest/no-date and on-or-before replay were drifting.
+// Purpose: resolve the effective governed ETF proxy snapshot without turning store errors
+// into top-level fullstack failures for non-ETF or store-missing environments.
+fn resolve_governed_etf_proxy_snapshot(
+    request: &SecurityAnalysisFullstackRequest,
+) -> Option<GovernedEtfProxySnapshot> {
+    if !is_etf_symbol(&request.symbol) {
+        return None;
+    }
+    let snapshot = if let Some(as_of_date) = request.as_of_date.as_deref() {
+        load_historical_external_proxy_snapshot(&request.symbol, as_of_date).ok()?
+    } else {
+        load_latest_external_proxy_snapshot(&request.symbol).ok()?
+    }?;
+    Some(GovernedEtfProxySnapshot {
+        as_of_date: snapshot.0,
+        inputs: snapshot.1,
+    })
+}
+
+// 2026-04-20 CST: Added because ETF proxy completeness needs one shared subscope
+// vocabulary even when public ETF facts are unavailable.
+// Reason: treasury/gold/equity tests route through sector profile aliases while the
+// live ETF facts provider may be absent or incomplete.
+// Purpose: derive the minimum ETF family needed to validate governed proxy completeness.
+fn derive_etf_proxy_subscope(
+    request: &SecurityAnalysisFullstackRequest,
+    etf_context: &EtfContext,
+) -> String {
+    let sector_profile = request
+        .sector_profile
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let asset_scope = etf_context
+        .asset_scope
+        .as_deref()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if sector_profile.contains("gold")
+        || asset_scope.contains("gold")
+        || asset_scope.contains("commodity")
+    {
+        "commodity_etf".to_string()
+    } else if sector_profile.contains("treasury")
+        || sector_profile.contains("bond")
+        || asset_scope.contains("treasury")
+        || asset_scope.contains("bond")
+    {
+        "bond_etf".to_string()
+    } else if sector_profile.contains("cross_border")
+        || sector_profile.contains("qdii")
+        || asset_scope.contains("cross_border")
+        || asset_scope.contains("overseas")
+    {
+        "cross_border_etf".to_string()
+    } else {
+        "equity_etf".to_string()
+    }
+}
+
+// 2026-04-20 CST: Added because ETF proxy substitution must only activate when the
+// full governed feature family for that ETF pool is present.
+// Reason: partial proxy payloads should still surface as degraded instead of silently
+// claiming the ETF information contract is complete.
+// Purpose: keep ETF governed substitution gated by the same family completeness idea
+// that the scorecard runtime already enforces for bound ETF artifacts.
+fn governed_etf_proxy_family_is_complete(
+    inputs: &SecurityExternalProxyInputs,
+    etf_proxy_subscope: &str,
+) -> bool {
+    match etf_proxy_subscope {
+        "commodity_etf" => {
+            inputs.gold_spot_proxy_status.is_some()
+                && inputs.gold_spot_proxy_return_5d.is_some()
+                && inputs.real_rate_proxy_status.is_some()
+                && inputs.real_rate_proxy_delta_bp_5d.is_some()
+        }
+        "bond_etf" => {
+            inputs.yield_curve_proxy_status.is_some()
+                && inputs.yield_curve_slope_delta_bp_5d.is_some()
+                && inputs.funding_liquidity_proxy_status.is_some()
+                && inputs.funding_liquidity_spread_delta_bp_5d.is_some()
+        }
+        "cross_border_etf" => {
+            inputs.fx_proxy_status.is_some()
+                && inputs.fx_return_5d.is_some()
+                && inputs.overseas_market_proxy_status.is_some()
+                && inputs.overseas_market_return_5d.is_some()
+                && inputs.market_session_gap_status.is_some()
+                && inputs.market_session_gap_days.is_some()
+        }
+        _ => {
+            inputs.etf_fund_flow_proxy_status.is_some()
+                && inputs.etf_fund_flow_5d.is_some()
+                && inputs.premium_discount_proxy_status.is_some()
+                && inputs.premium_discount_pct.is_some()
+                && inputs.benchmark_relative_strength_status.is_some()
+                && inputs.benchmark_relative_return_5d.is_some()
+        }
+    }
+}
+
+// 2026-04-20 CST: Added because ETF proxy-complete runs still need a formal ETF context
+// object even when public ETF facts are unavailable.
+// Reason: data-gap collection and integrated conclusion logic both read etf_context.status.
+// Purpose: synthesize the minimum ETF research context required to keep governed proxy
+// evidence from being downgraded back to "ETF facts unavailable" semantics.
+fn build_governed_etf_proxy_etf_context(symbol: &str, etf_proxy_subscope: &str) -> EtfContext {
+    let asset_scope = match etf_proxy_subscope {
+        "commodity_etf" => "commodity",
+        "bond_etf" => "bond",
+        "cross_border_etf" => "cross_border",
+        _ => "equity",
+    };
+    EtfContext {
+        status: "available".to_string(),
+        source: "governed_etf_proxy_information".to_string(),
+        fund_name: None,
+        benchmark: None,
+        asset_scope: Some(asset_scope.to_string()),
+        latest_scale: None,
+        latest_share: None,
+        premium_discount_rate_pct: None,
+        headline: format!(
+            "{symbol} ETF context promoted from governed proxy history because the {etf_proxy_subscope} proxy family is complete."
+        ),
+        structure_risk_flags: vec![],
+        research_gaps: vec![],
+    }
+}
+
+// 2026-04-20 CST: Added because ETF proxy-complete governance now allows the fullstack
+// chain to stop demanding stock-only financial statements for ETF evidence completeness.
+// Reason: committee/chair evidence quality only needs one governed available-vs-unavailable
+// contract here, not an invented pseudo-financial signal.
+// Purpose: synthesize a neutral ETF information layer that keeps evidence complete
+// while preserving the fact that no stock-style report metrics were claimed.
+fn build_governed_etf_proxy_fundamental_context(
+    symbol: &str,
+    proxy_as_of_date: &str,
+    etf_proxy_subscope: &str,
+) -> FundamentalContext {
+    FundamentalContext {
+        status: "available".to_string(),
+        source: "governed_etf_proxy_information".to_string(),
+        latest_report_period: Some(proxy_as_of_date.to_string()),
+        report_notice_date: Some(proxy_as_of_date.to_string()),
+        headline: format!(
+            "{symbol} uses governed ETF proxy information dated {proxy_as_of_date} as the formal {etf_proxy_subscope} information layer."
+        ),
+        profit_signal: "unknown".to_string(),
+        report_metrics: empty_fundamental_metrics(),
+        narrative: vec![format!(
+            "Governed ETF proxy family for {etf_proxy_subscope} is complete on {proxy_as_of_date}, so stock-only financial availability is no longer required for ETF evidence completeness."
+        )],
+        risk_flags: vec![],
+    }
+}
+
+// 2026-04-20 CST: Added because ETF proxy-complete governance now allows disclosure
+// completeness to be satisfied by the governed ETF proxy layer when stock notices are absent.
+// Reason: the previous unavailable disclosure fallback kept chair evidence degraded even
+// though the ETF proxy history had already been formally bound for the same symbol/date.
+// Purpose: expose a stable governed disclosure placeholder with explicit provenance instead
+// of silently inheriting the stock announcement fallback source.
+fn build_governed_etf_proxy_disclosure_context(
+    symbol: &str,
+    proxy_as_of_date: &str,
+    etf_proxy_subscope: &str,
+) -> DisclosureContext {
+    DisclosureContext {
+        status: "available".to_string(),
+        source: "governed_etf_proxy_information".to_string(),
+        announcement_count: 0,
+        headline: format!(
+            "{symbol} uses governed ETF proxy information dated {proxy_as_of_date} as the formal {etf_proxy_subscope} event layer."
+        ),
+        keyword_summary: vec!["governed_etf_proxy_information".to_string()],
+        recent_announcements: vec![],
+        risk_flags: vec![],
     }
 }
 

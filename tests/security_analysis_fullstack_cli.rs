@@ -178,6 +178,44 @@ fn security_analysis_fullstack_aggregates_technical_fundamental_and_disclosures(
             }"#,
             "application/json",
         ),
+        (
+            "/announcements-clean",
+            "HTTP/1.1 200 OK",
+            r#"{
+                "data":{
+                    "list":[
+                        {"notice_date":"2026-03-28","title":"2025 annual report released","art_code":"AN202603281234567890","columns":[{"column_name":"regular disclosure"}]},
+                        {"notice_date":"2026-03-28","title":"2025 annual results summary","art_code":"AN202603281234567891","columns":[{"column_name":"regular disclosure"}]},
+                        {"notice_date":"2026-03-10","title":"board approves annual dividend plan","art_code":"AN202603101234567892","columns":[{"column_name":"regular disclosure"}]}
+                    ]
+                }
+            }"#,
+            "application/json",
+        ),
+        (
+            "/official-financials",
+            "HTTP/1.1 500 Internal Server Error",
+            r#"{"error":"official financial fallback should stay unused in this test"}"#,
+            "application/json",
+        ),
+        (
+            "/official-announcements",
+            "HTTP/1.1 500 Internal Server Error",
+            r#"{"error":"official disclosure fallback should stay unused in this test"}"#,
+            "application/json",
+        ),
+        (
+            "/sina-financials",
+            "HTTP/1.1 500 Internal Server Error",
+            r#"{"error":"sina financial fallback should stay unused in this test"}"#,
+            "application/json",
+        ),
+        (
+            "/sina-announcements",
+            "HTTP/1.1 500 Internal Server Error",
+            r#"{"error":"sina disclosure fallback should stay unused in this test"}"#,
+            "application/json",
+        ),
     ]);
 
     let request = json!({
@@ -194,6 +232,9 @@ fn security_analysis_fullstack_aggregates_technical_fundamental_and_disclosures(
         &request.to_string(),
         &runtime_db_path,
         &[
+            // 2026-04-20 CST: Pin every fallback env to deterministic local routes.
+            // Reason: this regression must not inherit operator shell envs or external network behavior.
+            // Purpose: keep the test focused on the EastMoney happy path and fail loudly if that path drifts.
             (
                 "EXCEL_SKILL_EASTMONEY_CAPITAL_FLOW_URL_BASE",
                 format!("{server}/capital-flow"),
@@ -204,7 +245,23 @@ fn security_analysis_fullstack_aggregates_technical_fundamental_and_disclosures(
             ),
             (
                 "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
-                format!("{server}/announcements"),
+                format!("{server}/announcements-clean"),
+            ),
+            (
+                "EXCEL_SKILL_OFFICIAL_FINANCIAL_URL_BASE",
+                format!("{server}/official-financials"),
+            ),
+            (
+                "EXCEL_SKILL_OFFICIAL_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/official-announcements"),
+            ),
+            (
+                "EXCEL_SKILL_SINA_FINANCIAL_URL_BASE",
+                format!("{server}/sina-financials"),
+            ),
+            (
+                "EXCEL_SKILL_SINA_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/sina-announcements"),
             ),
         ],
     );
@@ -293,6 +350,57 @@ fn security_analysis_fullstack_degrades_gracefully_when_info_sources_fail() {
             r#"{"error":"announcement upstream failed"}"#,
             "application/json",
         ),
+        (
+            "/official-financials",
+            "HTTP/1.1 200 OK",
+            r#"{
+                "source":"official_financials",
+                "latest_report_period":"2025-12-31",
+                "report_notice_date":"2026-03-28",
+                "report_metrics":{
+                    "revenue":308227000000.0,
+                    "revenue_yoy_pct":8.37,
+                    "net_profit":11117000000.0,
+                    "net_profit_yoy_pct":9.31,
+                    "roe_pct":14.8
+                }
+            }"#,
+            "application/json",
+        ),
+        (
+            "/official-announcements",
+            "HTTP/1.1 200 OK",
+            r#"{
+                "source":"official_announcements",
+                "recent_announcements":[
+                    {
+                        "published_at":"2026-03-28",
+                        "title":"2025 annual report released",
+                        "article_code":"AN202603281234567890",
+                        "category":"regular disclosure"
+                    },
+                    {
+                        "published_at":"2026-03-10",
+                        "title":"board approves annual dividend plan",
+                        "article_code":"AN202603101234567892",
+                        "category":"regular disclosure"
+                    }
+                ]
+            }"#,
+            "application/json",
+        ),
+        (
+            "/sina-financials",
+            "HTTP/1.1 500 Internal Server Error",
+            r#"{"error":"sina financial fallback should stay unused in this test"}"#,
+            "application/json",
+        ),
+        (
+            "/sina-announcements",
+            "HTTP/1.1 500 Internal Server Error",
+            r#"{"error":"sina disclosure fallback should stay unused in this test"}"#,
+            "application/json",
+        ),
     ]);
 
     let request = json!({
@@ -308,6 +416,9 @@ fn security_analysis_fullstack_degrades_gracefully_when_info_sources_fail() {
         &request.to_string(),
         &runtime_db_path,
         &[
+            // 2026-04-20 CST: Keep the entire provider chain local and explicit.
+            // Reason: this degraded-path regression is about controlled fallback order, not ambient env leakage.
+            // Purpose: prove EastMoney may fail while official fallback recovers the formal information layers.
             ("EXCEL_SKILL_EASTMONEY_DAILY_LIMIT", "0".to_string()),
             (
                 "EXCEL_SKILL_EASTMONEY_CAPITAL_FLOW_URL_BASE",
@@ -320,6 +431,22 @@ fn security_analysis_fullstack_degrades_gracefully_when_info_sources_fail() {
             (
                 "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
                 format!("{server}/announcements"),
+            ),
+            (
+                "EXCEL_SKILL_OFFICIAL_FINANCIAL_URL_BASE",
+                format!("{server}/official-financials"),
+            ),
+            (
+                "EXCEL_SKILL_OFFICIAL_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/official-announcements"),
+            ),
+            (
+                "EXCEL_SKILL_SINA_FINANCIAL_URL_BASE",
+                format!("{server}/sina-financials"),
+            ),
+            (
+                "EXCEL_SKILL_SINA_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/sina-announcements"),
             ),
         ],
     );
@@ -456,32 +583,39 @@ fn security_analysis_fullstack_synthesizes_etf_information_from_governed_proxy_h
         output["status"], "ok",
         "unexpected ETF fullstack output: {output}"
     );
-    // 2026-04-15 CST: Updated because governed proxy history alone still does not
-    // promote ETF info layers to available when public ETF facts remain missing;
-    // purpose: lock the current downgrade contract and its explicit gap signals.
+    // 2026-04-20 CST: Updated because the frozen P10/P11 ETF contract now promotes
+    // a complete governed proxy family into the formal ETF information surface.
+    // Reason: chair/committee closeout now depends on fullstack exposing governed
+    // ETF info instead of preserving the older stock-only downgrade behavior.
+    // Purpose: lock the public fullstack contract to the governed ETF proxy source.
     assert_eq!(
-        output["data"]["fundamental_context"]["status"], "unavailable",
+        output["data"]["fundamental_context"]["status"], "available",
         "fullstack output: {output}"
     );
     assert_eq!(
         output["data"]["fundamental_context"]["source"],
-        "multi_source_fallback"
+        "governed_etf_proxy_information"
     );
     assert_eq!(
-        output["data"]["disclosure_context"]["status"], "unavailable",
+        output["data"]["disclosure_context"]["status"], "available",
         "fullstack output: {output}"
     );
     assert_eq!(
         output["data"]["disclosure_context"]["source"],
-        "multi_source_fallback"
+        "governed_etf_proxy_information"
     );
     assert_eq!(
-        output["data"]["etf_context"]["status"], "unavailable",
+        output["data"]["etf_context"]["status"], "available",
+        "fullstack output: {output}"
+    );
+    assert_eq!(
+        output["data"]["etf_context"]["source"],
+        "governed_etf_proxy_information",
         "fullstack output: {output}"
     );
     assert_eq!(
         output["data"]["integrated_conclusion"]["stance"],
-        "technical_only"
+        "constructive"
     );
 }
 

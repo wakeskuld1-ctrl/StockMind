@@ -93,6 +93,15 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         "security_portfolio_replacement_plan" => {
             stock_ops::dispatch_security_portfolio_replacement_plan(request.args)
         }
+        "security_portfolio_allocation_decision" => {
+            stock_ops::dispatch_security_portfolio_allocation_decision(request.args)
+        }
+        "security_portfolio_execution_preview" => {
+            stock_ops::dispatch_security_portfolio_execution_preview(request.args)
+        }
+        "security_portfolio_execution_request_package" => {
+            stock_ops::dispatch_security_portfolio_execution_request_package(request.args)
+        }
         "security_position_contract" => {
             stock_ops::dispatch_security_position_contract(request.args)
         }

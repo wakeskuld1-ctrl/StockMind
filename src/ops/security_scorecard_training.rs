@@ -8,7 +8,8 @@ use serde_json::{Value, json};
 use thiserror::Error;
 
 use crate::ops::stock::security_forward_outcome::{
-    SecurityForwardOutcomeError, SecurityForwardOutcomeRequest, security_forward_outcome,
+    SecurityForwardOutcomeDocument, SecurityForwardOutcomeError, SecurityForwardOutcomeRequest,
+    security_forward_outcome,
 };
 use crate::ops::stock::security_scorecard::{
     SecurityScorecardModelArtifact, SecurityScorecardModelBin, SecurityScorecardModelFeatureSpec,
@@ -33,6 +34,11 @@ pub struct SecurityScorecardTrainingRequest {
     pub training_runtime_root: Option<String>,
     pub market_scope: String,
     pub instrument_scope: String,
+    // 2026-04-20 CST: Added because Task 1 freezes non-equity training identity before
+    // any real Nikkei or gold slice is allowed to enter the governed trainer.
+    // Purpose: preserve the caller-approved instrument subscope all the way into artifact/registry outputs.
+    #[serde(default)]
+    pub instrument_subscope: Option<String>,
     pub symbol_list: Vec<String>,
     #[serde(default)]
     pub market_symbol: Option<String>,
@@ -250,6 +256,7 @@ pub fn security_scorecard_training(
             .get("summary")
             .cloned()
             .unwrap_or_else(|| json!({})),
+        valid_range.start,
     );
     let refit_result = security_scorecard_refit(&SecurityScorecardRefitRequest {
         created_at: request.created_at.clone(),
@@ -273,7 +280,10 @@ pub fn security_scorecard_training(
             // 2026-04-14 CST: 这里补齐 registry 新增的候选模型字段，原因是 training 仍按旧合同构造
             // candidate artifact，导致 refit 链无法消费当前正式 registry 输入。
             // 目的：先用最小默认值恢复训练产物登记能力，不在本轮扩散到更大范围的模型分级重构。
-            instrument_subscope: None,
+            // 2026-04-20 CST: Added because Task 1 requires the formal trainer to stop
+            // dropping the approved non-equity identity contract before registry ingestion.
+            // Purpose: keep artifact and registry scope aligned for downstream selection gates.
+            instrument_subscope: request.instrument_subscope.clone(),
             model_grade: "candidate".to_string(),
             grade_reason: "training pipeline default candidate grade".to_string(),
         },
@@ -322,7 +332,7 @@ fn validate_request(
             "horizon_days must be greater than 0".to_string(),
         ));
     }
-    if request.target_head != "direction_head" {
+    if !is_supported_target_head(&request.target_head) {
         return Err(SecurityScorecardTrainingError::Build(format!(
             "unsupported target_head `{}`",
             request.target_head
@@ -334,6 +344,53 @@ fn validate_request(
         ));
     }
     Ok(())
+}
+
+// 2026-04-20 CST: Added because the approved contract refactor must separate
+// supported target heads from legacy positive-only assumptions before retraining.
+// Reason: the old validator and label builder only understood direction_head.
+// Purpose: centralize governed head semantics for validation, labeling, and artifact metadata.
+fn is_supported_target_head(target_head: &str) -> bool {
+    matches!(
+        target_head.trim(),
+        "direction_head" | "direction_up_head" | "direction_down_head"
+    )
+}
+
+fn resolve_target_label_definition(target_head: &str, horizon_days: usize) -> String {
+    match target_head.trim() {
+        "direction_head" | "direction_up_head" => format!("positive_return_{}d", horizon_days),
+        "direction_down_head" => format!("negative_return_{}d", horizon_days),
+        _ => format!("unsupported_target_head_{}d", horizon_days),
+    }
+}
+
+fn resolve_positive_label_definition(target_head: &str, horizon_days: usize) -> Option<String> {
+    match target_head.trim() {
+        "direction_head" | "direction_up_head" => Some(format!("positive_return_{}d", horizon_days)),
+        "direction_down_head" => None,
+        _ => None,
+    }
+}
+
+fn resolve_training_label(outcome: &SecurityForwardOutcomeDocument, target_head: &str) -> f64 {
+    match target_head.trim() {
+        "direction_head" | "direction_up_head" => {
+            if outcome.positive_return {
+                1.0
+            } else {
+                0.0
+            }
+        }
+        "direction_down_head" => {
+            if outcome.forward_return < 0.0 {
+                1.0
+            } else {
+                0.0
+            }
+        }
+        _ => 0.0,
+    }
 }
 
 fn training_feature_configs() -> Vec<TrainingFeatureConfig> {
@@ -505,13 +562,36 @@ fn training_feature_configs() -> Vec<TrainingFeatureConfig> {
             kind: TrainingFeatureKind::Numeric,
         },
         TrainingFeatureConfig {
-            feature_name: "fundamental_quality_bucket",
-            group_name: "F",
+            feature_name: "shareholder_return_status",
+            group_name: "E",
+            kind: TrainingFeatureKind::Categorical,
+        },
+        // 2026-04-20 CST: Added because Task A replaces the mixed valuation_status factor with
+        // plain position/quality buckets that users can inspect independently.
+        // Purpose: let training answer which 14d range, 20d band, 20d mean-reversion, and
+        // quality state actually helps instead of hiding them inside one composite label.
+        // 2026-04-21 CST: Extended because the approved Nikkei retraining route now reads
+        // mean-reversion from MA20 deviation bands instead of the older CCI-only enum.
+        // Reason: keep the governed training contract aligned with the new five-level bucket.
+        // Purpose: ensure retraining evaluates percentage deviation strength, not just CCI labels.
+        TrainingFeatureConfig {
+            feature_name: "bollinger_position_20d",
+            group_name: "V",
             kind: TrainingFeatureKind::Categorical,
         },
         TrainingFeatureConfig {
-            feature_name: "shareholder_return_status",
-            group_name: "E",
+            feature_name: "range_position_14d",
+            group_name: "V",
+            kind: TrainingFeatureKind::Categorical,
+        },
+        TrainingFeatureConfig {
+            feature_name: "mean_reversion_deviation_20d",
+            group_name: "V",
+            kind: TrainingFeatureKind::Categorical,
+        },
+        TrainingFeatureConfig {
+            feature_name: "quality_bucket",
+            group_name: "F",
             kind: TrainingFeatureKind::Categorical,
         },
         TrainingFeatureConfig {
@@ -523,11 +603,6 @@ fn training_feature_configs() -> Vec<TrainingFeatureConfig> {
             feature_name: "atr_ratio_14",
             group_name: "V",
             kind: TrainingFeatureKind::Numeric,
-        },
-        TrainingFeatureConfig {
-            feature_name: "valuation_status",
-            group_name: "V",
-            kind: TrainingFeatureKind::Categorical,
         },
     ]
 }
@@ -576,12 +651,14 @@ fn collect_samples(
             request.market_profile.as_deref(),
             request.sector_profile.as_deref(),
         );
-        for (split_name, range, target_count) in [
-            ("train", train_range, 2_usize),
-            ("valid", valid_range, 1_usize),
-            ("test", test_range, 1_usize),
+        for (split_name, range) in [
+            ("train", train_range),
+            ("valid", valid_range),
+            ("test", test_range),
         ] {
-            let candidate_dates = load_dates_in_range(&store, symbol, range, 200)?;
+            let candidate_dates =
+                load_dates_in_range(&store, symbol, range, 200, request.horizon_days)?;
+            let target_count = build_split_target_count(split_name, range);
             let selected_dates = select_evenly_spaced_dates(&candidate_dates, target_count);
             for as_of_date in selected_dates {
                 let outcome_result = security_forward_outcome(&SecurityForwardOutcomeRequest {
@@ -625,7 +702,7 @@ fn collect_samples(
                         },
                     )?,
                     split_name: split_name.to_string(),
-                    label: if outcome.positive_return { 1.0 } else { 0.0 },
+                    label: resolve_training_label(&outcome, &request.target_head),
                     feature_values,
                 });
             }
@@ -646,6 +723,7 @@ fn load_dates_in_range(
     symbol: &str,
     range: &TrainingDateRange,
     min_history_rows: usize,
+    min_future_rows: usize,
 ) -> Result<Vec<String>, SecurityScorecardTrainingError> {
     let end_text = range.end.format("%Y-%m-%d").to_string();
     let lookback_days = (range.end - range.start).num_days().unsigned_abs() as usize + 32;
@@ -662,11 +740,31 @@ fn load_dates_in_range(
         let history_rows =
             store.load_recent_rows(symbol, Some(&row.trade_date), min_history_rows)?;
         if history_rows.len() >= min_history_rows {
-            qualified_dates.push(row.trade_date);
+            let future_rows = store.load_forward_rows(symbol, &row.trade_date, min_future_rows)?;
+            if future_rows.len() >= min_future_rows {
+                qualified_dates.push(row.trade_date);
+            }
         }
     }
 
     Ok(qualified_dates)
+}
+
+fn build_split_target_count(split_name: &str, range: &TrainingDateRange) -> usize {
+    // 2026-04-20 CST: Added because the user approved decade-scale Nikkei training
+    // and the old fixed 2/1/1 split counts left almost all of the history unused.
+    // Purpose: densify sampling with one stable cadence rule while keeping short-window requests valid.
+    let range_days = (range.end - range.start).num_days().unsigned_abs() as usize + 1;
+    let cadence_days = match split_name {
+        "train" => 28,
+        "valid" | "test" => 21,
+        _ => 28,
+    };
+    let minimum = match split_name {
+        "train" => 2,
+        _ => 1,
+    };
+    ((range_days + cadence_days - 1) / cadence_days).max(minimum)
 }
 
 fn select_evenly_spaced_dates(dates: &[String], target_count: usize) -> Vec<String> {
@@ -1166,13 +1264,7 @@ fn build_training_diagnostic_report(
         "contract_version": "security_scorecard_training_diagnostic_report.v1",
         "document_type": "security_scorecard_training_diagnostic_report",
         "created_at": request.created_at,
-        "model_id": format!(
-            "{}_{}_{}d_{}",
-            request.market_scope.to_lowercase(),
-            request.instrument_scope.to_lowercase(),
-            request.horizon_days,
-            request.target_head
-        ),
+        "model_id": build_governed_model_id(request),
         "model_version": format!("candidate_{}", sanitize_identifier(&request.created_at)),
         "training_window": request.train_range,
         "validation_window": request.valid_range,
@@ -1958,13 +2050,7 @@ fn build_artifact(
     feature_models: &[FeatureModel],
     trained_model: &TrainedLogisticModel,
 ) -> SecurityScorecardModelArtifact {
-    let model_id = format!(
-        "{}_{}_{}d_{}",
-        request.market_scope.to_lowercase(),
-        request.instrument_scope.to_lowercase(),
-        request.horizon_days,
-        request.target_head
-    );
+    let model_id = build_governed_model_id(request);
     let model_version = format!("candidate_{}", sanitize_identifier(&request.created_at));
 
     let features = feature_models
@@ -2008,12 +2094,22 @@ fn build_artifact(
         // 构造落盘对象，已经无法被当前 scorecard 正式消费者反序列化。
         // 目的：先恢复 artifact 合同兼容，后续再把真实 baseline/mode 训练逻辑补完整。
         target_head: Some(request.target_head.clone()),
+        target_label_definition: Some(resolve_target_label_definition(
+            &request.target_head,
+            request.horizon_days,
+        )),
         prediction_mode: Some("direction_probability".to_string()),
         prediction_baseline: None,
         training_window: Some(request.train_range.clone()),
         oot_window: Some(request.test_range.clone()),
-        positive_label_definition: Some(format!("positive_return_{}d", request.horizon_days)),
-        instrument_subscope: None,
+        positive_label_definition: resolve_positive_label_definition(
+            &request.target_head,
+            request.horizon_days,
+        ),
+        // 2026-04-20 CST: Added because Task 1 must persist the explicit non-equity
+        // training identity on the canonical artifact, not only in transient request state.
+        // Purpose: make downstream runtime and registry consumers read the same governed scope.
+        instrument_subscope: request.instrument_subscope.clone(),
         binning_version: Some("woe_binning.v1".to_string()),
         coefficient_version: Some("woe_logistic.v1".to_string()),
         model_sha256: None,
@@ -2023,23 +2119,84 @@ fn build_artifact(
     }
 }
 
+fn build_governed_model_id(request: &SecurityScorecardTrainingRequest) -> String {
+    // 2026-04-20 CST: Added because Task 2 freezes Nikkei as a governed non-equity
+    // training family and the old identity rule collapsed all index candidates together.
+    // Purpose: keep artifact, diagnostics, and registry selection keyed by the approved instrument subscope.
+    match request.instrument_subscope.as_deref().map(str::trim) {
+        Some(subscope) if !subscope.is_empty() => format!(
+            "{}_{}_{}_{}d_{}",
+            request.market_scope.to_lowercase(),
+            request.instrument_scope.to_lowercase(),
+            sanitize_identifier(subscope),
+            request.horizon_days,
+            request.target_head
+        ),
+        _ => format!(
+            "{}_{}_{}d_{}",
+            request.market_scope.to_lowercase(),
+            request.instrument_scope.to_lowercase(),
+            request.horizon_days,
+            request.target_head
+        ),
+    }
+}
+
 fn build_metrics_summary(
     samples: &[TrainingSample],
     feature_models: &[FeatureModel],
     trained_model: &TrainedLogisticModel,
     diagnostics_summary: Value,
+    validation_start: NaiveDate,
 ) -> Value {
     let train_metrics = evaluate_split(samples, "train", feature_models, trained_model);
     let valid_metrics = evaluate_split(samples, "valid", feature_models, trained_model);
     let test_metrics = evaluate_split(samples, "test", feature_models, trained_model);
+    let post_validation_holdout = evaluate_samples_after_cutoff(
+        samples,
+        validation_start,
+        feature_models,
+        trained_model,
+    );
 
     json!({
         "train": train_metrics,
         "valid": valid_metrics,
         "test": test_metrics,
+        "post_validation_holdout": post_validation_holdout,
         "feature_count": feature_models.len(),
         "sample_count": samples.len(),
         "diagnostics": diagnostics_summary,
+    })
+}
+
+fn evaluate_samples_after_cutoff(
+    samples: &[TrainingSample],
+    cutoff_date: NaiveDate,
+    feature_models: &[FeatureModel],
+    trained_model: &TrainedLogisticModel,
+) -> Value {
+    // 2026-04-20 CST: Added because the approved decade Nikkei route must report
+    // how the model performs after the training cutoff instead of only split-local metrics.
+    // Purpose: expose one direct holdout view for all samples from the validation start onward.
+    let holdout_samples = samples
+        .iter()
+        .filter(|sample| sample.as_of_date >= cutoff_date)
+        .collect::<Vec<_>>();
+    let metrics = evaluate_sample_refs(&holdout_samples, feature_models, trained_model);
+    json!({
+        "cutoff_date": cutoff_date.to_string(),
+        "sample_count": metrics["sample_count"],
+        "accuracy": metrics["accuracy"],
+        "positive_rate": metrics["positive_rate"],
+        "start_date": holdout_samples
+            .first()
+            .map(|sample| sample.as_of_date.to_string())
+            .unwrap_or_default(),
+        "end_date": holdout_samples
+            .last()
+            .map(|sample| sample.as_of_date.to_string())
+            .unwrap_or_default(),
     })
 }
 
@@ -2124,4 +2281,129 @@ fn default_stop_loss_pct() -> f64 {
 
 fn default_target_return_pct() -> f64 {
     0.12
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+    use crate::ops::stock::security_forward_outcome::SecurityForwardOutcomeDocument;
+
+    // 2026-04-20 CST: Added because the approved contract change must first lock
+    // the new target-head surface in red tests before trainer behavior is updated.
+    // Reason: the old trainer only accepted direction_head and kept label fields mixed.
+    // Purpose: make contract drift visible before implementation.
+    fn build_training_request(target_head: &str) -> SecurityScorecardTrainingRequest {
+        SecurityScorecardTrainingRequest {
+            created_at: "2026-04-20T21:30:00+08:00".to_string(),
+            training_runtime_root: None,
+            market_scope: "GLOBAL".to_string(),
+            instrument_scope: "INDEX".to_string(),
+            instrument_subscope: Some("nikkei_index".to_string()),
+            symbol_list: vec!["NK225.IDX".to_string()],
+            market_symbol: Some("NK225.IDX".to_string()),
+            sector_symbol: Some("NK225.IDX".to_string()),
+            market_profile: None,
+            sector_profile: None,
+            horizon_days: 10,
+            target_head: target_head.to_string(),
+            train_range: "2025-01-01..2025-06-30".to_string(),
+            valid_range: "2025-07-01..2025-09-30".to_string(),
+            test_range: "2025-10-01..2025-12-31".to_string(),
+            feature_set_version: "security_feature_snapshot.v1".to_string(),
+            label_definition_version: "security_forward_outcome.v1".to_string(),
+            lookback_days: 260,
+            disclosure_limit: 8,
+            stop_loss_pct: 0.05,
+            target_return_pct: 0.12,
+        }
+    }
+
+    #[test]
+    fn validate_request_accepts_direction_up_and_down_heads() {
+        assert!(validate_request(&build_training_request("direction_up_head")).is_ok());
+        assert!(validate_request(&build_training_request("direction_down_head")).is_ok());
+    }
+
+    #[test]
+    fn build_artifact_serializes_target_label_definition_for_up_and_down_heads() {
+        let trained_model = TrainedLogisticModel {
+            intercept: 0.0,
+            coefficients: Vec::new(),
+        };
+
+        let up_artifact_json =
+            serde_json::to_value(build_artifact(&build_training_request("direction_up_head"), &[], &trained_model))
+                .expect("up artifact should serialize");
+        assert_eq!(
+            up_artifact_json["target_label_definition"],
+            Value::String("positive_return_10d".to_string())
+        );
+        assert_eq!(
+            up_artifact_json["positive_label_definition"],
+            Value::String("positive_return_10d".to_string())
+        );
+
+        let down_artifact_json =
+            serde_json::to_value(build_artifact(&build_training_request("direction_down_head"), &[], &trained_model))
+                .expect("down artifact should serialize");
+        assert_eq!(
+            down_artifact_json["target_label_definition"],
+            Value::String("negative_return_10d".to_string())
+        );
+        assert_eq!(down_artifact_json["positive_label_definition"], Value::Null);
+    }
+
+    #[test]
+    fn resolve_training_label_uses_forward_return_direction_for_down_head() {
+        let negative_outcome = SecurityForwardOutcomeDocument {
+            outcome_id: "outcome-neg".to_string(),
+            contract_version: "security_forward_outcome.v1".to_string(),
+            document_type: "security_forward_outcome".to_string(),
+            snapshot_id: "snapshot-neg".to_string(),
+            symbol: "NK225.IDX".to_string(),
+            market: "GLOBAL".to_string(),
+            instrument_type: "INDEX".to_string(),
+            as_of_date: "2025-10-08".to_string(),
+            horizon_days: 10,
+            forward_return: -0.031,
+            max_drawdown: 0.042,
+            max_runup: 0.005,
+            positive_return: false,
+            hit_upside_first: false,
+            hit_stop_first: false,
+            label_definition_version: "security_forward_outcome.v1".to_string(),
+        };
+        let positive_outcome = SecurityForwardOutcomeDocument {
+            outcome_id: "outcome-pos".to_string(),
+            contract_version: "security_forward_outcome.v1".to_string(),
+            document_type: "security_forward_outcome".to_string(),
+            snapshot_id: "snapshot-pos".to_string(),
+            symbol: "NK225.IDX".to_string(),
+            market: "GLOBAL".to_string(),
+            instrument_type: "INDEX".to_string(),
+            as_of_date: "2025-10-09".to_string(),
+            horizon_days: 10,
+            forward_return: 0.024,
+            max_drawdown: 0.011,
+            max_runup: 0.029,
+            positive_return: true,
+            hit_upside_first: false,
+            hit_stop_first: false,
+            label_definition_version: "security_forward_outcome.v1".to_string(),
+        };
+
+        assert_eq!(
+            resolve_training_label(&negative_outcome, "direction_down_head"),
+            1.0
+        );
+        assert_eq!(
+            resolve_training_label(&positive_outcome, "direction_down_head"),
+            0.0
+        );
+        assert_eq!(
+            resolve_training_label(&positive_outcome, "direction_up_head"),
+            1.0
+        );
+    }
 }

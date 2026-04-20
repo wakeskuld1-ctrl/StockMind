@@ -1,5 +1,15 @@
 # StockMind AI Handoff
 
+## Precedence
+
+Use these files together:
+
+- stable project rules: `docs/product/project_intent.md`, `docs/governance/*.md`
+- current branch truth: `docs/handoff/CURRENT_STATUS.md`, `docs/handoff/HANDOFF_ISSUES.md`
+- architecture background: this file and `docs/architecture/*.md`
+
+If a historical handoff note conflicts with current command output, current command output and `docs/handoff/CURRENT_STATUS.md` take precedence.
+
 ## Stock/Foundation Decoupling Baseline
 
 StockMind is a stock-only split repo. Stock does not currently depend on generic foundation analytics, and the old foundation boundary is intentionally excluded from this workspace.

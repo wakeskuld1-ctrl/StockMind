@@ -609,6 +609,14 @@ pub fn build_evidence_bundle_feature_seed(
         Value::String(stock_analysis.momentum_signal.clone()),
     );
     features.insert(
+        "divergence_signal".to_string(),
+        Value::String(stock_analysis.divergence_signal.clone()),
+    );
+    features.insert(
+        "timing_signal".to_string(),
+        Value::String(stock_analysis.timing_signal.clone()),
+    );
+    features.insert(
         "money_flow_signal".to_string(),
         Value::String(stock_analysis.money_flow_signal.clone()),
     );
@@ -625,6 +633,10 @@ pub fn build_evidence_bundle_feature_seed(
         Value::String(stock_analysis.bollinger_position_signal.clone()),
     );
     features.insert(
+        "bollinger_midline_signal".to_string(),
+        Value::String(stock_analysis.bollinger_midline_signal.clone()),
+    );
+    features.insert(
         "bollinger_bandwidth_signal".to_string(),
         Value::String(stock_analysis.bollinger_bandwidth_signal.clone()),
     );
@@ -635,6 +647,142 @@ pub fn build_evidence_bundle_feature_seed(
     features.insert(
         "volatility_state".to_string(),
         Value::String(stock_analysis.volatility_state.clone()),
+    );
+    // 2026-04-20 CST: Added because the user explicitly requested a full directional factor
+    // inventory before the next Nikkei retraining pass.
+    // Purpose: freeze one governed up/down/neutral feature surface now, while keeping the
+    // current training contract untouched until the direction-separated target design is approved.
+    features.insert(
+        "trend_direction_state".to_string(),
+        Value::String(self::derive_alignment_direction(stock_analysis.trend_bias.as_str()).to_string()),
+    );
+    features.insert(
+        "trend_direction_strength".to_string(),
+        Value::String(
+            self::derive_trend_direction_strength(
+                stock_analysis.trend_bias.as_str(),
+                stock_analysis.trend_strength.as_str(),
+            )
+            .to_string(),
+        ),
+    );
+    features.insert(
+        "volume_direction_state".to_string(),
+        Value::String(
+            self::derive_volume_direction_state(
+                stock_analysis.trend_bias.as_str(),
+                stock_analysis.volume_confirmation.as_str(),
+            )
+            .to_string(),
+        ),
+    );
+    features.insert(
+        "breakout_direction".to_string(),
+        Value::String(self::derive_breakout_direction(stock_analysis.breakout_signal.as_str()).to_string()),
+    );
+    features.insert(
+        "breakout_stage".to_string(),
+        Value::String(self::derive_breakout_stage(stock_analysis.breakout_signal.as_str()).to_string()),
+    );
+    features.insert(
+        "alignment_direction".to_string(),
+        Value::String(self::derive_alignment_direction(stock_analysis.trend_bias.as_str()).to_string()),
+    );
+    features.insert(
+        "alignment_consistency".to_string(),
+        Value::String(
+            self::derive_alignment_consistency(
+                bundle
+                    .technical_context
+                    .contextual_conclusion
+                    .alignment
+                    .as_str(),
+            )
+            .to_string(),
+        ),
+    );
+    features.insert(
+        "market_direction_regime".to_string(),
+        Value::String(
+            self::derive_market_direction_regime(
+                Some(
+                    bundle
+                        .technical_context
+                        .market_analysis
+                        .consultation_conclusion
+                        .bias
+                        .as_str(),
+                ),
+                Some(bundle.technical_context.market_analysis.breakout_signal.as_str()),
+                Some(bundle.technical_context.market_analysis.momentum_signal.as_str()),
+            )
+            .to_string(),
+        ),
+    );
+    features.insert(
+        "market_volatility_regime".to_string(),
+        Value::String(
+            self::derive_market_volatility_regime(Some(
+                bundle
+                    .technical_context
+                    .market_analysis
+                    .volatility_state
+                    .as_str(),
+            ))
+            .to_string(),
+        ),
+    );
+    features.insert(
+        "flow_direction_state".to_string(),
+        Value::String(
+            self::derive_flow_direction_state(stock_analysis.money_flow_signal.as_str()).to_string(),
+        ),
+    );
+    features.insert(
+        "mean_reversion_direction_state".to_string(),
+        Value::String(
+            self::derive_mean_reversion_direction_state(stock_analysis.mean_reversion_signal.as_str())
+                .to_string(),
+        ),
+    );
+    features.insert(
+        "range_position_direction_state".to_string(),
+        Value::String(
+            self::derive_range_position_direction_state(stock_analysis.range_position_signal.as_str())
+                .to_string(),
+        ),
+    );
+    features.insert(
+        "bollinger_position_direction_state".to_string(),
+        Value::String(
+            self::derive_bollinger_position_direction_state(
+                stock_analysis.bollinger_position_signal.as_str(),
+            )
+            .to_string(),
+        ),
+    );
+    features.insert(
+        "bollinger_midline_direction_state".to_string(),
+        Value::String(
+            self::derive_bollinger_midline_direction_state(
+                stock_analysis.bollinger_midline_signal.as_str(),
+            )
+            .to_string(),
+        ),
+    );
+    features.insert(
+        "rsrs_direction_state".to_string(),
+        Value::String(self::derive_rsrs_direction_state(stock_analysis.rsrs_signal.as_str()).to_string()),
+    );
+    features.insert(
+        "divergence_direction_state".to_string(),
+        Value::String(
+            self::derive_divergence_direction_state(stock_analysis.divergence_signal.as_str()).to_string(),
+        ),
+    );
+    features.insert(
+        "timing_direction_state".to_string(),
+        Value::String(self::derive_timing_direction_state(stock_analysis.timing_signal.as_str()).to_string()),
     );
     // 2026-04-16 CST: Added because P0 data thickening must expose the governed numeric flow and
     // extension snapshot to downstream sample builders.
@@ -655,12 +803,25 @@ pub fn build_evidence_bundle_feature_seed(
         "boll_width_ratio_20".to_string(),
         json!(indicator_snapshot.boll_width_ratio_20),
     );
+    // 2026-04-20 CST: Added because the Nikkei mean-reversion redesign now needs one
+    // reusable raw numeric surface before snapshot/runtime/training consume the bucket.
+    // Reason: the bucket is no longer based on raw percentage alone, so we must freeze
+    // both the MA20 percentage gap and the ATR-normalized distance in the seed.
+    // Purpose: keep all downstream consumers on one explainable numeric contract.
+    let close_vs_sma20 = derive_ratio_delta(indicator_snapshot.close, indicator_snapshot.sma_20);
+    let atr_ratio_14 = derive_atr_ratio_14(indicator_snapshot.close, indicator_snapshot.atr_14);
+    let mean_reversion_normalized_distance_20d =
+        derive_mean_reversion_normalized_distance_20d(close_vs_sma20, atr_ratio_14);
     // 2026-04-17 CST: Added because the thicker governed technical surface must keep the
     // pre-existing raw snapshot contract alive during migration.
     // Reason: ETF snapshot regressions and runtime scorecard guards still read the legacy
     // `close_vs_sma*`, `rsrs_zscore_18_60`, and key-level gap fields directly.
     // Purpose: widen the feature family without silently dropping the stable aliases that the
     // current StockMind runtime already depends on.
+    features.insert(
+        "close_vs_sma20".to_string(),
+        json!(close_vs_sma20),
+    );
     features.insert(
         "close_vs_sma50".to_string(),
         json!(derive_ratio_delta(
@@ -681,16 +842,36 @@ pub fn build_evidence_bundle_feature_seed(
     );
     features.insert("rsi_14".to_string(), json!(indicator_snapshot.rsi_14));
     features.insert(
+        "rsi_direction_state".to_string(),
+        Value::String(self::derive_rsi_direction_state(indicator_snapshot.rsi_14).to_string()),
+    );
+    features.insert(
+        "rsi_extreme_state".to_string(),
+        Value::String(self::derive_rsi_extreme_state(indicator_snapshot.rsi_14).to_string()),
+    );
+    features.insert(
+        "macd_histogram_direction".to_string(),
+        Value::String(
+            self::derive_macd_histogram_direction(indicator_snapshot.macd_histogram).to_string(),
+        ),
+    );
+    features.insert(
         "rsrs_zscore_18_60".to_string(),
         json!(indicator_snapshot.rsrs_zscore_18_60),
     );
     features.insert("atr_14".to_string(), json!(indicator_snapshot.atr_14));
     features.insert(
         "atr_ratio_14".to_string(),
-        json!(derive_atr_ratio_14(
-            indicator_snapshot.close,
-            indicator_snapshot.atr_14,
-        )),
+        json!(atr_ratio_14),
+    );
+    // 2026-04-20 CST: Added because the approved Nikkei route now reviews and trains
+    // mean reversion in ATR-normalized units instead of raw percentage alone.
+    // Reason: the user explicitly asked to keep the middle bucket small after the
+    // post-2025 volatility regime shift.
+    // Purpose: expose one raw numeric field that explains how far price sits from MA20 in ATR units.
+    features.insert(
+        "mean_reversion_normalized_distance_20d".to_string(),
+        json!(mean_reversion_normalized_distance_20d),
     );
     features.insert(
         "support_gap_pct_20".to_string(),
@@ -807,14 +988,55 @@ pub fn build_evidence_bundle_feature_seed(
             &disclosure_signals,
         )),
     );
+    let fundamental_quality_bucket = derive_fundamental_quality_bucket(
+        &bundle.fundamental_context.profit_signal,
+        report_metrics.revenue_yoy_pct,
+        report_metrics.net_profit_yoy_pct,
+        report_metrics.roe_pct,
+    );
     features.insert(
         "fundamental_quality_bucket".to_string(),
-        Value::String(derive_fundamental_quality_bucket(
-            &bundle.fundamental_context.profit_signal,
-            report_metrics.revenue_yoy_pct,
-            report_metrics.net_profit_yoy_pct,
-            report_metrics.roe_pct,
-        )),
+        Value::String(fundamental_quality_bucket.clone()),
+    );
+    // 2026-04-20 CST: Added because Task A splits valuation_status into four reviewable
+    // sub-factors before the next Nikkei retraining pass.
+    // Purpose: publish the normalized buckets on the raw feature seed so snapshot/training/runtime
+    // all read the same plain-language position contract.
+    // 2026-04-20 CST: Extended because the approved mean-reversion redesign now bins the
+    // ATR-normalized MA20 gap instead of the older raw-percentage / CCI hybrid semantics.
+    // Reason: keep the normalized distance and its bucket in the same governed feature seed.
+    // Purpose: let replay, runtime, and retraining share one volatility-adjusted contract.
+    features.insert(
+        "bollinger_position_20d".to_string(),
+        Value::String(
+            derive_bollinger_position_bucket_20d(stock_analysis.bollinger_position_signal.as_str())
+                .to_string(),
+        ),
+    );
+    features.insert(
+        "range_position_14d".to_string(),
+        Value::String(
+            derive_range_position_bucket_14d(stock_analysis.range_position_signal.as_str())
+                .to_string(),
+        ),
+    );
+    features.insert(
+        "mean_reversion_state_20d".to_string(),
+        Value::String(
+            derive_mean_reversion_bucket_20d(stock_analysis.mean_reversion_signal.as_str())
+                .to_string(),
+        ),
+    );
+    features.insert(
+        "mean_reversion_deviation_20d".to_string(),
+        Value::String(
+            derive_mean_reversion_deviation_bucket_20d(mean_reversion_normalized_distance_20d)
+                .to_string(),
+        ),
+    );
+    features.insert(
+        "quality_bucket".to_string(),
+        Value::String(derive_quality_bucket(&fundamental_quality_bucket).to_string()),
     );
     features
 }
@@ -1021,6 +1243,7 @@ fn build_evidence_bundle(
 ) -> SecurityDecisionEvidenceBundleResult {
     let SecurityAnalysisFullstackResult {
         symbol,
+        analysis_date,
         technical_context,
         fundamental_context,
         disclosure_context,
@@ -1031,7 +1254,12 @@ fn build_evidence_bundle(
         ..
     } = analysis;
 
-    let analysis_date = technical_context.analysis_date.clone();
+    // 2026-04-20 CST: Added because fullstack may now anchor ETF latest runs to the
+    // resolved governed proxy date instead of the nested technical-context date.
+    // Reason: rebuilding the evidence bundle from technical_context.analysis_date was
+    // silently discarding the top-level fullstack contract that chair consumers rely on.
+    // Purpose: preserve the frozen top-level analysis date all the way into evidence,
+    // scorecard, committee, and chair outputs.
     let data_gaps = collect_data_gaps(
         &symbol,
         &fundamental_context,
@@ -1221,9 +1449,17 @@ pub fn resolve_etf_subscope(
     }
     let market_profile = market_profile.unwrap_or_default().to_ascii_lowercase();
     let asset_scope = asset_scope.unwrap_or_default().to_ascii_lowercase();
-    if asset_scope.contains("commodity") || market_profile.contains("commodity") {
+    if asset_scope.contains("gold")
+        || market_profile.contains("gold")
+        || asset_scope.contains("commodity")
+        || market_profile.contains("commodity")
+    {
         Some("commodity_etf")
-    } else if asset_scope.contains("bond") || market_profile.contains("bond") {
+    } else if asset_scope.contains("treasury")
+        || market_profile.contains("treasury")
+        || asset_scope.contains("bond")
+        || market_profile.contains("bond")
+    {
         Some("bond_etf")
     } else if asset_scope.contains("cross_border")
         || asset_scope.contains("overseas")
@@ -1428,6 +1664,28 @@ pub fn derive_flow_status(
     }
 }
 
+// 2026-04-20 CST: Added because money-flow semantics were already available upstream but were
+// not projected into a simple directional state for factor review.
+// Purpose: expose a governed inflow/outflow/neutral direction field before training migration.
+pub fn derive_flow_direction_state(money_flow_signal: &str) -> &'static str {
+    let money_flow_signal = money_flow_signal.to_ascii_lowercase();
+    if money_flow_signal.contains("accumulation")
+        || money_flow_signal.contains("positive")
+        || money_flow_signal.contains("support")
+        || money_flow_signal.contains("inflow")
+    {
+        "up"
+    } else if money_flow_signal.contains("distribution")
+        || money_flow_signal.contains("negative")
+        || money_flow_signal.contains("pressure")
+        || money_flow_signal.contains("outflow")
+    {
+        "down"
+    } else {
+        "neutral"
+    }
+}
+
 // 2026-04-16 CST: Added because V-group still had no formal output even though the current
 // evidence layer already carries position and mean-reversion proxies.
 // Reason: we do not yet have full PE/PB coverage, but training still needs a governed way to
@@ -1477,6 +1735,183 @@ pub fn derive_valuation_status(
         "compressed".to_string()
     } else {
         "balanced".to_string()
+    }
+}
+
+// 2026-04-20 CST: Added because Task A needs position-factor review buckets that the user can
+// read directly before the next Nikkei retraining pass.
+// Purpose: freeze one plain upper/middle/lower mapping instead of forcing review to parse the
+// longer consultation wording each time.
+pub fn derive_bollinger_position_bucket_20d(bollinger_position_signal: &str) -> &'static str {
+    let bollinger_position_signal = bollinger_position_signal.to_ascii_lowercase();
+    if bollinger_position_signal.contains("upper") {
+        "upper"
+    } else if bollinger_position_signal.contains("lower") {
+        "lower"
+    } else {
+        "middle"
+    }
+}
+
+// 2026-04-20 CST: Added because Task A needs the old range-position wording normalized into a
+// high/middle/low bucket that users can review against 14d window semantics.
+// Purpose: expose one stable 14d range-position bucket for training and factor diagnostics.
+pub fn derive_range_position_bucket_14d(range_position_signal: &str) -> &'static str {
+    let range_position_signal = range_position_signal.to_ascii_lowercase();
+    if range_position_signal.contains("overbought") {
+        "high"
+    } else if range_position_signal.contains("oversold") {
+        "low"
+    } else {
+        "middle"
+    }
+}
+
+// 2026-04-20 CST: Added because Task A needs the mean-reversion slice kept separate from the
+// bundled valuation_status field.
+// Purpose: freeze an overbought/neutral/oversold 20d bucket that can be audited independently.
+pub fn derive_mean_reversion_bucket_20d(mean_reversion_signal: &str) -> &'static str {
+    let mean_reversion_signal = mean_reversion_signal.to_ascii_lowercase();
+    if mean_reversion_signal.contains("overbought") {
+        "overbought"
+    } else if mean_reversion_signal.contains("oversold") {
+        "oversold"
+    } else {
+        "neutral"
+    }
+}
+
+// 2026-04-20 CST: Added because the approved Nikkei retraining route now normalizes
+// MA20 deviation by ATR14 before assigning the five review buckets.
+// Reason: the 2025 regime shift made raw percentage bands drift, especially in the middle bucket.
+// Purpose: freeze one volatility-adjusted distance measure for snapshot, runtime, and training.
+pub fn derive_mean_reversion_normalized_distance_20d(
+    close_vs_sma20: f64,
+    atr_ratio_14: f64,
+) -> f64 {
+    if atr_ratio_14.abs() <= f64::EPSILON {
+        0.0
+    } else {
+        close_vs_sma20 / atr_ratio_14
+    }
+}
+
+// 2026-04-20 CST: Updated because the approved Nikkei retraining route now bins ATR-normalized
+// distance instead of raw percentage distance from MA20.
+// Reason: the user wants the neutral bucket compressed while keeping weak-direction buckets dense.
+// Purpose: freeze one five-level normalized mean-reversion contract across replay and training.
+pub fn derive_mean_reversion_deviation_bucket_20d(
+    mean_reversion_normalized_distance_20d: f64,
+) -> &'static str {
+    if mean_reversion_normalized_distance_20d < -2.6 {
+        "strong_down"
+    } else if mean_reversion_normalized_distance_20d < -0.15 {
+        "weak_down"
+    } else if mean_reversion_normalized_distance_20d <= 0.15 {
+        "neutral"
+    } else if mean_reversion_normalized_distance_20d <= 2.6 {
+        "weak_up"
+    } else {
+        "strong_up"
+    }
+}
+
+// 2026-04-20 CST: Added because Task A must review the quality slice with a plain user-facing
+// name instead of the longer legacy training alias.
+// Purpose: keep quality semantics stable while letting the new training contract read
+// strong/balanced/fragile directly.
+pub fn derive_quality_bucket(fundamental_quality_bucket: &str) -> &'static str {
+    let fundamental_quality_bucket = fundamental_quality_bucket.to_ascii_lowercase();
+    if fundamental_quality_bucket == "strong" {
+        "strong"
+    } else if fundamental_quality_bucket == "fragile" {
+        "fragile"
+    } else {
+        "balanced"
+    }
+}
+
+// 2026-04-20 CST: Added because several technical oscillation families already carried explicit
+// rebound vs pullback meaning, but that meaning was not frozen into directional helper fields.
+// Purpose: standardize directional helper output across mean-reversion, range, band, and timing signals.
+pub fn derive_mean_reversion_direction_state(mean_reversion_signal: &str) -> &'static str {
+    let mean_reversion_signal = mean_reversion_signal.to_ascii_lowercase();
+    if mean_reversion_signal.contains("oversold") {
+        "up"
+    } else if mean_reversion_signal.contains("overbought") {
+        "down"
+    } else {
+        "neutral"
+    }
+}
+
+pub fn derive_range_position_direction_state(range_position_signal: &str) -> &'static str {
+    let range_position_signal = range_position_signal.to_ascii_lowercase();
+    if range_position_signal.contains("oversold") {
+        "up"
+    } else if range_position_signal.contains("overbought") {
+        "down"
+    } else {
+        "neutral"
+    }
+}
+
+pub fn derive_bollinger_position_direction_state(
+    bollinger_position_signal: &str,
+) -> &'static str {
+    let bollinger_position_signal = bollinger_position_signal.to_ascii_lowercase();
+    if bollinger_position_signal.contains("lower") {
+        "up"
+    } else if bollinger_position_signal.contains("upper") {
+        "down"
+    } else {
+        "neutral"
+    }
+}
+
+pub fn derive_bollinger_midline_direction_state(
+    bollinger_midline_signal: &str,
+) -> &'static str {
+    let bollinger_midline_signal = bollinger_midline_signal.to_ascii_lowercase();
+    if bollinger_midline_signal.contains("support") {
+        "up"
+    } else if bollinger_midline_signal.contains("resistance") {
+        "down"
+    } else {
+        "neutral"
+    }
+}
+
+pub fn derive_rsrs_direction_state(rsrs_signal: &str) -> &'static str {
+    let rsrs_signal = rsrs_signal.to_ascii_lowercase();
+    if rsrs_signal.contains("bullish") {
+        "up"
+    } else if rsrs_signal.contains("bearish") {
+        "down"
+    } else {
+        "neutral"
+    }
+}
+
+pub fn derive_divergence_direction_state(divergence_signal: &str) -> &'static str {
+    let divergence_signal = divergence_signal.to_ascii_lowercase();
+    if divergence_signal.contains("bullish") {
+        "up"
+    } else if divergence_signal.contains("bearish") {
+        "down"
+    } else {
+        "neutral"
+    }
+}
+
+pub fn derive_timing_direction_state(timing_signal: &str) -> &'static str {
+    let timing_signal = timing_signal.to_ascii_lowercase();
+    if timing_signal.contains("oversold") {
+        "up"
+    } else if timing_signal.contains("overbought") {
+        "down"
+    } else {
+        "neutral"
     }
 }
 
@@ -1595,6 +2030,37 @@ pub fn derive_atr_ratio_14(close: f64, atr_14: f64) -> f64 {
     }
 }
 
+// 2026-04-20 CST: Added because RSI and MACD were entering training only as floating-point bins,
+// while the user explicitly asked to review them in up/down semantics first.
+// Purpose: expose fixed, sample-independent directional helper labels alongside the raw numbers.
+pub fn derive_rsi_direction_state(rsi_14: f64) -> &'static str {
+    if rsi_14 >= 50.0 {
+        "above_50"
+    } else {
+        "below_50"
+    }
+}
+
+pub fn derive_rsi_extreme_state(rsi_14: f64) -> &'static str {
+    if rsi_14 >= 70.0 {
+        "overbought"
+    } else if rsi_14 <= 30.0 {
+        "oversold"
+    } else {
+        "neutral"
+    }
+}
+
+pub fn derive_macd_histogram_direction(macd_histogram: f64) -> &'static str {
+    if macd_histogram > 0.0 {
+        "positive"
+    } else if macd_histogram < 0.0 {
+        "negative"
+    } else {
+        "flat"
+    }
+}
+
 pub fn derive_ratio_delta(current_value: f64, baseline_value: f64) -> f64 {
     if baseline_value.abs() <= f64::EPSILON {
         0.0
@@ -1620,7 +2086,7 @@ pub fn derive_resistance_gap_pct_20(close: f64, resistance_level_20: f64) -> f64
 }
 
 pub fn required_etf_feature_family(instrument_subscope: Option<&str>) -> &'static [&'static str] {
-    match instrument_subscope.unwrap_or("equity_etf") {
+    match normalize_etf_subscope_alias(instrument_subscope.unwrap_or("equity_etf")) {
         "commodity_etf" => &[
             "gold_spot_proxy_status",
             "gold_spot_proxy_return_5d",
@@ -1651,6 +2117,173 @@ pub fn required_etf_feature_family(instrument_subscope: Option<&str>) -> &'stati
             "etf_fund_flow_proxy_status",
             "etf_fund_flow_5d",
         ],
+    }
+}
+
+// 2026-04-20 CST: Added because the next index-training pass needs direction and consistency
+// semantics to be explicit before any feature-selection discussion can be trusted.
+// Purpose: expose one governed up/down/neutral vocabulary that later training heads can reuse.
+pub fn derive_alignment_direction(trend_bias: &str) -> &'static str {
+    let trend_bias = trend_bias.to_ascii_lowercase();
+    if trend_bias.contains("bullish") {
+        "up"
+    } else if trend_bias.contains("bearish") {
+        "down"
+    } else {
+        "neutral"
+    }
+}
+
+// 2026-04-20 CST: Added because the old `technical_alignment` field mixed direction and
+// consistency into one label, which made the user-facing factor review hard to interpret.
+// Purpose: split "same side or not" from "up or down" without changing existing alignment labels.
+pub fn derive_alignment_consistency(alignment: &str) -> &'static str {
+    match alignment {
+        "tailwind" => "aligned",
+        "headwind" => "conflicted",
+        _ => "mixed",
+    }
+}
+
+// 2026-04-20 CST: Added because trend strength alone cannot answer whether the strong move is
+// pointing up or down, which was the user's main factor-direction complaint.
+// Purpose: bind trend direction and strength into one stable categorical state.
+pub fn derive_trend_direction_strength(trend_bias: &str, trend_strength: &str) -> &'static str {
+    match (
+        derive_alignment_direction(trend_bias),
+        trend_strength.to_ascii_lowercase().as_str(),
+    ) {
+        ("up", "strong") => "up_strong",
+        ("up", "moderate") => "up_moderate",
+        ("down", "strong") => "down_strong",
+        ("down", "moderate") => "down_moderate",
+        (_, "weak") => "range_weak",
+        ("up", _) => "up_moderate",
+        ("down", _) => "down_moderate",
+        _ => "range_weak",
+    }
+}
+
+// 2026-04-20 CST: Added because the current volume label says whether volume confirms, but not
+// which side it confirms.
+// Purpose: freeze one directional volume helper before the next factor-selection pass.
+pub fn derive_volume_direction_state(
+    trend_bias: &str,
+    volume_confirmation: &str,
+) -> &'static str {
+    let volume_confirmation = volume_confirmation.to_ascii_lowercase();
+    if volume_confirmation.contains("weak") {
+        return "weakening";
+    }
+    if !volume_confirmation.contains("confirm")
+        && !volume_confirmation.contains("support")
+        && !volume_confirmation.contains("positive")
+    {
+        return "neutral";
+    }
+    match derive_alignment_direction(trend_bias) {
+        "up" => "up_confirmed",
+        "down" => "down_confirmed",
+        _ => "neutral",
+    }
+}
+
+// 2026-04-20 CST: Added because breakout structure currently carries both up-breaks and
+// down-breaks in one family, which blocked clear factor audits.
+// Purpose: expose the directional half of breakout structure as a separate governed field.
+pub fn derive_breakout_direction(breakout_signal: &str) -> &'static str {
+    let breakout_signal = breakout_signal.to_ascii_lowercase();
+    if breakout_signal.contains("resistance") {
+        "up"
+    } else if breakout_signal.contains("support") {
+        "down"
+    } else {
+        "none"
+    }
+}
+
+// 2026-04-20 CST: Added because breakout direction alone still hides whether the move is only
+// being watched, already confirmed, or already failed.
+// Purpose: split structural stage from structural direction for later training selection.
+pub fn derive_breakout_stage(breakout_signal: &str) -> &'static str {
+    let breakout_signal = breakout_signal.to_ascii_lowercase();
+    if breakout_signal.contains("failed") {
+        "failed"
+    } else if breakout_signal.contains("watch") {
+        "watch"
+    } else if breakout_signal.contains("confirmed") {
+        "confirmed"
+    } else {
+        "range"
+    }
+}
+
+// 2026-04-20 CST: Added because the existing coarse market regime mixes market direction and
+// volatility shape in one label, which made the user's requested up/down audit noisy.
+// Purpose: provide one small market-direction helper ahead of the later trainer migration.
+pub fn derive_market_direction_regime(
+    market_bias: Option<&str>,
+    market_breakout_signal: Option<&str>,
+    market_momentum_signal: Option<&str>,
+) -> &'static str {
+    let market_bias = market_bias.unwrap_or_default().to_ascii_lowercase();
+    let market_breakout_signal = market_breakout_signal
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    let market_momentum_signal = market_momentum_signal
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if market_bias.contains("bullish")
+        || market_breakout_signal.contains("resistance")
+        || market_momentum_signal == "positive"
+    {
+        "up"
+    } else if market_bias.contains("bearish")
+        || market_breakout_signal.contains("support")
+        || market_momentum_signal == "negative"
+    {
+        "down"
+    } else {
+        "range"
+    }
+}
+
+// 2026-04-20 CST: Added because the old market regime field also bundled volatility semantics.
+// Purpose: keep high/low/normal volatility as a separate condition field instead of a direction field.
+pub fn derive_market_volatility_regime(market_volatility_state: Option<&str>) -> &'static str {
+    let market_volatility_state = market_volatility_state
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if market_volatility_state.contains("high")
+        || market_volatility_state.contains("wide")
+        || market_volatility_state.contains("expand")
+    {
+        "high"
+    } else if market_volatility_state.contains("low")
+        || market_volatility_state.contains("contract")
+        || market_volatility_state.contains("narrow")
+    {
+        "low"
+    } else {
+        "normal"
+    }
+}
+
+// 2026-04-20 CST: Added because ETF runtime and artifact fixtures now carry both
+// legacy pool names (`gold_etf`, `treasury_etf`) and normalized family names
+// (`commodity_etf`, `bond_etf`).
+// Reason: scorecard-family validation must compare equivalent ETF pools instead of
+// rejecting valid bindings purely due to alias vocabulary drift.
+// Purpose: keep required-feature-family checks and subscope guards aligned with the
+// frozen ETF proxy-history contract recorded in handoff.
+pub fn normalize_etf_subscope_alias(instrument_subscope: &str) -> &'static str {
+    match instrument_subscope {
+        "gold_etf" => "commodity_etf",
+        "treasury_etf" => "bond_etf",
+        "commodity_etf" => "commodity_etf",
+        "bond_etf" => "bond_etf",
+        "cross_border_etf" => "cross_border_etf",
+        _ => "equity_etf",
     }
 }
 
@@ -1693,7 +2326,13 @@ fn insert_optional_numeric_feature(
 }
 
 fn classify_asset_class(bundle: &SecurityDecisionEvidenceBundleResult) -> &'static str {
-    if bundle.etf_context.status != "not_applicable" {
+    // 2026-04-20 CST: Added because Task 1 freezes non-equity subject identity in the
+    // evidence seed before downstream training slices widen beyond plain equities.
+    // Purpose: let explicit index/FX symbols bypass the old ETF-vs-equity-only fallback.
+    let symbol_asset_class = classify_symbol_asset_class(&bundle.symbol);
+    if symbol_asset_class != "equity" {
+        symbol_asset_class
+    } else if bundle.etf_context.status != "not_applicable" {
         "etf"
     } else {
         "equity"
@@ -1702,6 +2341,15 @@ fn classify_asset_class(bundle: &SecurityDecisionEvidenceBundleResult) -> &'stat
 
 fn classify_symbol_asset_class(symbol: &str) -> &'static str {
     let normalized_symbol = symbol.trim().to_uppercase();
+    // 2026-04-20 CST: Added because Task 1 starts with Nikkei index identity governance and
+    // must not let explicit index/FX suffixes collapse back into the equity bucket.
+    // Purpose: provide one minimal shared asset-class rule for snapshot, evidence, and training.
+    if normalized_symbol.ends_with(".IDX") {
+        return "index";
+    }
+    if normalized_symbol.ends_with(".FX") {
+        return "fx";
+    }
     let is_etf = normalized_symbol
         .strip_suffix(".SZ")
         .map(|code| code.starts_with("15") || code.starts_with("16"))
@@ -1723,7 +2371,17 @@ fn default_disclosure_limit() -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::derive_event_density_bucket;
+    use super::{
+        derive_alignment_consistency, derive_alignment_direction,
+        derive_bollinger_position_bucket_20d, derive_breakout_direction, derive_breakout_stage,
+        derive_event_density_bucket, derive_macd_histogram_direction,
+        derive_market_direction_regime, derive_market_volatility_regime,
+        derive_mean_reversion_bucket_20d, derive_mean_reversion_deviation_bucket_20d,
+        derive_mean_reversion_normalized_distance_20d,
+        derive_quality_bucket,
+        derive_range_position_bucket_14d, derive_rsi_direction_state, derive_rsi_extreme_state,
+        derive_trend_direction_strength, derive_volume_direction_state,
+    };
 
     #[test]
     fn derive_event_density_bucket_keeps_mid_cadence_symbols_out_of_dense() {
@@ -1743,5 +2401,188 @@ mod tests {
         // Purpose: preserve the upper-tail signal while fixing the former single-bucket collapse.
         assert_eq!(derive_event_density_bucket(6, 0), "dense");
         assert_eq!(derive_event_density_bucket(2, 3), "dense");
+    }
+
+    #[test]
+    fn derive_breakout_direction_and_stage_split_up_down_and_structure() {
+        assert_eq!(
+            derive_breakout_direction("confirmed_resistance_breakout"),
+            "up"
+        );
+        assert_eq!(
+            derive_breakout_direction("confirmed_support_breakdown"),
+            "down"
+        );
+        assert_eq!(derive_breakout_direction("range_bound"), "none");
+        assert_eq!(derive_breakout_stage("confirmed_resistance_breakout"), "confirmed");
+        assert_eq!(derive_breakout_stage("support_breakdown_watch"), "watch");
+        assert_eq!(derive_breakout_stage("failed_resistance_breakout"), "failed");
+        assert_eq!(derive_breakout_stage("range_bound"), "range");
+    }
+
+    #[test]
+    fn derive_trend_and_volume_directional_states_keep_direction_and_conviction_together() {
+        assert_eq!(
+            derive_trend_direction_strength("bullish", "strong"),
+            "up_strong"
+        );
+        assert_eq!(
+            derive_trend_direction_strength("bearish", "moderate"),
+            "down_moderate"
+        );
+        assert_eq!(
+            derive_trend_direction_strength("sideways", "weak"),
+            "range_weak"
+        );
+        assert_eq!(
+            derive_volume_direction_state("bullish", "confirmed"),
+            "up_confirmed"
+        );
+        assert_eq!(
+            derive_volume_direction_state("bearish", "confirmed"),
+            "down_confirmed"
+        );
+        assert_eq!(
+            derive_volume_direction_state("sideways", "weakening"),
+            "weakening"
+        );
+    }
+
+    #[test]
+    fn derive_alignment_and_market_regimes_separate_direction_from_consistency() {
+        assert_eq!(derive_alignment_direction("bullish"), "up");
+        assert_eq!(derive_alignment_direction("bearish"), "down");
+        assert_eq!(derive_alignment_direction("sideways"), "neutral");
+        assert_eq!(derive_alignment_consistency("tailwind"), "aligned");
+        assert_eq!(derive_alignment_consistency("headwind"), "conflicted");
+        assert_eq!(derive_alignment_consistency("mixed"), "mixed");
+        assert_eq!(
+            derive_market_direction_regime(
+                Some("bullish_continuation"),
+                Some("confirmed_resistance_breakout"),
+                Some("positive")
+            ),
+            "up"
+        );
+        assert_eq!(
+            derive_market_direction_regime(
+                Some("bearish_continuation"),
+                Some("support_breakdown_watch"),
+                Some("negative")
+            ),
+            "down"
+        );
+        assert_eq!(
+            derive_market_volatility_regime(Some("high_volatility_expansion")),
+            "high"
+        );
+        assert_eq!(
+            derive_market_volatility_regime(Some("low_volatility_contraction")),
+            "low"
+        );
+    }
+
+    #[test]
+    fn derive_rsi_and_macd_directional_states_keep_fixed_semantics() {
+        assert_eq!(derive_rsi_direction_state(58.0), "above_50");
+        assert_eq!(derive_rsi_direction_state(42.0), "below_50");
+        assert_eq!(derive_rsi_extreme_state(72.0), "overbought");
+        assert_eq!(derive_rsi_extreme_state(25.0), "oversold");
+        assert_eq!(derive_rsi_extreme_state(53.0), "neutral");
+        assert_eq!(derive_macd_histogram_direction(12.5), "positive");
+        assert_eq!(derive_macd_histogram_direction(-3.2), "negative");
+        assert_eq!(derive_macd_histogram_direction(0.0), "flat");
+    }
+
+    #[test]
+    fn derive_position_and_quality_buckets_normalize_valuation_inputs_for_training() {
+        // 2026-04-20 CST: Added because Task A splits the old valuation_status bundle into
+        // independently reviewable training buckets before the next Nikkei retraining pass.
+        // Purpose: lock the user-facing upper/middle/lower, high/middle/low, and
+        // overbought/neutral/oversold semantics into one stable helper contract.
+        assert_eq!(
+            derive_bollinger_position_bucket_20d("upper_band_breakout_risk"),
+            "upper"
+        );
+        assert_eq!(
+            derive_bollinger_position_bucket_20d("lower_band_rebound_candidate"),
+            "lower"
+        );
+        assert_eq!(derive_bollinger_position_bucket_20d("neutral"), "middle");
+
+        assert_eq!(
+            derive_range_position_bucket_14d("overbought_pullback_risk"),
+            "high"
+        );
+        assert_eq!(
+            derive_range_position_bucket_14d("oversold_rebound_candidate"),
+            "low"
+        );
+        assert_eq!(derive_range_position_bucket_14d("neutral"), "middle");
+
+        assert_eq!(
+            derive_mean_reversion_bucket_20d("overbought_reversal_risk"),
+            "overbought"
+        );
+        assert_eq!(
+            derive_mean_reversion_bucket_20d("oversold_rebound_candidate"),
+            "oversold"
+        );
+        assert_eq!(derive_mean_reversion_bucket_20d("neutral"), "neutral");
+
+        assert_eq!(derive_quality_bucket("strong"), "strong");
+        assert_eq!(derive_quality_bucket("fragile"), "fragile");
+        assert_eq!(derive_quality_bucket("balanced"), "balanced");
+    }
+
+    #[test]
+    fn derive_mean_reversion_deviation_bucket_20d_uses_atr_normalized_bands() {
+        // 2026-04-20 CST: Added because the approved Nikkei route now moves away from raw
+        // MA20 percentage bands toward ATR-normalized distance bands.
+        // Reason: the user wants the middle bucket compressed and the weak-direction buckets
+        // to remain meaningful after the 2025 volatility regime shift.
+        // Purpose: lock the 0.15 ATR / 2.6 ATR bucket edges before snapshot and training consume them.
+        assert!(
+            (derive_mean_reversion_normalized_distance_20d(0.026, 0.01) - 2.6).abs() < 1e-9
+        );
+        assert!(
+            (derive_mean_reversion_normalized_distance_20d(-0.013, 0.01) + 1.3).abs() < 1e-9
+        );
+        assert_eq!(
+            derive_mean_reversion_deviation_bucket_20d(-2.61),
+            "strong_down"
+        );
+        assert_eq!(
+            derive_mean_reversion_deviation_bucket_20d(-2.60),
+            "weak_down"
+        );
+        assert_eq!(
+            derive_mean_reversion_deviation_bucket_20d(-0.16),
+            "weak_down"
+        );
+        assert_eq!(
+            derive_mean_reversion_deviation_bucket_20d(-0.15),
+            "neutral"
+        );
+        assert_eq!(
+            derive_mean_reversion_deviation_bucket_20d(0.0),
+            "neutral"
+        );
+        assert_eq!(
+            derive_mean_reversion_deviation_bucket_20d(0.15),
+            "neutral"
+        );
+        assert_eq!(
+            derive_mean_reversion_deviation_bucket_20d(0.16),
+            "weak_up"
+        );
+        assert_eq!(
+            derive_mean_reversion_deviation_bucket_20d(2.60),
+            "weak_up"
+        );
+        assert_eq!(
+            derive_mean_reversion_deviation_bucket_20d(2.61),
+            "strong_up"
+        );
     }
 }

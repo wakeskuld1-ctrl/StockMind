@@ -15,6 +15,15 @@ use crate::ops::stock::stock_execution_and_position_management::security_account
 use crate::ops::stock::stock_execution_and_position_management::security_portfolio_replacement_plan::{
     SecurityPortfolioReplacementPlanRequest, security_portfolio_replacement_plan,
 };
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_allocation_decision::{
+    SecurityPortfolioAllocationDecisionRequest, security_portfolio_allocation_decision,
+};
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_preview::{
+    SecurityPortfolioExecutionPreviewRequest, security_portfolio_execution_preview,
+};
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_request_package::{
+    SecurityPortfolioExecutionRequestPackageRequest, security_portfolio_execution_request_package,
+};
 use crate::ops::stock::stock_execution_and_position_management::security_position_contract::{
     SecurityPositionContractRequest, build_security_position_contract,
 };
@@ -714,6 +723,59 @@ pub(super) fn dispatch_security_portfolio_replacement_plan(args: Value) -> ToolR
     };
 
     match security_portfolio_replacement_plan(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-20 CST: Added because P12 now exposes the minimum governed final
+// allocation decision on the public stock dispatcher.
+// Reason: the current RED test correctly fails until the stock bus recognizes
+// and routes the formal decision-freeze contract.
+// Purpose: route portfolio allocation decision requests through the official stock dispatcher.
+pub(super) fn dispatch_security_portfolio_allocation_decision(args: Value) -> ToolResponse {
+    let request = match serde_json::from_value::<SecurityPortfolioAllocationDecisionRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_portfolio_allocation_decision(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-20 CST: Added because the approved next step after P12 is one
+// side-effect-free execution preview bridge on the public stock dispatcher.
+// Reason: the RED test correctly fails until the stock bus recognizes and
+// routes the new preview-only downstream contract.
+// Purpose: route portfolio execution preview requests through the official stock dispatcher.
+pub(super) fn dispatch_security_portfolio_execution_preview(args: Value) -> ToolResponse {
+    let request = match serde_json::from_value::<SecurityPortfolioExecutionPreviewRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_portfolio_execution_preview(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-20 CST: Added because P13 now introduces one formal request-package
+// bridge after the standardized preview document on the public stock dispatcher.
+// Reason: the RED test should only turn green once the stock bus recognizes
+// and routes the new P13 contract explicitly.
+// Purpose: route portfolio execution request-package requests through the official dispatcher.
+pub(super) fn dispatch_security_portfolio_execution_request_package(args: Value) -> ToolResponse {
+    let request = match serde_json::from_value::<SecurityPortfolioExecutionRequestPackageRequest>(
+        args,
+    ) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_portfolio_execution_request_package(&request) {
         Ok(result) => ToolResponse::ok_serialized(&result),
         Err(error) => ToolResponse::error(error.to_string()),
     }

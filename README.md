@@ -177,7 +177,24 @@ That guide explains:
 - which formal mainline tests prove the chain is wired end to end
 - how to run a release-style acceptance pass
 
-## Committee governance freeze
+## Standardized governance and handoff
+
+The repository now separates stable governance rules from branch-local status:
+
+- Stable governance:
+  - `docs/product/project_intent.md`
+  - `docs/governance/contract_registry.md`
+  - `docs/governance/decision_log.md`
+  - `docs/governance/acceptance_criteria.md`
+  - `docs/governance/response_contract.md`
+- Current branch truth:
+  - `docs/handoff/CURRENT_STATUS.md`
+  - `docs/handoff/HANDOFF_ISSUES.md`
+  - `docs/handoff/HANDOFF_PROCEDURE.md`
+
+Use `docs/handoff/CURRENT_STATUS.md` for the latest verified branch health instead of relying on older acceptance or handoff notes.
+
+## Committee Governance Freeze
 
 The legacy `security_decision_committee` route is frozen as a compatibility zone in this standalone repo.
 

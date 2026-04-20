@@ -243,19 +243,39 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
     // 2026-04-17 CST: Added because disclosure events now enter training as weighted component
     // scores instead of only sparse boolean/risk-count hints.
     // Purpose: lock the first formal event-scoring feature family into the training contract.
-    assert_eq!(output["data"]["metrics_summary_json"]["feature_count"], 36);
-    assert_eq!(output["data"]["metrics_summary_json"]["sample_count"], 8);
-    assert_eq!(
-        output["data"]["metrics_summary_json"]["train"]["sample_count"],
-        4
+    assert_eq!(output["data"]["metrics_summary_json"]["feature_count"], 38);
+    assert!(
+        output["data"]["metrics_summary_json"]["sample_count"]
+            .as_u64()
+            .expect("sample_count should be numeric")
+            >= 8
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["train"]["sample_count"]
+            .as_u64()
+            .expect("train sample_count should be numeric")
+            >= 4
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["valid"]["sample_count"]
+            .as_u64()
+            .expect("valid sample_count should be numeric")
+            >= 2
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["test"]["sample_count"]
+            .as_u64()
+            .expect("test sample_count should be numeric")
+            >= 2
     );
     assert_eq!(
-        output["data"]["metrics_summary_json"]["valid"]["sample_count"],
-        2
-    );
-    assert_eq!(
-        output["data"]["metrics_summary_json"]["test"]["sample_count"],
-        2
+        output["data"]["metrics_summary_json"]["post_validation_holdout"]["sample_count"],
+        output["data"]["metrics_summary_json"]["valid"]["sample_count"]
+            .as_u64()
+            .expect("valid sample_count should be numeric")
+            + output["data"]["metrics_summary_json"]["test"]["sample_count"]
+                .as_u64()
+                .expect("test sample_count should be numeric")
     );
     assert_eq!(
         output["data"]["metrics_summary_json"]["train"]["accuracy"],
@@ -394,10 +414,12 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
         "mfi_14",
         "macd_histogram",
         "shareholder_return_status",
-        "fundamental_quality_bucket",
+        "bollinger_position_20d",
+        "range_position_14d",
+        "mean_reversion_deviation_20d",
+        "quality_bucket",
         "rsi_14",
         "atr_ratio_14",
-        "valuation_status",
     ] {
         assert!(
             feature_names
@@ -406,6 +428,29 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
             "expected trained feature `{expected_feature}` to exist in artifact"
         );
     }
+    // 2026-04-21 CST: Added because the approved Nikkei retraining route replaces the older
+    // CCI-derived mean-reversion enum with MA20 percentage-deviation bands.
+    // Reason: the governed training contract must prove the new bucket exists and the old one
+    // no longer participates in model fitting.
+    // Purpose: lock the feature-set swap before the next real retraining run.
+    assert!(
+        !feature_names
+            .iter()
+            .any(|feature_name| *feature_name == "valuation_status"),
+        "expected valuation_status to be removed from the governed training contract"
+    );
+    assert!(
+        !feature_names
+            .iter()
+            .any(|feature_name| *feature_name == "mean_reversion_state_20d"),
+        "expected mean_reversion_deviation_20d to replace the old CCI-derived mean_reversion_state_20d training field"
+    );
+    assert!(
+        !feature_names
+            .iter()
+            .any(|feature_name| *feature_name == "fundamental_quality_bucket"),
+        "expected quality_bucket to replace the old fundamental_quality_bucket training alias"
+    );
 
     let persisted_refit_run: Value = serde_json::from_slice(
         &fs::read(&refit_run_path).expect("persisted refit run should be readable"),
@@ -431,23 +476,34 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
     // summary without replaying the entire training run in memory.
     assert_eq!(
         persisted_model_registry["metrics_summary_json"]["feature_count"],
-        36
+        38
+    );
+    assert!(
+        persisted_model_registry["metrics_summary_json"]["sample_count"]
+            .as_u64()
+            .expect("persisted registry sample_count should be numeric")
+            >= 8
+    );
+    assert!(
+        persisted_model_registry["metrics_summary_json"]["train"]["sample_count"]
+            .as_u64()
+            .expect("persisted registry train sample_count should be numeric")
+            >= 4
+    );
+    assert!(
+        persisted_model_registry["metrics_summary_json"]["valid"]["sample_count"]
+            .as_u64()
+            .expect("persisted registry valid sample_count should be numeric")
+            >= 2
     );
     assert_eq!(
-        persisted_model_registry["metrics_summary_json"]["sample_count"],
-        8
-    );
-    assert_eq!(
-        persisted_model_registry["metrics_summary_json"]["train"]["sample_count"],
-        4
-    );
-    assert_eq!(
-        persisted_model_registry["metrics_summary_json"]["valid"]["sample_count"],
-        2
-    );
-    assert_eq!(
-        persisted_model_registry["metrics_summary_json"]["test"]["sample_count"],
-        2
+        persisted_model_registry["metrics_summary_json"]["post_validation_holdout"]["sample_count"],
+        persisted_model_registry["metrics_summary_json"]["valid"]["sample_count"]
+            .as_u64()
+            .expect("persisted registry valid sample_count should be numeric")
+            + persisted_model_registry["metrics_summary_json"]["test"]["sample_count"]
+                .as_u64()
+                .expect("persisted registry test sample_count should be numeric")
     );
     assert!(
         persisted_model_registry["metrics_summary_json"]["diagnostics"].is_object(),
@@ -474,6 +530,419 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
     assert!(
         persisted_training_diagnostic_report["segment_slice_summary"].is_object(),
         "expected segment slice summary in persisted training diagnostic report"
+    );
+}
+
+#[test]
+fn security_scorecard_training_persists_explicit_instrument_subscope_into_artifact_and_registry() {
+    // 2026-04-20 CST: Added because Task 1 must first prove the trainer preserves an explicit
+    // non-equity identity contract before we widen the real Nikkei and gold subject slices.
+    // Purpose: force artifact and registry outputs to stop dropping instrument_subscope on the floor.
+    let runtime_db_path = create_test_runtime_db("security_scorecard_training_identity_contract");
+    let runtime_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have parent")
+        .join("scorecard_training_runtime");
+    let fixture_dir = create_training_fixture_dir("security_scorecard_training_identity_contract");
+
+    let stock_up_csv = fixture_dir.join("stock_up.csv");
+    let stock_down_csv = fixture_dir.join("stock_down.csv");
+    let market_csv = fixture_dir.join("market.csv");
+    let sector_csv = fixture_dir.join("sector.csv");
+
+    fs::write(
+        &stock_up_csv,
+        build_trend_rows(420, 100.0, 0.9, 1.0).join("\n"),
+    )
+    .expect("upward symbol csv should be written");
+    fs::write(
+        &stock_down_csv,
+        // 2026-04-20 CST: Adjusted because the new downward-head contract test needs
+        // sustained negative forward returns inside the train window instead of a path
+        // that hits the floor too early and collapses all labels to one class.
+        // Purpose: keep this fixture focused on target-head semantics, not floor artifacts.
+        build_trend_rows(420, 260.0, -0.3, 1.0).join("\n"),
+    )
+    .expect("downward symbol csv should be written");
+    fs::write(
+        &market_csv,
+        build_trend_rows(420, 3200.0, 2.5, 5.0).join("\n"),
+    )
+    .expect("market csv should be written");
+    fs::write(
+        &sector_csv,
+        build_trend_rows(420, 980.0, 1.4, 2.0).join("\n"),
+    )
+    .expect("sector csv should be written");
+
+    import_history_csv(&runtime_db_path, &stock_up_csv, "601916.SH");
+    import_history_csv(&runtime_db_path, &stock_down_csv, "600000.SH");
+    import_history_csv(&runtime_db_path, &market_csv, "510300.SH");
+    import_history_csv(&runtime_db_path, &sector_csv, "512800.SH");
+
+    let server = spawn_http_route_server(vec![
+        (
+            "/financials",
+            "HTTP/1.1 200 OK",
+            r#"[{"REPORT_DATE":"2025-12-31","NOTICE_DATE":"2026-03-28","TOTAL_OPERATE_INCOME":308227000000.0,"YSTZ":8.37,"PARENT_NETPROFIT":11117000000.0,"SJLTZ":9.31,"ROEJQ":14.8}]"#,
+            "application/json",
+        ),
+        (
+            "/announcements",
+            "HTTP/1.1 200 OK",
+            r#"{"data":{"list":[{"notice_date":"2026-03-28","title":"2025 annual report","art_code":"AN202603281234567890","columns":[{"column_name":"periodic_report"}]}]}}"#,
+            "application/json",
+        ),
+    ]);
+
+    let request = json!({
+        "tool": "security_scorecard_training",
+        "args": {
+            "created_at": "2026-04-20T11:00:00+08:00",
+            "training_runtime_root": runtime_root.to_string_lossy(),
+            "market_scope": "GLOBAL",
+            "instrument_scope": "INDEX",
+            "instrument_subscope": "nikkei_index",
+            "symbol_list": ["601916.SH", "600000.SH"],
+            "market_symbol": "510300.SH",
+            "sector_symbol": "512800.SH",
+            "market_profile": "a_share_core",
+            "sector_profile": "a_share_bank",
+            "horizon_days": 10,
+            "target_head": "direction_head",
+            "train_range": "2025-03-01..2025-08-31",
+            "valid_range": "2025-09-01..2025-11-30",
+            "test_range": "2025-12-01..2026-01-31",
+            "feature_set_version": "security_feature_snapshot.v1",
+            "label_definition_version": "security_forward_outcome.v1"
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &[
+            (
+                "EXCEL_SKILL_EASTMONEY_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
+                "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+        ],
+    );
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    let artifact_path = PathBuf::from(
+        output["data"]["artifact_path"]
+            .as_str()
+            .expect("artifact path should exist"),
+    );
+    let artifact_json: Value =
+        serde_json::from_slice(&fs::read(&artifact_path).expect("artifact should be readable"))
+            .expect("artifact should be valid json");
+    assert_eq!(artifact_json["instrument_subscope"], "nikkei_index");
+    assert_eq!(
+        output["data"]["model_registry"]["instrument_subscope"],
+        "nikkei_index"
+    );
+}
+
+#[test]
+fn security_scorecard_training_supports_direction_down_head_contract() {
+    // 2026-04-20 CST: Added because the approved trainer-contract refactor must
+    // expose a clean downward target head before any retraining resumes.
+    // Reason: the old contract reused positive_label_definition for every direction.
+    // Purpose: lock the downward artifact contract at the CLI boundary.
+    let runtime_db_path = create_test_runtime_db("security_scorecard_training_direction_down");
+    let runtime_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have parent")
+        .join("scorecard_training_runtime");
+    let fixture_dir = create_training_fixture_dir("security_scorecard_training_direction_down");
+    let nikkei_csv = fixture_dir.join("nikkei_decade.csv");
+
+    fs::write(
+        &nikkei_csv,
+        build_nikkei_decade_rows(3900, 16800.0).join("\n"),
+    )
+    .expect("nikkei csv should be written");
+    import_history_csv(&runtime_db_path, &nikkei_csv, "NK225.IDX");
+
+    let server = spawn_http_route_server(vec![
+        (
+            "/financials",
+            "HTTP/1.1 406 Not Acceptable",
+            "<html><body>financials unavailable for downward head index fixture</body></html>",
+            "text/html",
+        ),
+        (
+            "/announcements",
+            "HTTP/1.1 200 OK",
+            r#"{"data":{"list":[]}}"#,
+            "application/json",
+        ),
+    ]);
+
+    let request = json!({
+        "tool": "security_scorecard_training",
+        "args": {
+            "created_at": "2026-04-20T22:00:00+08:00",
+            "training_runtime_root": runtime_root.to_string_lossy(),
+            "market_scope": "GLOBAL",
+            "instrument_scope": "INDEX",
+            "instrument_subscope": "nikkei_index",
+            "symbol_list": ["NK225.IDX"],
+            "market_symbol": "NK225.IDX",
+            "sector_symbol": "NK225.IDX",
+            "horizon_days": 10,
+            "target_head": "direction_down_head",
+            "train_range": "2016-04-20..2025-09-30",
+            "valid_range": "2025-10-01..2025-12-31",
+            "test_range": "2026-01-01..2026-04-20",
+            "feature_set_version": "security_feature_snapshot.v1",
+            "label_definition_version": "security_forward_outcome.v1"
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &[
+            (
+                "EXCEL_SKILL_EASTMONEY_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
+                "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+        ],
+    );
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    assert_eq!(output["data"]["artifact"]["target_head"], "direction_down_head");
+    assert_eq!(
+        output["data"]["artifact"]["target_label_definition"],
+        "negative_return_10d"
+    );
+    assert_eq!(output["data"]["artifact"]["positive_label_definition"], Value::Null);
+    assert_eq!(
+        output["data"]["model_registry"]["target_head"],
+        "direction_down_head"
+    );
+
+    let artifact_path = PathBuf::from(
+        output["data"]["artifact_path"]
+            .as_str()
+            .expect("artifact path should exist"),
+    );
+    let artifact_json: Value =
+        serde_json::from_slice(&fs::read(&artifact_path).expect("artifact should be readable"))
+            .expect("artifact should be valid json");
+    assert_eq!(artifact_json["target_head"], "direction_down_head");
+    assert_eq!(artifact_json["target_label_definition"], "negative_return_10d");
+    assert_eq!(artifact_json["positive_label_definition"], Value::Null);
+}
+
+#[test]
+fn security_scorecard_training_generates_nikkei_index_artifact() {
+    // 2026-04-20 CST: Added because Task 2 must prove the governed trainer can
+    // complete one end-to-end Nikkei index slice before any macro augmentation is considered.
+    // Purpose: lock the baseline `NK225.IDX` path on artifact identity, label contract, and sample volume.
+    let runtime_db_path = create_test_runtime_db("security_scorecard_training_nikkei_index");
+    let runtime_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have parent")
+        .join("scorecard_training_runtime");
+    let fixture_dir = create_training_fixture_dir("security_scorecard_training_nikkei_index");
+    let nikkei_csv = fixture_dir.join("nikkei.csv");
+
+    fs::write(
+        &nikkei_csv,
+        build_nikkei_mixed_regime_rows(420, 32500.0).join("\n"),
+    )
+    .expect("nikkei csv should be written");
+    import_history_csv(&runtime_db_path, &nikkei_csv, "NK225.IDX");
+
+    let server = spawn_http_route_server(vec![
+        (
+            "/financials",
+            "HTTP/1.1 406 Not Acceptable",
+            "<html><body>financials unavailable for index fixture</body></html>",
+            "text/html",
+        ),
+        (
+            "/announcements",
+            "HTTP/1.1 200 OK",
+            r#"{"data":{"list":[]}}"#,
+            "application/json",
+        ),
+    ]);
+
+    let request = json!({
+        "tool": "security_scorecard_training",
+        "args": {
+            "created_at": "2026-04-20T16:00:00+08:00",
+            "training_runtime_root": runtime_root.to_string_lossy(),
+            "market_scope": "GLOBAL",
+            "instrument_scope": "INDEX",
+            "instrument_subscope": "nikkei_index",
+            "symbol_list": ["NK225.IDX"],
+            "market_symbol": "NK225.IDX",
+            "sector_symbol": "NK225.IDX",
+            "horizon_days": 10,
+            "target_head": "direction_head",
+            "train_range": "2025-03-01..2025-08-31",
+            "valid_range": "2025-09-01..2025-11-30",
+            "test_range": "2025-12-01..2026-01-31",
+            "feature_set_version": "security_feature_snapshot.v1",
+            "label_definition_version": "security_forward_outcome.v1"
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &[
+            (
+                "EXCEL_SKILL_EASTMONEY_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
+                "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+        ],
+    );
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    let artifact_path = PathBuf::from(
+        output["data"]["artifact_path"]
+            .as_str()
+            .expect("artifact path should exist"),
+    );
+    let artifact_json: Value =
+        serde_json::from_slice(&fs::read(&artifact_path).expect("artifact should be readable"))
+            .expect("artifact should be valid json");
+    assert_eq!(
+        artifact_json["model_id"],
+        "global_index_nikkei_index_10d_direction_head"
+    );
+    assert_eq!(artifact_json["instrument_subscope"], "nikkei_index");
+    assert_eq!(artifact_json["label_definition"], "security_forward_outcome.v1");
+    assert!(
+        output["data"]["metrics_summary_json"]["sample_count"]
+            .as_u64()
+            .expect("sample_count should be numeric")
+            >= 3
+    );
+}
+
+#[test]
+fn security_scorecard_training_supports_decade_nikkei_training_and_post_2025_10_holdout() {
+    // 2026-04-20 CST: Added because the user explicitly rejected the thin Nikkei baseline
+    // and approved a 10-year governed training slice with a post-2025-10 holdout check.
+    // Purpose: force the trainer to use materially denser decade-scale samples and expose holdout accuracy after the cutoff.
+    let runtime_db_path = create_test_runtime_db("security_scorecard_training_nikkei_decade");
+    let runtime_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have parent")
+        .join("scorecard_training_runtime");
+    let fixture_dir = create_training_fixture_dir("security_scorecard_training_nikkei_decade");
+    let nikkei_csv = fixture_dir.join("nikkei_decade.csv");
+
+    fs::write(
+        &nikkei_csv,
+        build_nikkei_decade_rows(3900, 16800.0).join("\n"),
+    )
+    .expect("nikkei decade csv should be written");
+    import_history_csv(&runtime_db_path, &nikkei_csv, "NK225.IDX");
+
+    let server = spawn_http_route_server(vec![
+        (
+            "/financials",
+            "HTTP/1.1 406 Not Acceptable",
+            "<html><body>financials unavailable for decade index fixture</body></html>",
+            "text/html",
+        ),
+        (
+            "/announcements",
+            "HTTP/1.1 200 OK",
+            r#"{"data":{"list":[]}}"#,
+            "application/json",
+        ),
+    ]);
+
+    let request = json!({
+        "tool": "security_scorecard_training",
+        "args": {
+            "created_at": "2026-04-20T20:00:00+08:00",
+            "training_runtime_root": runtime_root.to_string_lossy(),
+            "market_scope": "GLOBAL",
+            "instrument_scope": "INDEX",
+            "instrument_subscope": "nikkei_index",
+            "symbol_list": ["NK225.IDX"],
+            "market_symbol": "NK225.IDX",
+            "sector_symbol": "NK225.IDX",
+            "horizon_days": 10,
+            "target_head": "direction_head",
+            "train_range": "2016-04-20..2025-09-30",
+            "valid_range": "2025-10-01..2025-12-31",
+            "test_range": "2026-01-01..2026-04-20",
+            "feature_set_version": "security_feature_snapshot.v1",
+            "label_definition_version": "security_forward_outcome.v1"
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &[
+            (
+                "EXCEL_SKILL_EASTMONEY_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
+                "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+        ],
+    );
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    assert_eq!(
+        output["data"]["artifact"]["model_id"],
+        "global_index_nikkei_index_10d_direction_head"
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["train"]["sample_count"]
+            .as_u64()
+            .expect("train sample count should be numeric")
+            >= 60
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["sample_count"]
+            .as_u64()
+            .expect("sample_count should be numeric")
+            >= 70
+    );
+    assert_eq!(
+        output["data"]["metrics_summary_json"]["post_validation_holdout"]["cutoff_date"],
+        "2025-10-01"
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["post_validation_holdout"]["sample_count"]
+            .as_u64()
+            .expect("holdout sample count should be numeric")
+            >= 6
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["post_validation_holdout"]["accuracy"]
+            .as_f64()
+            .expect("holdout accuracy should be numeric")
+            >= 0.0
     );
 }
 
@@ -780,6 +1249,69 @@ fn build_trend_rows(
         let dynamic_low_floor = (start_close * 0.01).max(0.05) + offset as f64 * 0.001;
         let low = (open.min(next_close) - intraday_padding).max(dynamic_low_floor);
         let volume = 900_000 + offset as i64 * 8_000;
+        rows.push(format!(
+            "{},{open:.2},{high:.2},{low:.2},{next_close:.2},{next_close:.2},{volume}",
+            trade_date.format("%Y-%m-%d")
+        ));
+        close = next_close;
+    }
+
+    rows
+}
+
+fn build_nikkei_mixed_regime_rows(day_count: usize, start_close: f64) -> Vec<String> {
+    // 2026-04-20 CST: Added because Task 2 needs one deterministic Nikkei-like
+    // index fixture with both positive and negative future windows.
+    // Purpose: keep the red test focused on governed index training instead of random label scarcity.
+    let mut rows = vec!["trade_date,open,high,low,close,adj_close,volume".to_string()];
+    let start_date = NaiveDate::from_ymd_opt(2025, 1, 1).expect("seed date should be valid");
+    let mut close = start_close;
+
+    for offset in 0..day_count {
+        let trade_date = start_date + Duration::days(offset as i64);
+        let daily_drift = match offset {
+            0..=219 => -118.0,
+            _ => 136.0,
+        };
+        let next_close = (close + daily_drift).max(12000.0);
+        let open = close;
+        let high = open.max(next_close) + 48.0 + (offset % 5) as f64 * 3.0;
+        let low = open.min(next_close) - 52.0 - (offset % 7) as f64 * 2.0;
+        let volume = 1_200_000 + (offset % 9) as i64 * 35_000;
+        rows.push(format!(
+            "{},{open:.2},{high:.2},{low:.2},{next_close:.2},{next_close:.2},{volume}",
+            trade_date.format("%Y-%m-%d")
+        ));
+        close = next_close;
+    }
+
+    rows
+}
+
+fn build_nikkei_decade_rows(day_count: usize, start_close: f64) -> Vec<String> {
+    // 2026-04-20 CST: Added because the 10-year Nikkei contract needs one deterministic
+    // regime-switching fixture with enough density for monthly-like rolling sampling.
+    // Purpose: keep decade-scale sample growth and post-cutoff holdout checks reproducible in CI.
+    let mut rows = vec!["trade_date,open,high,low,close,adj_close,volume".to_string()];
+    let start_date = NaiveDate::from_ymd_opt(2015, 8, 8).expect("seed date should be valid");
+    let mut close = start_close;
+
+    for offset in 0..day_count {
+        let trade_date = start_date + Duration::days(offset as i64);
+        let phase = (offset / 63) % 6;
+        let daily_drift = match phase {
+            0 => 52.0,
+            1 => -41.0,
+            2 => 33.0,
+            3 => -56.0,
+            4 => 61.0,
+            _ => -29.0,
+        } + ((offset % 5) as f64 - 2.0) * 3.5;
+        let next_close = (close + daily_drift).max(9000.0);
+        let open = close;
+        let high = open.max(next_close) + 44.0 + (offset % 7) as f64 * 2.0;
+        let low = open.min(next_close) - 46.0 - (offset % 11) as f64 * 1.5;
+        let volume = 1_100_000 + (offset % 13) as i64 * 28_000;
         rows.push(format!(
             "{},{open:.2},{high:.2},{low:.2},{next_close:.2},{next_close:.2},{volume}",
             trade_date.format("%Y-%m-%d")

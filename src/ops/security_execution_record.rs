@@ -1250,7 +1250,12 @@ mod tests {
                     entry_mode: "starter".to_string(),
                     starter_position_pct: 0.08,
                     max_position_pct: 0.12,
+                    // 2026-04-20 CST: Added because SecurityPositionPlanDocument now requires
+                    // risk_budget_pct in the formal fixture shape.
+                    // Reason: keep the execution-record regression fixture aligned with the
+                    // updated position-plan contract and restore full test compilation.
                     entry_tranche_pct: 0.08,
+                    risk_budget_pct: 0.01,
                     add_tranche_pct: 0.04,
                     reduce_tranche_pct: 0.04,
                     max_tranche_count: 2,

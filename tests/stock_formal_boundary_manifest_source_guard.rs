@@ -118,6 +118,36 @@ fn stock_root_keeps_only_the_frozen_module_manifest() {
         "security_post_trade_review",
         "security_execution_record",
         "security_execution_journal",
+        // 2026-04-20 CST: Updated because the approved P10/P11 portfolio-core slice
+        // already landed these formal post-open/account-governance modules on the stock boundary.
+        // Reason: the current branch truth explicitly treats them as part of the active delivery line,
+        // so the manifest freeze gate must stop flagging them as accidental drift.
+        // Purpose: align the frozen expected public manifest with the checked-in approved boundary.
+        "security_approved_open_position_packet",
+        "security_account_objective_contract",
+        "security_portfolio_replacement_plan",
+        // 2026-04-20 CST: Updated because the approved P12 portfolio-core slice
+        // now lands the final governed allocation decision on the formal stock boundary.
+        // Reason: the current branch truth no longer stops at P11, so the manifest freeze
+        // must treat the new decision layer as an approved public module instead of drift.
+        // Purpose: align the frozen public stock manifest with the checked-in P12 boundary.
+        "security_portfolio_allocation_decision",
+        // 2026-04-20 CST: Updated because the approved next downstream step after
+        // P12 now lands a preview-only execution bridge on the formal stock boundary.
+        // Reason: the current branch truth includes this post-P12 consumer as a
+        // public stock tool, so the manifest freeze must treat it as approved surface.
+        // Purpose: align the frozen public stock manifest with the checked-in execution preview boundary.
+        "security_portfolio_execution_preview",
+        // 2026-04-20 CST: Updated because P13 now lands the first formal request
+        // bridge after the standardized preview document on the stock boundary.
+        // Reason: the current branch truth now includes request packaging as an
+        // approved public module, so the manifest freeze must stop flagging it as drift.
+        // Purpose: align the frozen public stock manifest with the checked-in P13 boundary.
+        "security_portfolio_execution_request_package",
+        "security_position_contract",
+        "security_per_position_evaluation",
+        "security_monitoring_evidence_package",
+        "security_capital_rebase",
         "security_account_open_position_snapshot",
         "stock_analysis_data_guard",
         "technical_consultation_basic",
@@ -143,6 +173,7 @@ fn stock_root_keeps_only_the_frozen_module_manifest() {
         "security_disclosure_history_backfill",
         "security_fundamental_history_live_backfill",
         "security_disclosure_history_live_backfill",
+        "security_corporate_action_backfill",
         "security_post_meeting_conclusion",
         "security_decision_package",
         "security_decision_verify_package",
@@ -190,6 +221,10 @@ fn stock_root_keeps_only_the_frozen_module_manifest() {
         "security_post_trade_review_assembler",
         "security_post_trade_review_policy",
         "security_legacy_committee_compat",
+        // 2026-04-20 CST: Updated because the current approved stock boundary now
+        // relies on one shared internal symbol-taxonomy helper across snapshot/runtime/training.
+        // Purpose: align the frozen internal manifest with the checked-in approved support set.
+        "security_symbol_taxonomy",
     ]
     .into_iter()
     .map(String::from)

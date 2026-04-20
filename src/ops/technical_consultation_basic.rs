@@ -110,6 +110,11 @@ pub struct TechnicalConsultationConclusion {
 pub struct TechnicalIndicatorSnapshot {
     pub close: f64,
     pub ema_10: f64,
+    // 2026-04-21 CST: Added because the approved mean-reversion redesign now bins
+    // price-vs-MA20 deviation directly for training and audit.
+    // Reason: downstream consumers need the shared 20-day mean instead of only a derived enum.
+    // Purpose: expose one stable MA20 baseline across snapshot, scorecard, and retraining flows.
+    pub sma_20: f64,
     pub sma_50: f64,
     pub sma_200: f64,
     pub adx_14: f64,
@@ -240,6 +245,11 @@ fn build_indicator_snapshot(
         TechnicalConsultationBasicError::IndicatorCalculation("缺少收盘价".to_string())
     })?;
     let ema_10 = ema_last(&closes, 10)?;
+    // 2026-04-21 CST: Added because the approved mean-reversion redesign replaces the older
+    // CCI bucket as the primary training view with direct price-vs-MA20 deviation bands.
+    // Reason: the 20-day mean must be computed once inside the shared indicator snapshot.
+    // Purpose: let downstream feature builders reuse one governed MA20 value.
+    let sma_20 = sma_last(&closes, 20)?;
     let sma_50 = sma_last(&closes, 50)?;
     let sma_200 = sma_last(&closes, 200)?;
     let (adx_14, plus_di_14, minus_di_14) = adx_snapshot(rows, 14)?;
@@ -284,6 +294,7 @@ fn build_indicator_snapshot(
     Ok(TechnicalIndicatorSnapshot {
         close,
         ema_10,
+        sma_20,
         sma_50,
         sma_200,
         adx_14,
@@ -3352,6 +3363,7 @@ mod tests {
         TechnicalIndicatorSnapshot {
             close: 100.0,
             ema_10: 99.0,
+            sma_20: 100.0,
             sma_50: 98.0,
             sma_200: 96.0,
             adx_14: 28.0,
