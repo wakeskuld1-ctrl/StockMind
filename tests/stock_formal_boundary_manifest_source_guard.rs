@@ -144,6 +144,18 @@ fn stock_root_keeps_only_the_frozen_module_manifest() {
         // approved public module, so the manifest freeze must stop flagging it as drift.
         // Purpose: align the frozen public stock manifest with the checked-in P13 boundary.
         "security_portfolio_execution_request_package",
+        // 2026-04-21 CST: Updated because P14 now lands the first formal request
+        // enrichment bridge after the governed P13 package on the stock boundary.
+        // Reason: the current branch truth now includes side-effect-free request
+        // enrichment as an approved public module before any later apply bridge.
+        // Purpose: align the frozen public stock manifest with the checked-in P14 boundary.
+        "security_portfolio_execution_request_enrichment",
+        // 2026-04-21 CST: Updated because Option A plus P15 now land the first
+        // governed apply bridge after the approved P14 enrichment contract.
+        // Reason: the current branch truth now includes the apply bridge as an
+        // approved public module on the formal stock boundary.
+        // Purpose: align the frozen public stock manifest with the checked-in P15 boundary.
+        "security_portfolio_execution_apply_bridge",
         "security_position_contract",
         "security_per_position_evaluation",
         "security_monitoring_evidence_package",
@@ -266,7 +278,8 @@ fn ops_root_keeps_only_stock_as_formal_boundary_in_split_repo() {
     let normalized = normalize_newlines(&source);
     let top_level_modules = declared_modules(&normalized, "pub mod ");
 
-    let expected_top_level_modules: BTreeSet<String> = ["stock"].into_iter().map(String::from).collect();
+    let expected_top_level_modules: BTreeSet<String> =
+        ["stock"].into_iter().map(String::from).collect();
 
     assert_eq!(
         top_level_modules, expected_top_level_modules,

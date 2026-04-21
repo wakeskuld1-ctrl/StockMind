@@ -147,6 +147,21 @@ pub mod security_portfolio_execution_preview;
 #[path = "security_portfolio_execution_request_package.rs"]
 pub mod security_portfolio_execution_request_package;
 
+// 2026-04-21 CST: Added because P14 now introduces one explicit enrichment
+// bridge downstream of the formal P13 request package and upstream of any apply stage.
+// Reason: the approved route keeps request enrichment separate from runtime execution facts.
+// Purpose: expose the portfolio execution request enrichment bridge on the formal stock boundary.
+#[path = "security_portfolio_execution_request_enrichment.rs"]
+pub mod security_portfolio_execution_request_enrichment;
+
+// 2026-04-21 CST: Added because P15 now introduces the first governed apply
+// bridge downstream of the formal P14 enrichment bundle.
+// Reason: the approved route reuses the existing execution-record mainline
+// instead of treating apply as implicit downstream glue.
+// Purpose: expose the portfolio execution apply bridge on the formal stock boundary.
+#[path = "security_portfolio_execution_apply_bridge.rs"]
+pub mod security_portfolio_execution_apply_bridge;
+
 // 2026-04-18 CST: Added because Task 2 now lands the only formal live
 // governance object between approved intake and active holdings.
 // Reason: the user fixed `PositionContract` as a new object that must stay

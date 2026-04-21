@@ -1,6 +1,6 @@
 mod common;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::common::run_cli_with_json;
 
@@ -59,28 +59,28 @@ fn security_portfolio_execution_preview_builds_preview_rows_from_governed_p12_ou
         "buy"
     );
     assert_eq!(
-        output["data"]["portfolio_execution_preview"]["preview_rows"][0]
-            ["execution_record_request_preview"]["account_id"],
+        output["data"]["portfolio_execution_preview"]["preview_rows"][0]["execution_record_request_preview"]
+            ["account_id"],
         "acct-1"
     );
     assert_eq!(
-        output["data"]["portfolio_execution_preview"]["preview_rows"][0]
-            ["execution_record_request_preview"]["decision_ref"],
+        output["data"]["portfolio_execution_preview"]["preview_rows"][0]["execution_record_request_preview"]
+            ["decision_ref"],
         "portfolio-allocation-decision:acct-1:2026-04-20T00:00:00+08:00"
     );
     assert_eq!(
-        output["data"]["portfolio_execution_preview"]["preview_rows"][0]
-            ["execution_record_request_preview"]["execution_action"],
+        output["data"]["portfolio_execution_preview"]["preview_rows"][0]["execution_record_request_preview"]
+            ["execution_action"],
         "buy"
     );
     assert_eq!(
-        output["data"]["portfolio_execution_preview"]["preview_rows"][0]
-            ["execution_record_request_preview"]["execution_status"],
+        output["data"]["portfolio_execution_preview"]["preview_rows"][0]["execution_record_request_preview"]
+            ["execution_status"],
         "preview_only"
     );
     assert_eq!(
-        output["data"]["portfolio_execution_preview"]["preview_rows"][0]
-            ["execution_record_request_preview"]["executed_gross_pct"],
+        output["data"]["portfolio_execution_preview"]["preview_rows"][0]["execution_record_request_preview"]
+            ["executed_gross_pct"],
         json!(0.08)
     );
     assert_eq!(
@@ -130,13 +130,13 @@ fn security_portfolio_execution_preview_keeps_hold_rows_explicit() {
         "hold"
     );
     assert_eq!(
-        output["data"]["portfolio_execution_preview"]["preview_rows"][1]
-            ["execution_record_request_preview"]["execution_action"],
+        output["data"]["portfolio_execution_preview"]["preview_rows"][1]["execution_record_request_preview"]
+            ["execution_action"],
         "hold"
     );
     assert_eq!(
-        output["data"]["portfolio_execution_preview"]["preview_rows"][1]
-            ["execution_record_request_preview"]["execution_status"],
+        output["data"]["portfolio_execution_preview"]["preview_rows"][1]["execution_record_request_preview"]
+            ["execution_status"],
         "preview_only"
     );
     assert_eq!(

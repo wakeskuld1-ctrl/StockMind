@@ -4,13 +4,13 @@ use serde_json::{Value, json};
 
 use crate::common::run_cli_with_json;
 
-// 2026-04-20 CST: Added because the new P13 request bridge must appear on the
-// public stock tool catalog before any downstream workflow can rely on it.
-// Reason: the approved route adds one formal request-package stage after the
-// preview bridge, not an internal-only helper.
-// Purpose: lock catalog visibility for the new P13 execution request bridge.
+// 2026-04-21 CST: Added because the new P14 enrichment bridge must appear on the
+// public stock tool catalog before any downstream apply-stage work can rely on it.
+// Reason: the approved route adds one formal request-enrichment stage after P13,
+// not an internal-only helper.
+// Purpose: lock catalog visibility for the new P14 execution request enrichment bridge.
 #[test]
-fn tool_catalog_includes_security_portfolio_execution_request_package() {
+fn tool_catalog_includes_security_portfolio_execution_request_enrichment() {
     let output = run_cli_with_json("");
 
     assert!(
@@ -18,17 +18,310 @@ fn tool_catalog_includes_security_portfolio_execution_request_package() {
             .as_array()
             .expect("tool catalog should be an array")
             .iter()
-            .any(|tool| tool == "security_portfolio_execution_request_package")
+            .any(|tool| tool == "security_portfolio_execution_request_enrichment")
     );
 }
 
-// 2026-04-20 CST: Added because P13 must prove that the governed preview
-// document can flow into a formal request package without becoming real execution.
-// Reason: the request bridge should continue the approved P10 -> P11 -> P12 ->
-// preview mainline instead of inventing a parallel request input path.
-// Purpose: lock the happy-path request-package contract on the CLI surface.
+// 2026-04-21 CST: Added because P14 must prove that the governed P13 request
+// package can advance into one richer request bundle without becoming execution fact.
+// Reason: the approved route enriches request rows for a later apply bridge while
+// preserving P13 lineage and explicit stage semantics.
+// Purpose: lock the happy-path enrichment contract on the CLI surface.
 #[test]
-fn security_portfolio_execution_request_package_builds_formal_requests_from_preview_output() {
+fn security_portfolio_execution_request_enrichment_builds_enriched_bundle_from_request_package() {
+    let portfolio_execution_request_package = build_request_package_document();
+    let request = json!({
+        "tool": "security_portfolio_execution_request_enrichment",
+        "args": {
+            "portfolio_execution_request_package": portfolio_execution_request_package,
+            "analysis_date": "2026-04-21",
+            "created_at": "2026-04-21T10:00:00+08:00"
+        }
+    });
+
+    let output = run_cli_with_json(&request.to_string());
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["document_type"],
+        "security_portfolio_execution_request_enrichment"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["account_id"],
+        "acct-1"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["portfolio_execution_request_package_ref"],
+        "portfolio-execution-request-package:acct-1:2026-04-20T17:00:00+08:00"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["portfolio_execution_preview_ref"],
+        "portfolio-execution-preview:acct-1:2026-04-20T16:00:00+08:00"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["portfolio_allocation_decision_ref"],
+        "portfolio-allocation-decision:acct-1:2026-04-20T00:00:00+08:00"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["readiness_status"],
+        "ready"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["ready_for_apply_count"],
+        3
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["non_executable_hold_count"],
+        0
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["blocked_enrichment_count"],
+        0
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["enriched_request_rows"][0]["request_status"],
+        "ready_request"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["enriched_request_rows"][0]["enrichment_status"],
+        "ready_for_apply"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["enriched_request_rows"][0]["analysis_date"],
+        "2026-04-21"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["enriched_request_rows"][0]["decision_ref"],
+        "portfolio-allocation-decision:acct-1:2026-04-20T00:00:00+08:00"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["enriched_request_rows"][0]["execution_action"],
+        "buy"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["enriched_request_rows"][0]["execution_status"],
+        "ready_for_apply"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["enriched_request_rows"][0]["executed_gross_pct"],
+        json!(0.08)
+    );
+    assert!(
+        output["data"]["portfolio_execution_request_enrichment"]["enriched_request_rows"][0]["execution_summary"]
+            .as_str()
+            .expect("execution_summary should exist")
+            .contains("ready for apply"),
+        "unexpected execution summary payload: {output}"
+    );
+
+    // 2026-04-21 CST: Added because Option A for P15 requires P14 to carry one
+    // explicit execution-apply context instead of forcing P15 to infer missing
+    // execution-request routing fields from hidden runtime lookups.
+    // Purpose: freeze the new P14 contract extension before the apply bridge lands.
+    let apply_context_row = find_enriched_row_by_symbol(
+        output["data"]["portfolio_execution_request_enrichment"]["enriched_request_rows"]
+            .as_array()
+            .expect("enriched_request_rows should be an array"),
+        "601916.SH",
+    );
+    assert_eq!(
+        apply_context_row["execution_apply_context"]["as_of_date"],
+        "2026-04-21"
+    );
+    assert_eq!(
+        apply_context_row["execution_apply_context"]["market_regime"],
+        "a_share"
+    );
+    assert_eq!(
+        apply_context_row["execution_apply_context"]["sector_template"],
+        "bank"
+    );
+    assert_eq!(
+        apply_context_row["execution_apply_context"]["market_symbol"],
+        "510300.SH"
+    );
+    assert_eq!(
+        apply_context_row["execution_apply_context"]["sector_symbol"],
+        "512800.SH"
+    );
+}
+
+// 2026-04-21 CST: Added because P14 must keep hold rows visible and explicitly
+// non-executable instead of promoting them into apply-ready candidates.
+// Reason: hold rows remain governance evidence even after request enrichment.
+// Purpose: freeze hold-row semantics on the P14 CLI surface.
+#[test]
+fn security_portfolio_execution_request_enrichment_keeps_hold_rows_non_executable() {
+    let mut portfolio_execution_request_package = build_request_package_document();
+    portfolio_execution_request_package["request_rows"][1]["request_action"] = json!("hold");
+    portfolio_execution_request_package["request_rows"][1]["requested_gross_pct"] = json!(0.0);
+    portfolio_execution_request_package["request_rows"][1]["request_status"] =
+        json!("non_executable_hold");
+    portfolio_execution_request_package["ready_request_count"] = json!(2);
+    portfolio_execution_request_package["hold_request_count"] = json!(1);
+
+    let request = json!({
+        "tool": "security_portfolio_execution_request_enrichment",
+        "args": {
+            "portfolio_execution_request_package": portfolio_execution_request_package,
+            "analysis_date": "2026-04-21",
+            "created_at": "2026-04-21T10:05:00+08:00"
+        }
+    });
+
+    let output = run_cli_with_json(&request.to_string());
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["enriched_request_rows"][1]["request_status"],
+        "non_executable_hold"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["enriched_request_rows"][1]["enrichment_status"],
+        "non_executable_hold"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["enriched_request_rows"][1]["execution_status"],
+        "non_executable_hold"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["enriched_request_rows"][1]["executed_gross_pct"],
+        json!(0.0)
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["ready_for_apply_count"],
+        2
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_request_enrichment"]["non_executable_hold_count"],
+        1
+    );
+}
+
+// 2026-04-21 CST: Added because P14 must reject malformed lineage refs instead
+// of silently repairing broken upstream package identity.
+// Reason: this bridge consumes the formal P13 package; it is not a fallback normalizer.
+// Purpose: freeze explicit rejection of invalid package lineage on the CLI surface.
+#[test]
+fn security_portfolio_execution_request_enrichment_rejects_missing_lineage_refs() {
+    let mut portfolio_execution_request_package = build_request_package_document();
+    portfolio_execution_request_package["portfolio_execution_preview_ref"] = json!("");
+
+    let request = json!({
+        "tool": "security_portfolio_execution_request_enrichment",
+        "args": {
+            "portfolio_execution_request_package": portfolio_execution_request_package,
+            "analysis_date": "2026-04-21",
+            "created_at": "2026-04-21T10:10:00+08:00"
+        }
+    });
+
+    let output = run_cli_with_json(&request.to_string());
+
+    assert_eq!(output["status"], "error");
+    assert!(
+        output["error"]
+            .as_str()
+            .expect("error text should exist")
+            .contains("preview ref"),
+        "unexpected error payload: {output}"
+    );
+}
+
+// 2026-04-21 CST: Added because P14 must reject request-action or request-status
+// drift instead of silently upgrading unsupported rows.
+// Reason: enrichment is bounded to the governed P13 request semantics only.
+// Purpose: freeze explicit rejection of unsupported request row semantics.
+#[test]
+fn security_portfolio_execution_request_enrichment_rejects_unsupported_request_status_drift() {
+    let mut portfolio_execution_request_package = build_request_package_document();
+    portfolio_execution_request_package["request_rows"][0]["request_status"] = json!("queued");
+
+    let request = json!({
+        "tool": "security_portfolio_execution_request_enrichment",
+        "args": {
+            "portfolio_execution_request_package": portfolio_execution_request_package,
+            "analysis_date": "2026-04-21",
+            "created_at": "2026-04-21T10:15:00+08:00"
+        }
+    });
+
+    let output = run_cli_with_json(&request.to_string());
+
+    assert_eq!(output["status"], "error");
+    assert!(
+        output["error"]
+            .as_str()
+            .expect("error text should exist")
+            .contains("request status"),
+        "unexpected error payload: {output}"
+    );
+}
+
+// 2026-04-21 CST: Added because P14 requires one explicit analysis date and must
+// fail fast when callers omit that governance anchor.
+// Reason: the first enrichment version is deterministic from P13 rows plus one required date.
+// Purpose: freeze blank-analysis-date rejection on the CLI surface.
+#[test]
+fn security_portfolio_execution_request_enrichment_rejects_blank_analysis_date() {
+    let portfolio_execution_request_package = build_request_package_document();
+    let request = json!({
+        "tool": "security_portfolio_execution_request_enrichment",
+        "args": {
+            "portfolio_execution_request_package": portfolio_execution_request_package,
+            "analysis_date": "",
+            "created_at": "2026-04-21T10:20:00+08:00"
+        }
+    });
+
+    let output = run_cli_with_json(&request.to_string());
+
+    assert_eq!(output["status"], "error");
+    assert!(
+        output["error"]
+            .as_str()
+            .expect("error text should exist")
+            .contains("analysis date"),
+        "unexpected error payload: {output}"
+    );
+}
+
+// 2026-04-21 CST: Added because P14 must reconcile row-derived counts with the
+// incoming package summary instead of trusting drifted upstream metadata.
+// Reason: summary mismatches are contract corruption and should block enrichment.
+// Purpose: freeze hard-fail behavior for package summary-count drift.
+#[test]
+fn security_portfolio_execution_request_enrichment_rejects_summary_count_drift() {
+    let mut portfolio_execution_request_package = build_request_package_document();
+    portfolio_execution_request_package["ready_request_count"] = json!(9);
+
+    let request = json!({
+        "tool": "security_portfolio_execution_request_enrichment",
+        "args": {
+            "portfolio_execution_request_package": portfolio_execution_request_package,
+            "analysis_date": "2026-04-21",
+            "created_at": "2026-04-21T10:25:00+08:00"
+        }
+    });
+
+    let output = run_cli_with_json(&request.to_string());
+
+    assert_eq!(output["status"], "error");
+    assert!(
+        output["error"]
+            .as_str()
+            .expect("error text should exist")
+            .contains("count mismatch"),
+        "unexpected error payload: {output}"
+    );
+}
+
+// 2026-04-21 CST: Added because P14 tests need one formal P13 request package
+// built from the same governed portfolio-core chain used by the existing mainline.
+// Reason: reusing the full chain keeps the new bridge anchored to approved upstream
+// contracts instead of fabricating request rows by hand.
+// Purpose: derive one formal request package document for P14 tests.
+fn build_request_package_document() -> Value {
     let portfolio_execution_preview = build_preview_document();
     let request = json!({
         "tool": "security_portfolio_execution_request_package",
@@ -40,132 +333,24 @@ fn security_portfolio_execution_request_package_builds_formal_requests_from_prev
 
     let output = run_cli_with_json(&request.to_string());
 
-    assert_eq!(output["status"], "ok", "output={output}");
-    assert_eq!(
-        output["data"]["portfolio_execution_request_package"]["document_type"],
-        "security_portfolio_execution_request_package"
-    );
-    assert_eq!(
-        output["data"]["portfolio_execution_request_package"]["account_id"],
-        "acct-1"
-    );
-    assert_eq!(
-        output["data"]["portfolio_execution_request_package"]["portfolio_execution_preview_ref"],
-        "portfolio-execution-preview:acct-1:2026-04-20T16:00:00+08:00"
-    );
-    assert_eq!(
-        output["data"]["portfolio_execution_request_package"]["portfolio_allocation_decision_ref"],
-        "portfolio-allocation-decision:acct-1:2026-04-20T00:00:00+08:00"
-    );
-    assert_eq!(
-        output["data"]["portfolio_execution_request_package"]["request_rows"][0]["request_action"],
-        "buy"
-    );
-    assert_eq!(
-        output["data"]["portfolio_execution_request_package"]["request_rows"][0]["request_status"],
-        "ready_request"
-    );
-    assert_eq!(
-        output["data"]["portfolio_execution_request_package"]["request_rows"][1]["request_action"],
-        "sell"
-    );
-    assert_eq!(
-        output["data"]["portfolio_execution_request_package"]["request_rows"][1]["request_status"],
-        "ready_request"
-    );
-    assert_eq!(
-        output["data"]["portfolio_execution_request_package"]["ready_request_count"],
-        3
-    );
-    assert_eq!(
-        output["data"]["portfolio_execution_request_package"]["hold_request_count"],
-        0
-    );
+    assert_eq!(output["status"], "ok", "p13 output={output}");
+    output["data"]["portfolio_execution_request_package"].clone()
 }
 
-// 2026-04-20 CST: Added because P13 must keep explicit hold rows visible
-// without promoting them into executable requests.
-// Reason: a hold row still belongs in the request package as traceability
-// evidence, but it must stay non-executable.
-// Purpose: freeze hold-row semantics on the P13 CLI surface.
-#[test]
-fn security_portfolio_execution_request_package_keeps_hold_rows_non_executable() {
-    let mut portfolio_execution_preview = build_preview_document();
-    portfolio_execution_preview["preview_rows"][1]["preview_action"] = json!("hold");
-    portfolio_execution_preview["preview_rows"][1]["weight_delta_pct"] = json!(0.0);
-    portfolio_execution_preview["preview_rows"][1]["preview_trade_gross_pct"] = json!(0.0);
-    portfolio_execution_preview["preview_rows"][1]["execution_record_request_preview"]["execution_action"] =
-        json!("hold");
-    portfolio_execution_preview["preview_rows"][1]["execution_record_request_preview"]["executed_gross_pct"] =
-        json!(0.0);
-    portfolio_execution_preview["sell_count"] = json!(0);
-    portfolio_execution_preview["hold_count"] = json!(1);
-    portfolio_execution_preview["buy_count"] = json!(2);
-
-    let request = json!({
-        "tool": "security_portfolio_execution_request_package",
-        "args": {
-            "portfolio_execution_preview": portfolio_execution_preview,
-            "created_at": "2026-04-20T17:05:00+08:00"
-        }
-    });
-
-    let output = run_cli_with_json(&request.to_string());
-
-    assert_eq!(output["status"], "ok", "output={output}");
-    assert_eq!(
-        output["data"]["portfolio_execution_request_package"]["request_rows"][1]["request_action"],
-        "hold"
-    );
-    assert_eq!(
-        output["data"]["portfolio_execution_request_package"]["request_rows"][1]["request_status"],
-        "non_executable_hold"
-    );
-    assert_eq!(
-        output["data"]["portfolio_execution_request_package"]["hold_request_count"],
-        1
-    );
-    assert_eq!(
-        output["data"]["portfolio_execution_request_package"]["ready_request_count"],
-        2
-    );
+// 2026-04-21 CST: Added because the new P14 apply-context assertions should
+// target one stable governed symbol instead of depending on array order.
+// Purpose: keep the red test deterministic while the upstream fixture chain stays reusable.
+fn find_enriched_row_by_symbol<'a>(rows: &'a [Value], symbol: &str) -> &'a Value {
+    rows.iter()
+        .find(|row| row["symbol"] == symbol)
+        .unwrap_or_else(|| panic!("missing enriched row for symbol {symbol}"))
 }
 
-// 2026-04-20 CST: Added because P13 must reject malformed preview lineage or
-// unsupported action drift instead of repairing upstream preview data.
-// Reason: this bridge is a consumer of the governed preview document, not a
-// fallback normalization layer.
-// Purpose: freeze explicit rejection of invalid preview input.
-#[test]
-fn security_portfolio_execution_request_package_rejects_malformed_preview_document() {
-    let mut portfolio_execution_preview = build_preview_document();
-    portfolio_execution_preview["portfolio_allocation_decision_ref"] = json!("");
-
-    let request = json!({
-        "tool": "security_portfolio_execution_request_package",
-        "args": {
-            "portfolio_execution_preview": portfolio_execution_preview,
-            "created_at": "2026-04-20T17:10:00+08:00"
-        }
-    });
-
-    let output = run_cli_with_json(&request.to_string());
-
-    assert_eq!(output["status"], "error");
-    assert!(
-        output["error"]
-            .as_str()
-            .expect("error text should exist")
-            .contains("allocation decision ref"),
-        "unexpected error payload: {output}"
-    );
-}
-
-// 2026-04-20 CST: Added because P13 happy-path tests need one governed preview
-// document built from the same formal chain that already closes at post-P12 preview.
-// Reason: reusing the chain fixture keeps the new request bridge anchored to the
-// current approved mainline instead of a fabricated request-only sample.
-// Purpose: derive one formal preview document for P13 tests.
+// 2026-04-21 CST: Added because the P14 tests still need one governed preview
+// document before the P13 request-package bridge can be exercised.
+// Reason: the enrichment bridge must remain downstream of preview and P13 rather
+// than consuming a handcrafted request-only sample.
+// Purpose: derive one formal preview document for P14 tests.
 fn build_preview_document() -> Value {
     let portfolio_allocation_decision = build_p12_document();
     let request = json!({
@@ -182,10 +367,9 @@ fn build_preview_document() -> Value {
     output["data"]["portfolio_execution_preview"].clone()
 }
 
-// 2026-04-20 CST: Added because the P13 tests still need one governed P12
-// allocation decision document before the preview bridge can be exercised.
-// Reason: the request bridge must remain downstream of P12 rather than consuming
-// handcrafted rows that bypass portfolio-core contracts.
+// 2026-04-21 CST: Added because the P14 tests still need one governed P12
+// allocation decision document before the downstream bridges can be exercised.
+// Reason: the enrichment bridge must stay downstream of P10 -> P11 -> P12.
 // Purpose: derive one formal P12 document from the existing portfolio-core fixtures.
 fn build_p12_document() -> Value {
     let (account_objective_contract, portfolio_candidate_set, portfolio_replacement_plan) =

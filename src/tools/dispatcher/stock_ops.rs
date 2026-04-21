@@ -24,6 +24,12 @@ use crate::ops::stock::stock_execution_and_position_management::security_portfol
 use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_request_package::{
     SecurityPortfolioExecutionRequestPackageRequest, security_portfolio_execution_request_package,
 };
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_request_enrichment::{
+    SecurityPortfolioExecutionRequestEnrichmentRequest, security_portfolio_execution_request_enrichment,
+};
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_apply_bridge::{
+    SecurityPortfolioExecutionApplyBridgeRequest, security_portfolio_execution_apply_bridge,
+};
 use crate::ops::stock::stock_execution_and_position_management::security_position_contract::{
     SecurityPositionContractRequest, build_security_position_contract,
 };
@@ -768,14 +774,50 @@ pub(super) fn dispatch_security_portfolio_execution_preview(args: Value) -> Tool
 // and routes the new P13 contract explicitly.
 // Purpose: route portfolio execution request-package requests through the official dispatcher.
 pub(super) fn dispatch_security_portfolio_execution_request_package(args: Value) -> ToolResponse {
-    let request = match serde_json::from_value::<SecurityPortfolioExecutionRequestPackageRequest>(
-        args,
-    ) {
+    let request =
+        match serde_json::from_value::<SecurityPortfolioExecutionRequestPackageRequest>(args) {
+            Ok(request) => request,
+            Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+        };
+
+    match security_portfolio_execution_request_package(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-21 CST: Added because P14 now introduces one formal request-enrichment
+// bridge after the governed P13 request package on the public stock dispatcher.
+// Reason: the RED test should only turn green once the stock bus recognizes
+// and routes the new P14 contract explicitly.
+// Purpose: route portfolio execution request-enrichment requests through the official dispatcher.
+pub(super) fn dispatch_security_portfolio_execution_request_enrichment(
+    args: Value,
+) -> ToolResponse {
+    let request =
+        match serde_json::from_value::<SecurityPortfolioExecutionRequestEnrichmentRequest>(args) {
+            Ok(request) => request,
+            Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+        };
+
+    match security_portfolio_execution_request_enrichment(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-21 CST: Added because P15 now exposes one governed apply bridge on
+// the public stock dispatcher.
+// Reason: the approved route must remain callable through the official stock bus.
+// Purpose: route portfolio execution apply requests through the official dispatcher.
+pub(super) fn dispatch_security_portfolio_execution_apply_bridge(args: Value) -> ToolResponse {
+    let request = match serde_json::from_value::<SecurityPortfolioExecutionApplyBridgeRequest>(args)
+    {
         Ok(request) => request,
         Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
     };
 
-    match security_portfolio_execution_request_package(&request) {
+    match security_portfolio_execution_apply_bridge(&request) {
         Ok(result) => ToolResponse::ok_serialized(&result),
         Err(error) => ToolResponse::error(error.to_string()),
     }

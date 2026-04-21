@@ -57,6 +57,14 @@ pub const STOCK_TOOL_NAMES: &[&str] = &[
     // package stage after the preview-only bridge.
     // Purpose: make the request bridge discoverable without implying real execution facts.
     "security_portfolio_execution_request_package",
+    // 2026-04-21 CST: Added because P14 now introduces one formal enrichment
+    // stage after the request package and before any later execution apply bridge.
+    // Purpose: make the enrichment bridge discoverable without implying runtime execution.
+    "security_portfolio_execution_request_enrichment",
+    // 2026-04-21 CST: Added because P15 now introduces one governed apply
+    // bridge that writes runtime facts through the existing execution-record path.
+    // Purpose: make the apply bridge discoverable on the public stock catalog.
+    "security_portfolio_execution_apply_bridge",
     "security_record_position_adjustment",
     // post_trade: review and conclusion after the in-trade loop.
     "security_post_trade_review",

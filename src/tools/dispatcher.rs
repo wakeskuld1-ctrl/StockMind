@@ -102,6 +102,12 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         "security_portfolio_execution_request_package" => {
             stock_ops::dispatch_security_portfolio_execution_request_package(request.args)
         }
+        "security_portfolio_execution_request_enrichment" => {
+            stock_ops::dispatch_security_portfolio_execution_request_enrichment(request.args)
+        }
+        "security_portfolio_execution_apply_bridge" => {
+            stock_ops::dispatch_security_portfolio_execution_apply_bridge(request.args)
+        }
         "security_position_contract" => {
             stock_ops::dispatch_security_position_contract(request.args)
         }

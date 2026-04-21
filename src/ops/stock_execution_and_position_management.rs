@@ -42,8 +42,20 @@ pub use super::security_portfolio_execution_preview;
 // position surface without implying runtime execution facts.
 // Purpose: make the P13 request bridge reachable through the grouped gateway.
 pub use super::security_portfolio_execution_request_package;
+// 2026-04-21 CST: Added because P14 now extends the explicit post-P12 path
+// from request packaging into one enrichment bridge while still stopping short of execution.
+// Reason: grouping it here keeps the enrichment bridge on the same execution-and-
+// position surface without implying runtime execution facts.
+// Purpose: make the P14 request enrichment bridge reachable through the grouped gateway.
 pub use super::security_execution_journal;
 pub use super::security_execution_record;
+pub use super::security_portfolio_execution_request_enrichment;
+// 2026-04-21 CST: Added because P15 now extends the explicit post-P12 path
+// from request enrichment into one governed apply bridge.
+// Reason: grouping it here keeps the new apply stage on the same execution-and-
+// position surface while reusing the existing execution-record runtime path.
+// Purpose: make the P15 apply bridge reachable through the grouped gateway.
+pub use super::security_portfolio_execution_apply_bridge;
 // 2026-04-18 CST: Added because Task 2 introduces the live contract object that
 // stands between approved intake and later active-position state.
 // Reason: the user approved keeping the live contract on the post-open data path.

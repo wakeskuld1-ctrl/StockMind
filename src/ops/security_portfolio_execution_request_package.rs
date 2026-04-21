@@ -129,7 +129,11 @@ pub fn build_security_portfolio_execution_request_package(
     validate_portfolio_execution_preview(&request.portfolio_execution_preview)?;
 
     let generated_at = normalize_created_at(&request.created_at);
-    let account_id = request.portfolio_execution_preview.account_id.trim().to_string();
+    let account_id = request
+        .portfolio_execution_preview
+        .account_id
+        .trim()
+        .to_string();
     let portfolio_execution_preview_ref = request
         .portfolio_execution_preview
         .portfolio_execution_preview_id
@@ -232,9 +236,7 @@ fn validate_portfolio_execution_preview(
     }
 
     if document.portfolio_allocation_decision_ref.trim().is_empty() {
-        return Err(
-            SecurityPortfolioExecutionRequestPackageError::MissingAllocationDecisionRef,
-        );
+        return Err(SecurityPortfolioExecutionRequestPackageError::MissingAllocationDecisionRef);
     }
 
     let mut observed_buy_count = 0usize;
@@ -285,9 +287,11 @@ fn validate_portfolio_execution_preview(
 
         let expected_gross_pct = round_pct(row.weight_delta_pct.abs());
         if !approx_eq(expected_gross_pct, row.preview_trade_gross_pct) {
-            return Err(SecurityPortfolioExecutionRequestPackageError::PreviewGrossMismatch(
-                row.symbol.clone(),
-            ));
+            return Err(
+                SecurityPortfolioExecutionRequestPackageError::PreviewGrossMismatch(
+                    row.symbol.clone(),
+                ),
+            );
         }
     }
 

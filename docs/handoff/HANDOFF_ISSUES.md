@@ -8,14 +8,13 @@ Use it for unresolved gaps, not for finished work history.
 
 ## Current Blocking Issues
 
-- `tests/security_chair_resolution_builder_unit.rs` is now the first recorded blocking regression on this branch
-- observed on 2026-04-20 during `$env:CARGO_TARGET_DIR='E:\SM\target_p12_enhanced'; cargo test -- --nocapture`
-- failure shape: contextual fixture deserialization now errors with `missing field 'sma_20'`
-- current assessment: this blocker appears unrelated to the new post-P12 preview/request-bridge slice and should be handled as a separate chair-fixture repair task, not folded silently into P13 delivery
+- none in the latest verified branch state
+- historical note: older `security_scorecard_training_nikkei_futures_*` artifacts still exist under runtime outputs and may still reflect the pre-futures 19-feature contract, but they do not describe the latest working-tree truth
 
 ## Current Active Gaps
 
-- post-P12 preview and P13 request-bridge delivery are focused-green, but branch-health truth must now carry the unrelated chair-fixture blocker until it is fixed and re-verified
+- `P15` apply-bridge delivery is now green at both the focused-test layer and the latest repository-wide `cargo test --no-fail-fast` rerun for this exact working tree
+- `P15` remains intentionally bounded to governed runtime execution recording through `security_execution_record`; it is not broker execution and does not introduce cross-symbol rollback
 
 ## Optional Enhancements
 

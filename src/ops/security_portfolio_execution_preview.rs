@@ -240,10 +240,9 @@ fn validate_portfolio_allocation_decision(
     );
     let observed_total = round_pct(total_target_weight_pct + document.residual_cash_weight_pct);
     if !approx_eq(observed_total, 1.0) {
-        return Err(SecurityPortfolioExecutionPreviewError::AllocationClosureMismatch(
-            observed_total,
-            1.0,
-        ));
+        return Err(
+            SecurityPortfolioExecutionPreviewError::AllocationClosureMismatch(observed_total, 1.0),
+        );
     }
 
     for row in &document.final_target_allocations {
