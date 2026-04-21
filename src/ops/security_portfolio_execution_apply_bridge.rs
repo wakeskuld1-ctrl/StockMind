@@ -88,6 +88,28 @@ pub struct SecurityPortfolioExecutionApplyBridgeResult {
     pub portfolio_execution_apply_bridge: SecurityPortfolioExecutionApplyBridgeDocument,
 }
 
+// 2026-04-21 CST: Added because the approved P15 route now requires one
+// bundle-complete apply plan to exist before the first runtime write starts.
+// Reason: a later malformed ready row must not allow an earlier ready row to
+// write execution facts before the bridge rejects the bundle.
+// Purpose: stage one prevalidated ready-row request for the post-preflight apply phase.
+#[derive(Debug, Clone)]
+struct PreparedReadyApplyRow {
+    row: SecurityPortfolioEnrichedExecutionRequestRow,
+    execution_request: SecurityExecutionRecordRequest,
+}
+
+// 2026-04-21 CST: Added because P15 must preserve row order while still
+// separating the preflight stage from the runtime write stage.
+// Reason: the bridge needs one typed prepared row list so it can validate
+// every ready row before any execution_record call occurs.
+// Purpose: hold the fully prepared bundle used by the apply executor.
+#[derive(Debug, Clone)]
+enum PreparedApplyRow {
+    Ready(PreparedReadyApplyRow),
+    Hold(SecurityPortfolioEnrichedExecutionRequestRow),
+}
+
 // 2026-04-21 CST: Added because P15 must reject malformed enrichment bundles
 // before the first runtime write starts.
 // Reason: the approved route requires bundle-level preflight instead of hidden repair.
@@ -151,12 +173,148 @@ pub fn build_security_portfolio_execution_apply_bridge(
     request: &SecurityPortfolioExecutionApplyBridgeRequest,
 ) -> Result<SecurityPortfolioExecutionApplyBridgeResult, SecurityPortfolioExecutionApplyBridgeError>
 {
-    validate_portfolio_execution_request_enrichment(
-        &request.portfolio_execution_request_enrichment,
-    )?;
-
     let generated_at = normalize_created_at(&request.created_at);
     let document = &request.portfolio_execution_request_enrichment;
+    // 2026-04-21 CST: Extended because the approved P15 fix now converts
+    // preflight failures into rejected documents instead of dispatcher errors.
+    // Reason: design requires one apply artifact even when validation fails before writes.
+    // Purpose: run the full preflight stage and short-circuit into a rejected document on failure.
+    let store = match StockHistoryStore::workspace_default() {
+        Ok(store) => store,
+        Err(error) => {
+            return Ok(build_rejected_apply_bridge_result(
+                document,
+                &generated_at,
+                error.to_string(),
+            ));
+        }
+    };
+    let prepared_rows =
+        match preflight_portfolio_execution_request_enrichment(document, &generated_at, &store) {
+            Ok(prepared_rows) => prepared_rows,
+            Err(error) => {
+                return Ok(build_rejected_apply_bridge_result(
+                    document,
+                    &generated_at,
+                    error.to_string(),
+                ));
+            }
+        };
+
+    Ok(execute_prepared_apply_rows(
+        document,
+        &generated_at,
+        prepared_rows,
+    ))
+}
+
+// 2026-04-21 CST: Added because the approved P15 route now distinguishes
+// preflight rejection from post-write runtime failures.
+// Reason: design requires `rejected` to be an apply document, not a dispatcher error.
+// Purpose: emit one formal rejected apply artifact when preflight fails before any write.
+fn build_rejected_apply_bridge_result(
+    document: &SecurityPortfolioExecutionRequestEnrichmentDocument,
+    generated_at: &str,
+    blocker: String,
+) -> SecurityPortfolioExecutionApplyBridgeResult {
+    let account_id = document.account_id.trim().to_string();
+    let enrichment_ref = document.portfolio_execution_request_enrichment_id.clone();
+    let request_package_ref = document.portfolio_execution_request_package_ref.clone();
+    let preview_ref = document.portfolio_execution_preview_ref.clone();
+    let decision_ref = document.portfolio_allocation_decision_ref.clone();
+
+    SecurityPortfolioExecutionApplyBridgeResult {
+        portfolio_execution_apply_bridge: SecurityPortfolioExecutionApplyBridgeDocument {
+            portfolio_execution_apply_bridge_id: format!(
+                "portfolio-execution-apply-bridge:{}:{}",
+                account_id, generated_at
+            ),
+            contract_version: SECURITY_PORTFOLIO_EXECUTION_APPLY_BRIDGE_VERSION.to_string(),
+            document_type: SECURITY_PORTFOLIO_EXECUTION_APPLY_BRIDGE_DOCUMENT_TYPE.to_string(),
+            generated_at: generated_at.to_string(),
+            analysis_date: document.analysis_date.clone(),
+            account_id,
+            portfolio_execution_request_enrichment_ref: enrichment_ref.clone(),
+            portfolio_execution_request_package_ref: request_package_ref,
+            portfolio_execution_preview_ref: preview_ref,
+            portfolio_allocation_decision_ref: decision_ref,
+            apply_rows: Vec::new(),
+            applied_count: 0,
+            skipped_hold_count: 0,
+            failed_apply_count: 0,
+            apply_status: "rejected".to_string(),
+            blockers: vec![blocker],
+            non_atomicity_notice: "this phase does not introduce cross-symbol rollback semantics"
+                .to_string(),
+            apply_rationale: vec![
+                format!(
+                    "execution apply bridge consumed enrichment bundle {}",
+                    enrichment_ref
+                ),
+                "execution apply bridge rejects malformed bundles before the first runtime write"
+                    .to_string(),
+                "execution apply bridge does not introduce cross-symbol rollback semantics"
+                    .to_string(),
+            ],
+            apply_summary: format!(
+                "account {} rejected enrichment {} before the first runtime write",
+                document.account_id.trim(),
+                enrichment_ref
+            ),
+        },
+    }
+}
+
+// 2026-04-21 CST: Added because P15 now needs one explicit bundle-prepared
+// row list before the runtime write loop starts.
+// Reason: building every ready-row execution request up front is the minimal
+// way to prove preflight completed before the first side effect.
+// Purpose: validate and stage one apply plan for the post-preflight executor.
+fn preflight_portfolio_execution_request_enrichment(
+    document: &SecurityPortfolioExecutionRequestEnrichmentDocument,
+    generated_at: &str,
+    store: &StockHistoryStore,
+) -> Result<Vec<PreparedApplyRow>, SecurityPortfolioExecutionApplyBridgeError> {
+    validate_portfolio_execution_request_enrichment(document)?;
+
+    let mut prepared_rows = Vec::with_capacity(document.enriched_request_rows.len());
+    for row in &document.enriched_request_rows {
+        match row.enrichment_status.as_str() {
+            "ready_for_apply" => {
+                let execution_request =
+                    build_execution_record_request(row, document, generated_at, store)?;
+                prepared_rows.push(PreparedApplyRow::Ready(PreparedReadyApplyRow {
+                    row: row.clone(),
+                    execution_request,
+                }));
+            }
+            "non_executable_hold" => {
+                prepared_rows.push(PreparedApplyRow::Hold(row.clone()));
+            }
+            other => {
+                return Err(
+                    SecurityPortfolioExecutionApplyBridgeError::UnsupportedEnrichmentStatus(
+                        row.symbol.clone(),
+                        other.to_string(),
+                    ),
+                );
+            }
+        }
+    }
+
+    Ok(prepared_rows)
+}
+
+// 2026-04-21 CST: Added because P15 now treats the apply loop as a distinct
+// phase that may start only after the bundle preflight has fully passed.
+// Reason: separating execution from preflight keeps the design traceable and
+// prevents later edits from reintroducing hidden validation during writes.
+// Purpose: execute the prepared bundle and emit the final apply document.
+fn execute_prepared_apply_rows(
+    document: &SecurityPortfolioExecutionRequestEnrichmentDocument,
+    generated_at: &str,
+    prepared_rows: Vec<PreparedApplyRow>,
+) -> SecurityPortfolioExecutionApplyBridgeResult {
     let account_id = document.account_id.trim().to_string();
     let enrichment_ref = document.portfolio_execution_request_enrichment_id.clone();
     let request_package_ref = document.portfolio_execution_request_package_ref.clone();
@@ -166,24 +324,19 @@ pub fn build_security_portfolio_execution_apply_bridge(
     let mut applied_count = 0usize;
     let mut skipped_hold_count = 0usize;
     let mut failed_apply_count = 0usize;
-    let mut apply_rows = Vec::with_capacity(document.enriched_request_rows.len());
-    let store = StockHistoryStore::workspace_default().map_err(|error| {
-        SecurityPortfolioExecutionApplyBridgeError::MissingAsOfDate(error.to_string())
-    })?;
+    let mut apply_rows = Vec::with_capacity(prepared_rows.len());
 
-    for row in &document.enriched_request_rows {
-        match row.enrichment_status.as_str() {
-            "ready_for_apply" => {
-                let execution_request =
-                    build_execution_record_request(row, document, &generated_at, &store)?;
-                match security_execution_record(&execution_request) {
+    for prepared_row in prepared_rows {
+        match prepared_row {
+            PreparedApplyRow::Ready(prepared_ready_row) => {
+                match security_execution_record(&prepared_ready_row.execution_request) {
                     Ok(result) => {
                         applied_count += 1;
                         apply_rows.push(SecurityPortfolioExecutionApplyRow {
-                            symbol: row.symbol.clone(),
-                            request_action: row.request_action.clone(),
-                            requested_gross_pct: row.requested_gross_pct,
-                            enrichment_status: row.enrichment_status.clone(),
+                            symbol: prepared_ready_row.row.symbol.clone(),
+                            request_action: prepared_ready_row.row.request_action.clone(),
+                            requested_gross_pct: prepared_ready_row.row.requested_gross_pct,
+                            enrichment_status: prepared_ready_row.row.enrichment_status.clone(),
                             apply_status: "applied".to_string(),
                             execution_record_ref: Some(result.execution_record.execution_record_id),
                             execution_journal_ref: Some(
@@ -191,29 +344,29 @@ pub fn build_security_portfolio_execution_apply_bridge(
                             ),
                             apply_summary: format!(
                                 "apply bridge created execution record for {} from enrichment {}",
-                                row.symbol, enrichment_ref
+                                prepared_ready_row.row.symbol, enrichment_ref
                             ),
                         });
                     }
                     Err(error) => {
                         failed_apply_count += 1;
                         apply_rows.push(SecurityPortfolioExecutionApplyRow {
-                            symbol: row.symbol.clone(),
-                            request_action: row.request_action.clone(),
-                            requested_gross_pct: row.requested_gross_pct,
-                            enrichment_status: row.enrichment_status.clone(),
+                            symbol: prepared_ready_row.row.symbol.clone(),
+                            request_action: prepared_ready_row.row.request_action.clone(),
+                            requested_gross_pct: prepared_ready_row.row.requested_gross_pct,
+                            enrichment_status: prepared_ready_row.row.enrichment_status.clone(),
                             apply_status: "apply_failed".to_string(),
                             execution_record_ref: None,
                             execution_journal_ref: None,
                             apply_summary: format!(
                                 "apply bridge failed on {}: {}",
-                                row.symbol, error
+                                prepared_ready_row.row.symbol, error
                             ),
                         });
                     }
                 }
             }
-            "non_executable_hold" => {
+            PreparedApplyRow::Hold(row) => {
                 skipped_hold_count += 1;
                 apply_rows.push(SecurityPortfolioExecutionApplyRow {
                     symbol: row.symbol.clone(),
@@ -229,21 +382,11 @@ pub fn build_security_portfolio_execution_apply_bridge(
                     ),
                 });
             }
-            other => {
-                return Err(
-                    SecurityPortfolioExecutionApplyBridgeError::UnsupportedEnrichmentStatus(
-                        row.symbol.clone(),
-                        other.to_string(),
-                    ),
-                );
-            }
         }
     }
 
-    let apply_status = if failed_apply_count > 0 && applied_count > 0 {
+    let apply_status = if failed_apply_count > 0 {
         "partial_apply_failure"
-    } else if failed_apply_count > 0 {
-        "failed"
     } else if skipped_hold_count > 0 {
         "applied_with_skipped_holds"
     } else {
@@ -268,7 +411,7 @@ pub fn build_security_portfolio_execution_apply_bridge(
         "execution apply bridge does not introduce cross-symbol rollback semantics".to_string(),
     ];
 
-    Ok(SecurityPortfolioExecutionApplyBridgeResult {
+    SecurityPortfolioExecutionApplyBridgeResult {
         portfolio_execution_apply_bridge: SecurityPortfolioExecutionApplyBridgeDocument {
             portfolio_execution_apply_bridge_id: format!(
                 "portfolio-execution-apply-bridge:{}:{}",
@@ -276,7 +419,7 @@ pub fn build_security_portfolio_execution_apply_bridge(
             ),
             contract_version: SECURITY_PORTFOLIO_EXECUTION_APPLY_BRIDGE_VERSION.to_string(),
             document_type: SECURITY_PORTFOLIO_EXECUTION_APPLY_BRIDGE_DOCUMENT_TYPE.to_string(),
-            generated_at,
+            generated_at: generated_at.to_string(),
             analysis_date: document.analysis_date.clone(),
             account_id: account_id.clone(),
             portfolio_execution_request_enrichment_ref: enrichment_ref.clone(),
@@ -297,7 +440,7 @@ pub fn build_security_portfolio_execution_apply_bridge(
                 account_id, applied_count, skipped_hold_count, failed_apply_count, enrichment_ref
             ),
         },
-    })
+    }
 }
 
 // 2026-04-21 CST: Added because P15 must perform one full bundle-level preflight

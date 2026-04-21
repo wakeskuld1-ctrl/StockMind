@@ -1,6 +1,7 @@
 mod common;
 
 use chrono::{Duration, NaiveDate};
+use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::fs;
 use std::io::{Read, Write};
@@ -218,14 +219,19 @@ fn security_portfolio_execution_apply_bridge_rejects_blocked_bundle_before_apply
         &security_envs(&server),
     );
 
-    assert_eq!(output["status"], "error");
+    assert_eq!(output["status"], "ok", "output={output}");
     assert!(
-        output["error"]
-            .as_str()
-            .expect("error text should exist")
-            .contains("blocked"),
-        "unexpected error payload: {output}"
+        output["data"]["portfolio_execution_apply_bridge"]["apply_status"] == "rejected",
+        "unexpected rejection payload: {output}"
     );
+    assert!(
+        output["data"]["portfolio_execution_apply_bridge"]["blockers"][0]
+            .as_str()
+            .expect("blocker text should exist")
+            .contains("blocked"),
+        "unexpected blocker payload: {output}"
+    );
+    assert_eq!(execution_record_count(&runtime_db_path), 0);
 }
 
 // 2026-04-21 CST: Added because P15 must reconcile apply summary counts with
@@ -257,14 +263,180 @@ fn security_portfolio_execution_apply_bridge_rejects_summary_count_drift() {
         &security_envs(&server),
     );
 
-    assert_eq!(output["status"], "error");
+    assert_eq!(output["status"], "ok", "output={output}");
     assert!(
-        output["error"]
-            .as_str()
-            .expect("error text should exist")
-            .contains("count mismatch"),
-        "unexpected error payload: {output}"
+        output["data"]["portfolio_execution_apply_bridge"]["apply_status"] == "rejected",
+        "unexpected rejection payload: {output}"
     );
+    assert!(
+        output["data"]["portfolio_execution_apply_bridge"]["blockers"][0]
+            .as_str()
+            .expect("blocker text should exist")
+            .contains("count mismatch"),
+        "unexpected blocker payload: {output}"
+    );
+    assert_eq!(execution_record_count(&runtime_db_path), 0);
+}
+
+// 2026-04-21 CST: Added because the approved P15 route requires one deep
+// bundle preflight before the first runtime-backed execution write starts.
+// Reason: a malformed later row must still stop earlier ready rows from
+// writing execution facts, otherwise the bridge violates the design contract.
+// Purpose: prove that missing apply context is rejected before any ready row writes.
+#[test]
+fn security_portfolio_execution_apply_bridge_rejects_missing_as_of_date_before_first_write() {
+    let runtime_db_path =
+        create_test_runtime_db("security_portfolio_execution_apply_bridge_missing_as_of_date");
+    let server = prepare_security_environment(
+        &runtime_db_path,
+        "security_portfolio_execution_apply_bridge_missing_as_of_date",
+    );
+    let mut portfolio_execution_request_enrichment =
+        build_enrichment_document(&runtime_db_path, &security_envs(&server));
+    let malformed_row = find_mut_row_by_symbol(
+        portfolio_execution_request_enrichment["enriched_request_rows"]
+            .as_array_mut()
+            .expect("enriched_request_rows should be mutable array"),
+        "300750.SZ",
+    );
+    malformed_row["execution_apply_context"]["as_of_date"] = json!("");
+
+    let request = json!({
+        "tool": "security_portfolio_execution_apply_bridge",
+        "args": {
+            "portfolio_execution_request_enrichment": portfolio_execution_request_enrichment,
+            "created_at": "2026-04-21T12:20:00+08:00"
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &security_envs(&server),
+    );
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    assert_eq!(
+        output["data"]["portfolio_execution_apply_bridge"]["apply_status"],
+        "rejected"
+    );
+    assert!(
+        output["data"]["portfolio_execution_apply_bridge"]["blockers"][0]
+            .as_str()
+            .expect("blocker text should exist")
+            .contains("as_of_date"),
+        "unexpected blocker payload: {output}"
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_apply_bridge"]["applied_count"],
+        0
+    );
+    assert_eq!(
+        output["data"]["portfolio_execution_apply_bridge"]["apply_rows"]
+            .as_array()
+            .expect("apply_rows should be an array")
+            .len(),
+        0
+    );
+    assert_eq!(execution_record_count(&runtime_db_path), 0);
+}
+
+// 2026-04-21 CST: Added because the approved P15 route must reject malformed
+// enrichment lineage as a first-class preflight boundary.
+// Reason: a missing upstream ref breaks the governed chain and must not degrade
+// into a late runtime write attempt or a generic dispatcher error.
+// Purpose: freeze rejected-document semantics for lineage corruption.
+#[test]
+fn security_portfolio_execution_apply_bridge_rejects_malformed_enrichment_lineage() {
+    let runtime_db_path =
+        create_test_runtime_db("security_portfolio_execution_apply_bridge_bad_lineage");
+    let server = prepare_security_environment(
+        &runtime_db_path,
+        "security_portfolio_execution_apply_bridge_bad_lineage",
+    );
+    let mut portfolio_execution_request_enrichment =
+        build_enrichment_document(&runtime_db_path, &security_envs(&server));
+    portfolio_execution_request_enrichment["portfolio_execution_preview_ref"] = json!("");
+
+    let request = json!({
+        "tool": "security_portfolio_execution_apply_bridge",
+        "args": {
+            "portfolio_execution_request_enrichment": portfolio_execution_request_enrichment,
+            "created_at": "2026-04-21T12:25:00+08:00"
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &security_envs(&server),
+    );
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    assert_eq!(
+        output["data"]["portfolio_execution_apply_bridge"]["apply_status"],
+        "rejected"
+    );
+    assert!(
+        output["data"]["portfolio_execution_apply_bridge"]["blockers"][0]
+            .as_str()
+            .expect("blocker text should exist")
+            .contains("preview ref is missing"),
+        "unexpected blocker payload: {output}"
+    );
+    assert_eq!(execution_record_count(&runtime_db_path), 0);
+}
+
+// 2026-04-21 CST: Added because the design acceptance list requires explicit
+// rejection coverage for unsupported enrichment status drift.
+// Reason: callers must not rely on hidden repairs when a P14 row carries a
+// status outside the approved P15 status set.
+// Purpose: freeze rejected-document semantics for unsupported enrichment status drift.
+#[test]
+fn security_portfolio_execution_apply_bridge_rejects_unsupported_enrichment_status_drift() {
+    let runtime_db_path =
+        create_test_runtime_db("security_portfolio_execution_apply_bridge_status_drift");
+    let server = prepare_security_environment(
+        &runtime_db_path,
+        "security_portfolio_execution_apply_bridge_status_drift",
+    );
+    let mut portfolio_execution_request_enrichment =
+        build_enrichment_document(&runtime_db_path, &security_envs(&server));
+    let drifted_row = find_mut_row_by_symbol(
+        portfolio_execution_request_enrichment["enriched_request_rows"]
+            .as_array_mut()
+            .expect("enriched_request_rows should be mutable array"),
+        "601916.SH",
+    );
+    drifted_row["enrichment_status"] = json!("ready_for_manual_review");
+
+    let request = json!({
+        "tool": "security_portfolio_execution_apply_bridge",
+        "args": {
+            "portfolio_execution_request_enrichment": portfolio_execution_request_enrichment,
+            "created_at": "2026-04-21T12:30:00+08:00"
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &security_envs(&server),
+    );
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    assert_eq!(
+        output["data"]["portfolio_execution_apply_bridge"]["apply_status"],
+        "rejected"
+    );
+    assert!(
+        output["data"]["portfolio_execution_apply_bridge"]["blockers"][0]
+            .as_str()
+            .expect("blocker text should exist")
+            .contains("unsupported enrichment status"),
+        "unexpected blocker payload: {output}"
+    );
+    assert_eq!(execution_record_count(&runtime_db_path), 0);
 }
 
 // 2026-04-21 CST: Added because the new P15 tests need one runtime-isolated
@@ -858,6 +1030,29 @@ fn security_envs(server: &str) -> Vec<(&'static str, String)> {
             format!("{server}/announcements"),
         ),
     ]
+}
+
+// 2026-04-21 CST: Added because the P15 rejection-path tests must verify that
+// deep preflight failures happen before the first execution record write.
+// Reason: apply_status alone cannot prove whether a shallow implementation wrote
+// an earlier ready row before rejecting a later malformed row.
+// Purpose: count persisted execution records in the governed runtime store.
+fn execution_record_count(runtime_db_path: &Path) -> usize {
+    let execution_db_path = runtime_db_path
+        .parent()
+        .expect("runtime db path should have parent")
+        .join("security_execution.db");
+    if !execution_db_path.exists() {
+        return 0;
+    }
+
+    let connection =
+        Connection::open(&execution_db_path).expect("execution db should open for verification");
+    connection
+        .query_row("SELECT COUNT(*) FROM security_execution_records", [], |row| {
+            row.get::<_, usize>(0)
+        })
+        .expect("execution record count should load")
 }
 
 fn find_apply_row_by_symbol<'a>(rows: &'a [Value], symbol: &str) -> &'a Value {
