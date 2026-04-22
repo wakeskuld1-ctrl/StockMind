@@ -4,7 +4,7 @@
 
 **Goal:** Build a governed `P15` bridge that consumes the formal `P14` enrichment bundle and applies only ready rows into runtime-backed execution records through the existing `security_execution_record` mainline.
 
-**Architecture:** Add one new public stock tool that consumes only `SecurityPortfolioExecutionRequestEnrichmentDocument`, performs one bundle-level preflight validation pass, applies `ready_for_apply` rows through `security_execution_record`, and emits one batch-level apply document with explicit row statuses and runtime refs. Keep the bridge `P14 -> execution_record` only: no broker routing, no approval workflow, no hidden rollback semantics, and no bypass of the existing execution runtime path.
+**Architecture:** Add one new public stock tool that consumes only `SecurityPortfolioExecutionRequestEnrichmentDocument`, performs one bundle-level preflight validation pass, applies `ready_for_apply` rows through `security_execution_record`, and emits one batch-level apply document with explicit row statuses and runtime refs, including `apply_status = rejected` when preflight fails before the first runtime write. Keep the bridge `P14 -> execution_record` only: no broker routing, no approval workflow, no hidden rollback semantics, and no bypass of the existing execution runtime path.
 
 **Tech Stack:** Rust, serde, stock CLI contract tests, Cargo test, existing stock runtime stores.
 
@@ -49,15 +49,32 @@
 - mutate one upstream enriched row into `blocked`
 - call the new `P15` tool
 - assert:
-  - the tool fails with an explicit validation error before apply starts
+  - status is `ok`
+  - `apply_status = rejected`
+  - the rejection blocker is explicit
   - no runtime-backed execution record is created
 
 **Step 5: Write one malformed-summary rejection test**
 
 - mutate one bundle-level summary count so it no longer matches the enriched rows
-- assert the tool fails with an explicit validation error
+- assert:
+  - status is `ok`
+  - `apply_status = rejected`
+  - the rejection blocker is explicit
+  - no runtime-backed execution record is created
 
-**Step 6: Run RED**
+**Step 6: Write missing rejection-boundary tests**
+
+- mutate one required lineage ref so the enrichment bundle becomes malformed
+- mutate one row into an unsupported `enrichment_status`
+- mutate one later ready row so `execution_apply_context.as_of_date` is blank
+- assert for each case:
+  - status is `ok`
+  - `apply_status = rejected`
+  - the rejection blocker is explicit
+  - no runtime-backed execution record is created
+
+**Step 7: Run RED**
 
 Run:
 

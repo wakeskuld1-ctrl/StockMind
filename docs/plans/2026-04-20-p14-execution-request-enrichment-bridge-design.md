@@ -186,10 +186,26 @@
   - `execution_summary`
   - `enrichment_status`
   - `enrichment_summary`
+  - `execution_apply_context`
+- `SecurityExecutionApplyContext`
+  - `as_of_date`
+  - `market_symbol`
+  - `sector_symbol`
+  - `market_profile`
+  - `sector_profile`
+  - `market_regime`
+  - `sector_template`
 - enrichment rules:
   - `ready_request` rows become `ready_for_apply`
   - `non_executable_hold` rows stay `non_executable_hold`
   - `blocked_request` rows remain blocked and must not be upgraded
+  - `ready_for_apply` rows must carry one minimum `execution_apply_context` sufficient for the later `P15` bridge to build a legal `SecurityExecutionRecordRequest` without introducing a second hidden context resolver
+  - when governed taxonomy coverage is missing for an A-share symbol, `P14` may supply one bounded default execution anchor:
+    - `market_symbol = 510300.SH`
+    - `market_profile = a_share_core_v1`
+    - `sector_symbol` falls back to the same market anchor when no narrower routed sector exists
+    - `sector_profile` falls back to the same market profile when no narrower routed sector profile exists
+  - this fallback is temporary, execution-context-only, and must not be widened into generic silent repair for non-A-share symbols or unrelated contract drift
 
 ## Rule Layer Separation
 
@@ -207,6 +223,7 @@
   - `P14` must keep hold rows visible and non-executable
 - Temporary assumptions:
   - the first `P14` version may derive enrichment fields deterministically from `P13` rows plus one required `analysis_date`
+  - the first `P14` version may also derive one minimum `execution_apply_context` from governed routing metadata plus the approved `analysis_date`, including the bounded A-share fallback defined above when taxonomy coverage is absent
   - richer broker fields, approval refs, and actual trade-result fields remain deferred
 
 ## Rejection Boundary
