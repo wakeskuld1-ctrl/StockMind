@@ -258,6 +258,36 @@ This rule is mandatory unless the user explicitly approves a business-flow chang
 That document currently fixes these non-negotiable points:
 
 - it is the single source of truth for the whole post-open pure-data flow
+
+## 11. Legacy Committee Application Surface
+
+The legacy committee application surface must stay explicitly labeled as a compatibility-only path.
+
+Required rule:
+
+- keep grouped-gateway and dispatcher exposure for the legacy committee route clearly marked as `legacy`
+- do not silently normalize legacy committee naming into the main public stock surface
+- before widening, renaming, or retiring that route, review `docs/plans/design/2026-04-16-security-legacy-committee-governance-design.md`
+
+Reason:
+
+- the remaining legacy export is intentionally controlled and should not look like a new mainline entry point
+- application-surface drift makes later retirement harder even when lower-level dependency guards still pass
+
+## 12. Legacy Committee Public Discovery
+
+The legacy committee public discovery must stay closed on the stock tool catalog.
+
+Required rule:
+
+- public stock discovery must promote the formal mainline `security_committee_vote -> security_chair_resolution`
+- legacy `security_decision_committee` may remain callable only through compatibility dispatcher retention
+- do not re-add legacy committee or seat-agent routes to the public catalog without an explicit approved closeout change
+
+Reason:
+
+- frozen compatibility routes should not look like first-class public tools
+- keeping public discovery aligned with the formal mainline reduces later migration and retirement cost
 - the companion JSON graph is the machine-readable source of truth for the same flow and the current file/method ownership map
 - the system entry is `Approved Open Position Packet`, not a raw stock candidate
 - the managed object is an account-level position, not an isolated stock
@@ -372,6 +402,103 @@ For every future development task in this project:
 4. record the task in `.trae/CHANGELOG_TASK.md`
 
 If code changes are made without checking and updating the relevant files, the task should be treated as incomplete from a handoff/governance perspective even if the code itself works.
+
+## 10.3 Security Decision Committee Legacy Freeze
+
+The legacy `security_decision_committee` route is a frozen compatibility zone in this repository.
+
+Do not continue new governance behavior on that legacy file.
+
+New governance work must continue on the formal mainline:
+
+- `security_committee_vote`
+- `security_chair_resolution`
+
+Before editing `src/ops/security_decision_committee.rs`, review these files first:
+
+- `README.md`
+- `docs/plans/design/2026-04-16-security-legacy-committee-governance-design.md`
+- this handoff file
+
+The freeze is also enforced by `tests/security_decision_committee_legacy_freeze_source_guard.rs`.
+
+Only compatibility projection or explicitly approved retirement work may change the legacy committee file.
+
+## 10.4 Stock Formal Boundary Manifest Gate
+
+The `Stock Formal Boundary Manifest Gate` is an active source guard for the standalone stock repo.
+
+Required rule:
+
+- treat `src/ops/stock.rs` as the frozen formal public module manifest
+- treat `src/ops/mod.rs` as stock-only and do not reopen a second top-level ops boundary
+- before changing the manifest, review:
+  - `docs/plans/design/2026-04-16-stock-formal-boundary-manifest-gate-design.md`
+  - `docs/plans/design/2026-04-15-stock-foundation-split-manifest-design.md`
+  - `docs/plans/design/2026-04-15-stock-foundation-boundary-gate-v2-design.md`
+  - this handoff file
+
+Reason:
+
+- the merged mainline now contains approved lifecycle and portfolio-core modules that must be frozen deliberately
+- the guard exists to stop future sessions from adding or removing stock-boundary modules without synchronizing docs and manifest truth
+
+Verification note:
+
+- `tests/stock_formal_boundary_manifest_source_guard.rs` is the executable guard for this rule
+- when approved modules are restored or newly landed, update the design docs and frozen manifest in the same change
+
+## 10.5 Stock/Foundation Split Manifest Frozen
+
+The `Stock/Foundation Split Manifest Frozen` rule remains active for this standalone stock repo.
+
+Required rule:
+
+- keep the shared/runtime hold zone at the existing shared paths under `src/tools/*` and `src/runtime/*`
+- do not reclassify shared stock tooling or governed runtime stores as a revived foundation boundary
+- before changing these ownership lines, review:
+  - `docs/plans/design/2026-04-15-stock-foundation-split-manifest-design.md`
+  - this handoff file
+
+Reason:
+
+- the split repo intentionally keeps one stock-only formal ops boundary while leaving shared tool/runtime infrastructure in place
+- later sessions must not silently move files across those ownership lines without updating the documented split baseline
+
+## 10.6 Stock/Foundation Boundary Gate V2
+
+The `Stock/Foundation Boundary Gate V2` rule remains active for stock entry shells, grouped shells, and the shared/runtime hold zone.
+
+Required rule:
+
+- keep stock entry and grouped shell files as thin stock-only orchestration surfaces
+- do not let those shell layers reach foundation analytics, generic shared-tool routing, or runtime persistence directly
+- before changing this boundary, review:
+  - `docs/plans/design/2026-04-15-stock-foundation-boundary-gate-v2-design.md`
+  - `docs/plans/design/2026-04-15-stock-foundation-split-manifest-design.md`
+  - this handoff file
+
+Reason:
+
+- the current standalone architecture depends on `pub use super::...` shell layers staying thin rather than becoming new cross-block dependency points
+- the guard exists to block boundary drift in both code and handoff memory, not just in source files
+
+## 10.7 Stock/Foundation Decoupling Baseline
+
+The `Stock/Foundation Decoupling Baseline` remains active for the standalone stock repo.
+
+Required rule:
+
+- keep generic foundation analytics outside stock business modules and the stock dispatcher bus
+- treat the current repo as a stock-only workspace that may keep shared/runtime support without reopening a generic analytics dependency line
+- before changing this split, review:
+  - `docs/plans/design/2026-04-15-stock-foundation-decoupling-design.md`
+  - this handoff file
+
+Reason:
+
+- the approved split baseline is that stock business flow does not currently require generic foundation analytics ownership
+- the guard exists to stop later sessions from silently reintroducing foundation coupling that would block future workspace separation
 
 ## 11. Non-Negotiable Handoff Memory
 

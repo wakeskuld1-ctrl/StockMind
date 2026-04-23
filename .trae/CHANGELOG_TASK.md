@@ -238,6 +238,53 @@
 
 ### Risks
 - [ ] `A2` remains `production_readiness = blocked` even though `valid_accuracy` and walk-forward accuracy improved.
+
+## 2026-04-21
+### Modified
+- Narrowed the Nikkei `future_*_bucket_head` training contract in `D:\SM\src\ops\security_scorecard_training.rs` behind a request-aware Scheme B selector.
+- Removed these direct training features for Nikkei 10D future-bucket heads:
+  - `market_regime`
+  - `risk_note_count`
+  - `breakout_signal`
+  - `momentum_signal`
+  - `mfi_14`
+- Replaced broad breakout / momentum shortcuts with narrower technical fields:
+  - added `breakout_direction`
+  - added `breakout_stage`
+  - kept `flow_status`
+  - kept `volume_ratio_20`
+  - kept `macd_histogram`
+  - kept `rsi_14`
+- Added and passed focused contract coverage in `D:\SM\tests\security_scorecard_training_cli.rs` and the training unit tests for the Nikkei future-bucket selector.
+- Re-ran the governed Nikkei 10D future-bucket training heads and persisted new Scheme B artifacts, diagnostics, registries, and replay comparison files under `D:\SM\.stockmind_runtime\`.
+
+### Why
+- The prior Nikkei 10D future-bucket runs let broad regime / event-density / slow structural tags dominate the decision path, which matched the user's diagnosis that several top-level features were leading the model away from the real oversold-to-10D technical path.
+- Scheme B was approved to keep the existing label contract unchanged while narrowing the technical feature contract so replay and attribution would become more interpretable.
+- This round was intended to test whether removing the obviously biasing upper-layer fields could materially improve the Nikkei 10D training and oversold replay behavior.
+
+### Remaining
+- [ ] Decide whether the next Nikkei iteration should continue to compress the feature family further around a smaller `Q/V/T` subset, or whether the `future_down` head itself should stop being the main decision head.
+- [ ] Review whether `flow_status` should also be downgraded or rebuilt, because it is currently retained but shows near-zero variance on this slice.
+- [ ] If we continue on Nikkei, define the next approved contract before implementation so the next training round does not drift into ad hoc feature expansion again.
+
+### Risks
+- [ ] Scheme B successfully narrowed the feature contract, but training quality did not improve overall: `future_down` walk-forward accuracy fell from `0.7273` to `0.6061`, `future_neutral` stayed `0.0`, and `future_up` fell from `0.4242` to `0.3030`.
+- [ ] All three Scheme B heads remain `production_readiness = blocked`, mainly because the slice is still extremely sparse (`46` samples, `35` features).
+- [ ] The mainline oversold replay improved only slightly on the same `23` oversold dates: `future_down_bullish_transform` Pearson moved from `-0.0314` to `0.0592`, and threshold hit rate at `0.5` moved from `0.4706` to `0.5294`, which is directionally better but still weak.
+- [ ] This round verified focused tests and the saved training artifacts, but it did not rerun a broader repository test suite.
+
+### Closed
+- Scheme B feature selector is now active for Nikkei `future_{down,neutral,up}_bucket_head`.
+- The approved label path remains unchanged as `T0 oversold -> T+10 grouped future bucket`.
+- Focused verification passed:
+  - `cargo test training_feature_configs_for_nikkei_future_bucket_heads_apply_scheme_b_contract -- --nocapture`
+  - `cargo test --test security_scorecard_training_cli security_scorecard_training_supports_future_neutral_bucket_head_for_oversold_nikkei_starts -- --nocapture`
+- New governed outputs were confirmed in:
+  - `D:\SM\.stockmind_runtime\nikkei_future_down_training_scheme_b\`
+  - `D:\SM\.stockmind_runtime\nikkei_future_neutral_training_scheme_b\`
+  - `D:\SM\.stockmind_runtime\nikkei_future_up_training_scheme_b\`
+  - `D:\SM\.stockmind_runtime\analysis\nikkei_future_down_scheme_b_replay_oversold_2026_01_01_to_2026_04_20.json`
 - [ ] The child-pool OOT test split collapsed into a one-sided label regime with `test positive_rate = 0.0`, so `test_accuracy = 0.0250` cannot support production sign-off.
 - [ ] `A1` is still contaminated by incomplete governed-family coverage for the newly added 30 banks, so the parent result should be retrained after the next补数 round before drawing a long-term conclusion.
 
@@ -1959,3 +2006,324 @@
 - [ ] The original working tree at `D:\SM` still contains unrelated dirty changes that remain outside this upload.
 ### Closed
 - The Git delivery boundary is now explicitly frozen as code/tests/handoff only, with `.stockmind_runtime` database payloads excluded from versioned upload.
+- Added the new `P14` CLI contract test file `D:\SM\tests\security_portfolio_execution_request_enrichment_cli.rs`.
+- Added the new bridge implementation `D:\SM\src\ops\security_portfolio_execution_request_enrichment.rs`.
+- Wired the new public tool `security_portfolio_execution_request_enrichment` through:
+  `D:\SM\src\ops\stock.rs`,
+  `D:\SM\src\ops\stock_execution_and_position_management.rs`,
+  `D:\SM\src\tools\catalog.rs`,
+  `D:\SM\src\tools\dispatcher.rs`,
+  `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+- Restored the minimum compatibility surface needed to keep the current branch compiling while landing `P14`:
+  `security_investment_manager_entry` and `security_committee_decision_package` re-exports in `D:\SM\src\ops\stock.rs`,
+  `predict_numeric_head_value` compatibility alias in `D:\SM\src\ops\security_scorecard.rs`,
+  and `empty_fundamental_metrics` / `finalize_fundamental_metrics` exposure in `D:\SM\src\ops\security_analysis_fullstack.rs`.
+- Synced the approved governance and handoff records in
+  `D:\SM\docs\governance\contract_registry.md`,
+  `D:\SM\docs\governance\decision_log.md`,
+  `D:\SM\docs\handoff\CURRENT_STATUS.md`,
+  and `D:\SM\docs\handoff\HANDOFF_ISSUES.md`.
+### Why
+- The approved `P14` design freezes the next step as an execution-request enrichment bridge only: it must consume the formal `P13` request package, produce an execution-record-aligned enrichment bundle, and stop before any real apply or runtime write-back.
+- The branch also needed a small set of compatibility fixes so the new `P14` RED/GREEN loop could land without widening the scope into unrelated execution or governance rework.
+### Remaining
+- [ ] The later apply bridge that turns enriched requests into real execution facts is still a separate future phase and must not be folded back into `P14`.
+- [ ] The unrelated test issue in `D:\SM\tests\security_chair_resolution_builder_unit.rs` (`missing field 'sma_20'`) is still outside this delivery slice and remains to be handled separately.
+- [ ] The root log file `D:\SM\CHANGELOG_TASK.MD` still has encoding problems, so this task journal update was recorded only in `.trae/CHANGELOG_TASK.md`.
+### Risks
+- [ ] Downstream callers could still misuse the `P14` enriched bundle as if it were a real execution fact; the semantic boundary must stay explicit until the future apply bridge exists.
+- [ ] The workspace remains intentionally dirty with many unrelated runtime artifacts and parallel edits, so this entry does not imply that the repository as a whole is review-clean.
+### Closed
+- Verified `cargo test --test security_portfolio_execution_request_enrichment_cli -- --nocapture` passed with `4 passed; 0 failed`.
+- Verified `cargo test --test security_portfolio_execution_request_package_cli -- --nocapture` passed with `4 passed; 0 failed`.
+- Verified `cargo test --test security_portfolio_execution_preview_cli -- --nocapture` passed with `4 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p12_enhanced'; cargo test --test security_account_objective_contract_cli --test security_portfolio_replacement_plan_cli --test security_portfolio_allocation_decision_cli -- --nocapture` passed with `25 passed; 0 failed`.
+- Verified the implemented `P14` boundary matches the approved contract: consume only `SecurityPortfolioExecutionRequestPackageDocument`, preserve hold semantics, hard-fail malformed lineage/count/date inputs, and avoid calling `security_execution_record` or writing runtime state.
+## 2026-04-20
+### Modified
+- Added the new `P15` CLI contract test file `D:\SM\tests\security_portfolio_execution_apply_cli.rs`.
+- Added the new governed apply bridge implementation `D:\SM\src\ops\security_portfolio_execution_apply.rs`.
+- Wired the new public tool `security_portfolio_execution_apply` through:
+  `D:\SM\src\ops\stock.rs`,
+  `D:\SM\src\ops\stock_execution_and_position_management.rs`,
+  `D:\SM\src\tools\catalog.rs`,
+  `D:\SM\src\tools\dispatcher.rs`,
+  `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+- Synced the approved governance and handoff records in
+  `D:\SM\docs\governance\contract_registry.md`,
+  `D:\SM\docs\governance\decision_log.md`,
+  `D:\SM\docs\handoff\CURRENT_STATUS.md`,
+  and `D:\SM\docs\handoff\HANDOFF_ISSUES.md`.
+### Why
+- The approved `P15` design freezes the next step as a governed apply bridge only: it must consume the formal `P14` enrichment bundle, execute only `ready_for_apply` rows through a bounded internal adapter, and return one auditable batch-level apply document.
+- This route keeps the thick `security_execution_record` compatibility shell behind one internal adapter instead of leaking it as the new public downstream contract.
+### Remaining
+- [ ] The current `P15` direct adapter is intentionally heuristic: it derives minimum execution-record inputs from enrichment rows plus local history and symbol routing, so broker-fill replay and order-ledger exactness remain future work.
+- [ ] The unrelated test issue in `D:\SM\tests\security_chair_resolution_builder_unit.rs` (`missing field 'sma_20'`) is still outside this delivery slice and remains to be handled separately.
+- [ ] The root log file `D:\SM\CHANGELOG_TASK.MD` still has encoding problems, so this task journal update was recorded only in `.trae/CHANGELOG_TASK.md`.
+### Risks
+- [ ] Downstream callers could still over-read the first `P15` apply result as a broker-exact execution ledger; the current contract only guarantees governed ready-row application with explicit partial-success semantics.
+- [ ] The workspace remains intentionally dirty with many unrelated runtime artifacts and parallel edits, so this entry does not imply that the repository as a whole is review-clean.
+### Closed
+- Verified the `P15` RED test failed for the expected reason before implementation: `unsupported tool: security_portfolio_execution_apply`.
+- Verified `cargo test --test security_portfolio_execution_apply_cli -- --nocapture` passed with `5 passed; 0 failed`.
+- Verified `cargo test --test security_portfolio_execution_request_enrichment_cli -- --nocapture` passed with `4 passed; 0 failed`.
+- Verified `cargo test --test security_portfolio_execution_request_package_cli -- --nocapture` passed with `4 passed; 0 failed`.
+- Verified `cargo test --test security_portfolio_execution_preview_cli -- --nocapture` passed with `4 passed; 0 failed`.
+- Verified `cargo test --test security_execution_record_cli -- --nocapture` passed with `5 passed; 0 failed`.
+- Verified the implemented `P15` boundary matches the approved contract: consume only `SecurityPortfolioExecutionRequestEnrichmentDocument`, execute only governed `ready_for_apply` rows, preserve explicit hold and blocked skips, hard-fail malformed enrichment input before execution, and surface `applied` / `partial_success` / `failed` outcomes without exposing `SecurityExecutionRecordRequest` as the public request shell.
+## 2026-04-20
+### Modified
+- Updated the pure builder fixture in `D:\SM\tests\security_chair_resolution_builder_unit.rs` so its local `TechnicalConsultationBasicResult` payload matches the current formal technical-analysis contract.
+- Added the missing fixture fields required by the current schema:
+  `trend_direction_strength`,
+  `volume_confirmation_direction`,
+  `momentum_continuation_signal`,
+  `volatility_regime_signal`,
+  `indicator_snapshot.sma_20`,
+  `indicator_snapshot.volume_ratio_3_vs_20`,
+  `indicator_snapshot.volume_ratio_5_vs_20`,
+  `indicator_snapshot.obv_slope_5d`.
+- Refreshed branch-health notes in
+  `D:\SM\docs\handoff\CURRENT_STATUS.md`
+  and `D:\SM\docs\handoff\HANDOFF_ISSUES.md`
+  after the original chair-fixture blocker cleared and a new first blocking regression surfaced.
+### Why
+- The failing `security_chair_resolution_builder_unit` suite was not exposing a chair-arbitration logic bug; it was failing earlier because its hand-written technical fixture had drifted behind the live `TechnicalConsultationBasicResult` / `TechnicalIndicatorSnapshot` contract.
+- Repairing the fixture keeps the builder tests focused on chair behavior while preserving the stricter production contract instead of weakening serde requirements globally.
+### Remaining
+- [ ] The newly exposed first blocking regression is now `D:\SM\tests\post_open_position_data_flow_guard.rs`, which expects the formal stock boundary to include `security_adjustment_input_package`.
+- [ ] The root log file `D:\SM\CHANGELOG_TASK.MD` still has encoding problems, so this task journal update was recorded only in `.trae/CHANGELOG_TASK.md`.
+- [ ] The workspace remains intentionally dirty with many unrelated runtime artifacts and parallel edits, so this fix does not imply repository-wide review cleanliness.
+### Risks
+- [ ] This fix intentionally updates only the pure builder fixture; if other hand-written fixtures still lag behind the technical-analysis contract, similar schema drift can reappear elsewhere.
+- [ ] The new first blocker is a post-open boundary/source-guard failure, so full-regression green is still not claimed.
+### Closed
+- Verified RED with `$env:CARGO_TARGET_DIR='D:\SM\target_chair_fixture_red'; cargo test --test security_chair_resolution_builder_unit -- --nocapture`, which failed on `missing field 'sma_20'`.
+- Verified GREEN with `$env:CARGO_TARGET_DIR='D:\SM\target_chair_fixture_green'; cargo test --test security_chair_resolution_builder_unit -- --nocapture`, which passed with `4 passed; 0 failed`.
+- Verified the original broader regression moved forward with `$env:CARGO_TARGET_DIR='D:\SM\target_chair_regression_verify'; cargo test -- --nocapture`: the chair fixture no longer blocks, and the next first failure is now `post_open_position_data_flow_guard` expecting `security_adjustment_input_package`.
+## 2026-04-20
+### Modified
+- Restored the formal public route for `D:\SM\src\ops\security_adjustment_input_package.rs` across:
+  `D:\SM\src\ops\stock.rs`,
+  `D:\SM\src\ops\stock_execution_and_position_management.rs`,
+  `D:\SM\src\tools\catalog.rs`,
+  `D:\SM\src\tools\dispatcher.rs`,
+  and `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+- Added the minimum local adapter helper inside `D:\SM\src\ops\security_adjustment_input_package.rs` so the post-open package tool can preview downstream execution-record-aligned requests without widening the public `security_execution_record` surface.
+- Updated `D:\SM\docs\governance\contract_registry.md`, `D:\SM\docs\handoff\CURRENT_STATUS.md`, and `D:\SM\docs\handoff\HANDOFF_ISSUES.md` so branch-health records now reflect the restored post-open boundary and the newly exposed next blocker.
+### Why
+- The current branch already carried the `security_adjustment_input_package` implementation, but its public stock-bus exposure had drifted out of the catalog / dispatcher / grouping surface, so the formal post-open route was missing even though the tool logic still existed.
+- Restoring the boundary with one local adapter helper was the smallest governed fix that recovered the public contract without leaking `security_execution_record` as a wider downstream request shell.
+- Once that boundary blocker cleared, branch-health truth needed to move forward to the next real first failure instead of continuing to report a solved issue.
+### Remaining
+- [ ] The current repository-wide first blocker is now `D:\SM\tests\security_analysis_fullstack_cli.rs`, where `security_analysis_fullstack_aggregates_technical_fundamental_and_disclosures` returns `Null` for one field that the test still asserts as `0.92`.
+- [ ] The root log file `D:\SM\CHANGELOG_TASK.MD` still has encoding problems, so this task journal update was recorded only in `.trae/CHANGELOG_TASK.md`.
+- [ ] The workspace remains intentionally dirty with many unrelated runtime artifacts and parallel edits, so this entry does not imply repository-wide review cleanliness.
+### Risks
+- [ ] The restored `security_adjustment_input_package` route is intentionally package/preview-only; downstream callers could still misuse it as if it performed real execution or persistence unless the contract note remains visible.
+- [ ] The newly exposed `security_analysis_fullstack_cli` failure may come from provider-contract drift, fixture drift, or serializer field loss; root-cause investigation is still required before any fix.
+### Closed
+- Verified `security_adjustment_input_package` RED-to-GREEN recovery through `$env:CARGO_TARGET_DIR='D:\SM\target_adjustment_input_green'; cargo test --test security_adjustment_input_package_cli -- --nocapture`, which passed with `6 passed; 0 failed`.
+- Verified `post_open_position_data_flow_guard` through `$env:CARGO_TARGET_DIR='D:\SM\target_adjustment_input_verify'; cargo test --test post_open_position_data_flow_guard -- --nocapture`, which passed with `2 passed; 0 failed`.
+- Verified broader regression progress with `$env:CARGO_TARGET_DIR='D:\SM\target_adjustment_input_verify2'; cargo test -- --nocapture`: the post-open boundary no longer blocks, and the next first failure is now `security_analysis_fullstack_cli` with `left: Null` versus `right: 0.92`.
+## 2026-04-20
+### Modified
+- Restored the broader governed `FundamentalMetrics` contract in `D:\SM\src\ops\security_analysis_fullstack.rs`, including:
+  `roa_pct`,
+  `pe_ttm`,
+  `pb`,
+  `dividend_yield`,
+  `total_assets`,
+  `total_asset_growth_pct`,
+  `equity_growth_pct`,
+  `asset_liability_ratio`,
+  `equity_ratio_pct`,
+  `liability_to_equity_ratio_pct`,
+  `log_revenue`,
+  `log_net_profit`,
+  and `pb_vs_roe_gap`.
+- Repaired all current metric initializer sites inside `D:\SM\src\ops\security_analysis_fullstack.rs` for Eastmoney latest/history parsing, official JSON parsing, Sina latest parsing, Sina resilient parsing, Sina history parsing, the shared empty helper, and the shared finalization helper.
+- Added one governed merge path in `D:\SM\src\ops\security_analysis_fullstack.rs` so Eastmoney-success financial history rows now merge Sina-only bank proxy metrics by `report_period` instead of returning the thinner Eastmoney rows directly.
+- Refreshed `D:\SM\docs\handoff\CURRENT_STATUS.md` and `D:\SM\docs\handoff\HANDOFF_ISSUES.md` so branch-health records now move from the solved fullstack blocker to the newly exposed approved-open-position packet blocker.
+### Why
+- The current branch had drifted `FundamentalMetrics` back to a truncated shape even though the fullstack contract tests, governed-history replay tests, and training-side feature expectations still relied on the wider B1+B2 metric set.
+- That drift removed both direct provider fields such as `roa_pct` and derived fields such as `log_revenue`, while also dropping the Eastmoney-plus-Sina merge needed to keep bank proxy metrics in governed storage when Eastmoney succeeds first.
+- Once this contract was repaired and re-verified, branch-health truth needed to advance to the next real first failure instead of continuing to report the solved fullstack blocker.
+### Remaining
+- [ ] The current repository-wide first blocker is now `D:\SM\tests\security_approved_open_position_packet_cli.rs`, where the public stock bus still returns `unsupported tool: security_approved_open_position_packet`.
+- [ ] The root log file `D:\SM\CHANGELOG_TASK.MD` still has encoding problems, so this task journal update was recorded only in `.trae/CHANGELOG_TASK.md`.
+- [ ] The workspace remains intentionally dirty with many unrelated runtime artifacts and parallel edits, so this entry does not imply repository-wide review cleanliness.
+### Risks
+- [ ] The restored `FundamentalMetrics` contract now carries both provider-native and derived fields again; future edits that touch only one initializer site can silently reintroduce drift unless the current source guard remains active.
+- [ ] The new first blocker is a separate packet/public-route gap, so this repair still does not justify any claim of repository-wide green.
+### Closed
+- Verified RED with `cargo test --test security_analysis_fullstack_fundamental_metrics_source_guard -- --nocapture`, which originally failed on missing bank proxy field markers before the contract repair.
+- Verified GREEN with `cargo test --test security_analysis_fullstack_fundamental_metrics_source_guard -- --nocapture`, which passed with `2 passed; 0 failed`.
+- Verified `cargo test --test security_analysis_fullstack_cli -- --nocapture`, which passed with `5 passed; 0 failed`.
+- Verified `cargo test --test security_fundamental_history_live_backfill_cli -- --nocapture`, which passed with `4 passed; 0 failed`.
+- Verified `cargo test --test security_stock_history_governance_cli -- --nocapture`, which passed with `2 passed; 0 failed`.
+- Verified broader regression progress with `$env:CARGO_TARGET_DIR='D:\SM\target_security_analysis_fullstack_verify'; cargo test -- --nocapture`: the fullstack blocker no longer blocks, and the next first failure is now `security_approved_open_position_packet_cli` with `unsupported tool: security_approved_open_position_packet`.
+## 2026-04-21
+### Modified
+- Added a short implementation plan at `D:\SM\docs\plans\2026-04-21-security-approved-open-position-packet-public-route.md` for the approved minimal public-route recovery.
+- Restored the formal public route for `D:\SM\src\ops\security_approved_open_position_packet.rs` across:
+  `D:\SM\src\tools\catalog.rs`,
+  `D:\SM\src\tools\dispatcher.rs`,
+  and `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+- Refreshed `D:\SM\docs\handoff\CURRENT_STATUS.md` and `D:\SM\docs\handoff\HANDOFF_ISSUES.md` so branch-health records now move from the solved approved-open-position packet blocker to the newly exposed closed-position archive blocker.
+### Why
+- The approved packet contract already existed in the stock domain and governance docs, but its public stock-bus exposure had drifted out of the catalog and dispatcher stack, so the CLI contract failed at the unsupported-tool boundary instead of reaching the real normalization and validation logic.
+- The approved route was restored as a minimal public-surface recovery rather than a schema redesign so this round could stay scoped to the confirmed blocker and let full regression advance to the next unrelated failure.
+### Remaining
+- [ ] The current repository-wide first blocker is now `D:\SM\tests\security_closed_position_archive_cli.rs`, where the public stock bus still returns `unsupported tool: security_closed_position_archive`.
+- [ ] The root log file `D:\SM\CHANGELOG_TASK.MD` still has encoding problems, so this task journal update was recorded only in `.trae/CHANGELOG_TASK.md`.
+- [ ] The workspace remains intentionally dirty with many unrelated runtime artifacts and parallel edits, so this entry does not imply repository-wide review cleanliness.
+### Risks
+- [ ] The restored `security_approved_open_position_packet` route is intentionally intake-only normalization and validation; downstream callers could still over-read it as if it already created a live position contract or execution artifact unless the boundary remains explicit.
+- [ ] The newly exposed `security_closed_position_archive` failure may be another public-route drift rather than a behavior bug, but that still requires a fresh design-and-TDD loop before any additional code change.
+### Closed
+- Verified RED with `$env:CARGO_TARGET_DIR='D:\SM\target_security_approved_packet_red'; cargo test --test security_approved_open_position_packet_cli -- --nocapture`, which failed because the public stock bus returned `unsupported tool: security_approved_open_position_packet`.
+- Verified GREEN with `$env:CARGO_TARGET_DIR='D:\SM\target_security_approved_packet_green'; cargo test --test security_approved_open_position_packet_cli -- --nocapture`, which passed with `10 passed; 0 failed`.
+- Verified broader regression progress with `$env:CARGO_TARGET_DIR='D:\SM\target_security_approved_packet_full_verify'; cargo test -- --nocapture`: the approved-open-position packet blocker no longer blocks, and the next first failure is now `security_closed_position_archive_cli` with `unsupported tool: security_closed_position_archive`.
+## 2026-04-21
+### Modified
+- Added a short implementation plan at `D:\SM\docs\plans\2026-04-21-security-closed-position-archive-public-route.md` for the approved minimal public-route recovery.
+- Restored the formal public route for `D:\SM\src\ops\security_closed_position_archive.rs` across:
+  `D:\SM\src\ops\stock.rs`,
+  `D:\SM\src\ops\stock_execution_and_position_management.rs`,
+  `D:\SM\src\tools\catalog.rs`,
+  `D:\SM\src\tools\dispatcher.rs`,
+  and `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+- Refreshed `D:\SM\docs\handoff\CURRENT_STATUS.md` and `D:\SM\docs\handoff\HANDOFF_ISSUES.md` so branch-health records now move from the solved closed-position archive blocker to the newly exposed committee decision package blocker.
+### Why
+- The closed-position archive contract already existed in the stock domain, but its formal stock-boundary export, grouped gateway exposure, catalog listing, and dispatcher routing had drifted away, so the CLI contract failed at the unsupported-tool boundary instead of reaching the real archive builder and validation logic.
+- This round stayed scoped to the confirmed public-surface drift and did not redesign the archive schema, which let full regression advance cleanly to the next unrelated blocker.
+### Remaining
+- [ ] The current repository-wide first blocker is now `D:\SM\tests\security_committee_decision_package_cli.rs`, where the public stock bus still returns `unsupported tool: security_committee_decision_package`.
+- [ ] The root log file `D:\SM\CHANGELOG_TASK.MD` still has encoding problems, so this task journal update was recorded only in `.trae/CHANGELOG_TASK.md`.
+- [ ] The workspace remains intentionally dirty with many unrelated runtime artifacts and parallel edits, so this entry does not imply repository-wide review cleanliness.
+### Risks
+- [ ] The restored `security_closed_position_archive` route is intentionally lifecycle-archive-only; downstream callers could still over-read it as if it already performed committee packaging, execution, or persistence unless the boundary remains explicit.
+- [ ] The newly exposed `security_committee_decision_package` failure may be another public-route drift rather than a behavior bug, but that still requires a fresh design-and-TDD loop before any additional code change.
+### Closed
+- Verified RED with `$env:CARGO_TARGET_DIR='D:\SM\target_security_closed_archive_red'; cargo test --test security_closed_position_archive_cli -- --nocapture`, which failed because the public stock bus returned `unsupported tool: security_closed_position_archive`.
+- Verified GREEN with `$env:CARGO_TARGET_DIR='D:\SM\target_security_closed_archive_green'; cargo test --test security_closed_position_archive_cli -- --nocapture`, which passed with `10 passed; 0 failed`.
+- Verified broader regression progress with `$env:CARGO_TARGET_DIR='D:\SM\target_security_closed_archive_full_verify'; cargo test -- --nocapture`: the closed-position archive blocker no longer blocks, and the next first failure is now `security_committee_decision_package_cli` with `unsupported tool: security_committee_decision_package`.
+## 2026-04-21
+### Modified
+- Added the required `Security Decision Committee Legacy Freeze` handoff section to `D:\SM\docs\handoff\AI_HANDOFF.md`.
+- Removed the unnecessary ETF-specific veto relaxation drift from the frozen legacy file `D:\SM\src\ops\security_decision_committee.rs` so the legacy committee compatibility zone returns to its approved frozen fingerprint.
+- Refreshed `D:\SM\docs\handoff\CURRENT_STATUS.md` and `D:\SM\docs\handoff\HANDOFF_ISSUES.md` so branch-health records now move from the solved legacy-freeze blocker to the newly exposed `security_feature_snapshot_cli` blocker.
+### Why
+- The current blocker was not a measurement or modeling issue; the source guard failed because the handoff file was missing the required freeze section and the frozen legacy committee file had drifted away from its approved snapshot.
+- Focused verification proved the gold-ETF chair path still stayed green after removing the legacy drift, which means the legacy edit was unnecessary and should not remain in the frozen compatibility zone.
+- Once the freeze boundary was restored, branch-health truth needed to advance to the next real first failure instead of continuing to report a solved blocker.
+### Remaining
+- [ ] Investigate `D:\SM\tests\security_feature_snapshot_cli.rs`, where four tests now fail around historical-information fallback, governed disclosure/corporate-action preference counts, layered market/sector anchor fields, and equity-ETF manual-proxy preservation.
+- [ ] The root log file `D:\SM\CHANGELOG_TASK.MD` still has encoding problems, so this task journal update was recorded only in `.trae/CHANGELOG_TASK.md`.
+- [ ] The workspace remains intentionally dirty with many unrelated runtime artifacts and parallel edits, so this entry does not imply repository-wide review cleanliness.
+### Risks
+- [ ] Repository-wide green is still not achieved; the next first blocker is now the feature-snapshot suite, not the legacy committee freeze guard.
+- [ ] The newly exposed feature-snapshot failures may come from fixture drift, contract drift, or runtime projection loss, so root-cause investigation is still required before any further fix.
+### Closed
+- Verified `$env:CARGO_TARGET_DIR='C:\codex-targets\sm_committee_package_green'; cargo test --test security_committee_decision_package_cli -- --nocapture`, which passed with `6 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='C:\codex-targets\sm_legacy_freeze_etf_red'; cargo test --test security_chair_resolution_cli security_chair_resolution_does_not_require_stock_only_information_for_gold_etf_when_proxy_history_is_complete -- --nocapture`, which stayed green after the legacy ETF drift was removed.
+- Verified `$env:CARGO_TARGET_DIR='C:\codex-targets\sm_legacy_freeze_guard_green2'; cargo test --test security_decision_committee_legacy_freeze_source_guard -- --nocapture`, which passed with `1 passed; 0 failed`.
+- Verified broader regression progress with `$env:CARGO_TARGET_DIR='C:\codex-targets\sm_legacy_freeze_full_verify'; cargo test -- --nocapture`: the legacy-freeze blocker no longer blocks, and the next first failure is now `security_feature_snapshot_cli` with four failing cases.
+## 2026-04-23
+### Modified
+- Reconciled `D:\SM_latest_8214bc7d\tests\stock_formal_boundary_manifest_source_guard.rs` with the current merged mainline by freezing the restored public stock modules:
+  - `import_stock_price_history_legacy_db`
+  - `security_adjustment_input_package`
+  - `security_closed_position_archive`
+  - `security_committee_decision_package`
+  - `security_investment_manager_entry`
+- Restored the formal-boundary design references into `D:\SM_latest_8214bc7d\docs\plans\design\`:
+  - `2026-04-16-stock-formal-boundary-manifest-gate-design.md`
+  - `2026-04-15-stock-foundation-split-manifest-design.md`
+  - `2026-04-15-stock-foundation-boundary-gate-v2-design.md`
+- Added the `Stock Formal Boundary Manifest Gate` handoff section in `D:\SM_latest_8214bc7d\docs\handoff\AI_HANDOFF.md`.
+- Refreshed `D:\SM_latest_8214bc7d\docs\handoff\CURRENT_STATUS.md` with the fresh 2026-04-23 focused verification evidence and corrected the formal-boundary design-doc source path in `D:\SM_latest_8214bc7d\docs\governance\decision_log.md`.
+- Rebuilt `D:\SM_latest_8214bc7d\tests\security_investment_manager_entry_cli.rs` to replace one encoding-corrupted headline assertion with an ASCII-safe packet-preservation check.
+
+### Why
+- The approved A1 route keeps the newer merged D-drive mainline and restores missing lifecycle-tail capability instead of rolling back to the older worktree.
+- After the tail modules were restored, the remaining blocker was boundary-guard truth drift: the merged branch no longer had the required design-doc files, and the frozen manifest still reflected the pre-reconciliation module set.
+- Fresh verification also exposed that `security_investment_manager_entry_cli.rs` was not failing on business behavior; it contained a broken encoded string literal that prevented the test from compiling at all.
+
+### Remaining
+- [ ] Repository-wide `cargo test -- --nocapture` is still not re-run or green in this worktree.
+- [ ] The latest known repository-level first blocker remains `tests/security_feature_snapshot_cli.rs` until that suite is debugged and fixed separately.
+- [ ] The worktree remains intentionally dirty with many unrelated local edits and runtime artifacts, so this task only closes the approved A1 tail-lifecycle and boundary-guard slice.
+
+### Risks
+- [ ] The restored boundary docs under `docs/plans/design/` were copied into the merged worktree to satisfy the current guard and handoff truth; future branch surgery could drift them again if the guard is updated without keeping docs in sync.
+- [ ] `security_investment_manager_entry_cli` is now green, but its repaired assertion deliberately checks compact-packet preservation instead of one locale-sensitive substring, so future wording changes in the upstream headline can still require intentional test review.
+- [ ] `cargo check` remains warning-only due to unused helpers in `security_symbol_taxonomy.rs`; this task did not change or reduce those warnings.
+
+### Closed
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_restore_tail_green3'; cargo test --test stock_formal_boundary_manifest_source_guard -- --nocapture`, which passed with `4 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_verify_guard_tail'; cargo test --test security_committee_decision_package_cli --test security_adjustment_input_package_cli --test security_closed_position_archive_cli -- --nocapture`, which passed with `22 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_verify_apply_bridge'; cargo test --test security_portfolio_execution_apply_bridge_cli -- --nocapture`, which passed with `8 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_verify_manager_entry_fixed'; cargo test --test security_investment_manager_entry_cli -- --nocapture`, which passed with `2 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_verify_check'; cargo check`, which passed with exit code `0` and the pre-existing three unused-code warnings in `security_symbol_taxonomy.rs`.
+## 2026-04-24
+### Modified
+- Added the missing handoff sections to `D:\SM_latest_8214bc7d\docs\handoff\AI_HANDOFF.md` required by the active boundary source guard:
+  - `Stock/Foundation Split Manifest Frozen`
+  - `Stock/Foundation Boundary Gate V2`
+- Re-ran the current repository-wide regression after the minimal handoff fix to advance the first failing boundary from `stock_foundation_boundary_gate_v2_source_guard` to the next unresolved guard.
+
+### Why
+- Fresh repository-wide verification on 2026-04-24 showed that the previous first blocker was no longer a business or runtime failure; it was a documentation guard failure because `AI_HANDOFF.md` no longer carried the split-manifest and gate-v2 handoff sections required by the checked-in source guard.
+- The user explicitly approved `方案A`, so this round stayed intentionally minimal and only repaired the missing handoff-memory surface required by the active guard before rerunning full regression.
+
+### Remaining
+- [ ] The new repository-wide first blocker is now `D:\SM_latest_8214bc7d\tests\stock_foundation_boundary_source_guard.rs`.
+- [ ] That guard currently fails because `docs/plans/design/2026-04-15-stock-foundation-decoupling-design.md` is missing from the merged worktree.
+- [ ] No additional doc or code changes were made beyond the approved `方案A` surface; the next fix needs a new approved方案。
+
+### Risks
+- [ ] Repository-wide green is still not achieved; the first failure has only advanced to the next boundary-document guard.
+- [ ] Because this round intentionally avoided broader status-doc synchronization, `CURRENT_STATUS.md` still does not describe the 2026-04-24 full-regression checkpoint.
+- [ ] The worktree remains dirty with unrelated runtime and local changes, so this task journal entry only covers the minimal guard-memory repair.
+
+### Closed
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_gate_v2_fix'; cargo test --test stock_foundation_boundary_gate_v2_source_guard -- --nocapture`, which passed with `3 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_full_regression_20260424_b'; cargo test -- --nocapture`, which still failed repository-wide but advanced the first blocking failure to `stock_foundation_boundary_source_guard` on missing `docs/plans/design/2026-04-15-stock-foundation-decoupling-design.md`.
+## 2026-04-24
+### Modified
+- Backfilled the missing stock-boundary design docs under `D:\SM_latest_8214bc7d\docs\plans\design\` required by the active source guards:
+  - `2026-04-15-stock-foundation-decoupling-design.md`
+  - `2026-04-15-stock-application-entry-layer-design.md`
+  - `2026-04-15-stock-business-flow-baseline.md`
+  - `2026-04-16-security-legacy-committee-governance-design.md`
+  - `2026-04-16-stock-modeling-lifecycle-split-design.md`
+- Added the missing `Stock/Foundation Decoupling Baseline` section to `D:\SM_latest_8214bc7d\docs\handoff\AI_HANDOFF.md`.
+- Refreshed `D:\SM_latest_8214bc7d\docs\handoff\CURRENT_STATUS.md` and `D:\SM_latest_8214bc7d\docs\handoff\HANDOFF_ISSUES.md` so branch-health truth now records the fresh 2026-04-24 repository-wide green verification instead of the older preserved blocker history.
+
+### Why
+- The approved `方案B` for this round was to fix the whole same-class boundary/source-guard document set, not keep advancing one missing file at a time.
+- Root cause was a partial migration/backfill drift from `docs/plans/` to `docs/plans/design/`, not a runtime or business-logic failure.
+- Because the user explicitly required a GitHub handoff after the fix, the status and handoff docs also needed to reflect the fresh repository truth before staging and push.
+
+### Remaining
+- [ ] The worktree is still intentionally dirty with many unrelated runtime artifacts, generated fixtures, and parallel edits, so Git staging must stay limited to this task slice only.
+- [ ] The root log file `D:\SM\CHANGELOG_TASK.MD` still has encoding problems, so this task journal update was recorded only in `.trae/CHANGELOG_TASK.md`.
+- [ ] The `docs/plans/` to `docs/plans/design/` migration remains a future drift risk if later sessions add guard-linked docs without backfilling the new path in the same change.
+
+### Risks
+- [ ] This round proves the current worktree is green under fresh `cargo test`, but it does not sanitize or review the many unrelated local modifications already present in the workspace.
+- [ ] If future boundary-guard work updates only tests or only handoff memory without updating `docs/plans/design/`, the same class of blocker can reappear.
+
+### Closed
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_verify_boundary_decoupling'; cargo test --test stock_foundation_boundary_source_guard -- --nocapture`, which passed with `3 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_verify_entry_layer'; cargo test --test stock_entry_layer_source_guard -- --nocapture`, which passed with `5 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_verify_catalog_grouping'; cargo test --test stock_catalog_grouping_source_guard -- --nocapture`, which passed with `2 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_verify_dispatcher_grouping'; cargo test --test stock_dispatcher_grouping_source_guard -- --nocapture`, which passed with `1 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_verify_modeling_split'; cargo test --test stock_modeling_training_split_source_guard -- --nocapture`, which passed with `2 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_verify_package_chair'; cargo test --test security_decision_package_chair_node_source_guard -- --nocapture`, which passed with `1 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_verify_package_verify'; cargo test --test security_decision_verify_package_source_guard -- --nocapture`, which passed with `1 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_verify_legacy_freeze'; cargo test --test security_decision_committee_legacy_freeze_source_guard -- --nocapture`, which passed with `1 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_full_regression_20260424_c'; cargo test -- --nocapture`, which passed repository-wide in this worktree.
