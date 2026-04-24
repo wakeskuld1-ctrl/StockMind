@@ -2,11 +2,19 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use chrono::NaiveDate;
+use chrono::{Datelike, Duration, NaiveDate};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use thiserror::Error;
 
+use crate::ops::stock::security_capital_source_factor_snapshot::{
+    SecurityCapitalSourceFactorSnapshotError, SecurityCapitalSourceFactorSnapshotRequest,
+    security_capital_source_factor_snapshot,
+};
+use crate::ops::stock::security_decision_evidence_bundle::{
+    derive_atr_ratio_14, derive_mean_reversion_deviation_bucket_20d,
+    derive_mean_reversion_normalized_distance_20d, derive_ratio_delta,
+};
 use crate::ops::stock::security_forward_outcome::{
     SecurityForwardOutcomeDocument, SecurityForwardOutcomeError, SecurityForwardOutcomeRequest,
     security_forward_outcome,
@@ -22,7 +30,10 @@ use crate::ops::stock::security_scorecard_refit_run::{
     security_scorecard_refit,
 };
 use crate::ops::stock::security_symbol_taxonomy::resolve_effective_security_routing;
-use crate::runtime::stock_history_store::{StockHistoryStore, StockHistoryStoreError};
+use crate::runtime::security_capital_flow_store::SecurityCapitalFlowStore;
+use crate::runtime::stock_history_store::{
+    StockHistoryRow, StockHistoryStore, StockHistoryStoreError,
+};
 
 // 2026-04-09 CST: 这里新增正式训练入口请求合同，原因是 Task 5 需要把离线训练从临时脚本提升为可治理的一等 Tool；
 // 目的：集中冻结市场范围、样本范围、目标头与运行时路径，避免训练参数散落在 Skill 或 CLI 外层。
@@ -30,6 +41,12 @@ use crate::runtime::stock_history_store::{StockHistoryStore, StockHistoryStoreEr
 pub struct SecurityScorecardTrainingRequest {
     #[serde(default = "default_created_at")]
     pub created_at: String,
+    // 2026-04-22 CST: Added because scheme 2 separates artifact persistence from
+    // upstream data loading after the Nikkei capital-source path confusion surfaced.
+    // Reason: one root field must not silently mean both "write outputs" and "read sources".
+    // Purpose: make the artifact output boundary explicit on the training request.
+    #[serde(default)]
+    pub artifact_runtime_root: Option<String>,
     #[serde(default)]
     pub training_runtime_root: Option<String>,
     pub market_scope: String,
@@ -44,6 +61,24 @@ pub struct SecurityScorecardTrainingRequest {
     pub market_symbol: Option<String>,
     #[serde(default)]
     pub sector_symbol: Option<String>,
+    // 2026-04-21 CST: Added because the approved Nikkei phase now trains on a
+    // dedicated spot/futures contract instead of broad proxy reuse.
+    // Reason: the user explicitly asked to add spot and index-futures factors for Nikkei.
+    // Purpose: freeze one optional futures identity on the governed training request.
+    #[serde(default)]
+    pub futures_symbol: Option<String>,
+    // 2026-04-22 CST: Added because scheme C freezes one explicit training-contract switch
+    // before preview A/B retraining compares baseline against JPX/MOF-enhanced Nikkei runs.
+    // Reason: the user approved capital-source features as an isolated delta instead of another mixed retrain.
+    // Purpose: keep the new factor pack opt-in, Nikkei-only, and traceable in request payloads.
+    #[serde(default)]
+    pub capital_source_feature_mode: Option<String>,
+    // 2026-04-22 CST: Added because scheme 2 requires an explicit source-data root
+    // for capital-flow factors instead of guessing from artifact output directories.
+    // Reason: the previous wiring accidentally pointed the factor loader at an empty artifact-side database.
+    // Purpose: bind Nikkei capital-source features to one explicit input-data boundary.
+    #[serde(default)]
+    pub capital_flow_runtime_root: Option<String>,
     #[serde(default)]
     pub market_profile: Option<String>,
     #[serde(default)]
@@ -89,6 +124,8 @@ pub enum SecurityScorecardTrainingError {
     History(#[from] StockHistoryStoreError),
     #[error("security scorecard training outcome loading failed: {0}")]
     Outcome(#[from] SecurityForwardOutcomeError),
+    #[error("security scorecard training capital-source loading failed: {0}")]
+    CapitalSource(#[from] SecurityCapitalSourceFactorSnapshotError),
     #[error("security scorecard training persist failed: {0}")]
     Persist(String),
     #[error("security scorecard training refit failed: {0}")]
@@ -165,6 +202,7 @@ struct TrainedLogisticModel {
 }
 
 const UNSEEN_CATEGORICAL_BIN_LABEL: &str = "__unseen__";
+const NIKKEI_JPX_MOF_CAPITAL_SOURCE_MODE: &str = "nikkei_jpx_mof_v1";
 
 #[derive(Debug, Clone, PartialEq)]
 struct EncodedDiagnosticSample {
@@ -174,6 +212,52 @@ struct EncodedDiagnosticSample {
     label: f64,
     predicted_probability: f64,
     encoded_features: Vec<f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct WeeklyPriceFeatureRow {
+    pub week_start_date: String,
+    pub week_end_date: String,
+    pub feature_values: BTreeMap<String, f64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct WeeklyRollingWindowPlan {
+    pub train_anchor_dates: Vec<String>,
+    pub valid_anchor_dates: Vec<String>,
+    pub test_anchor_dates: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct WeeklyRollingWindowSamples {
+    window_id: usize,
+    train_samples: Vec<TrainingSample>,
+    valid_samples: Vec<TrainingSample>,
+    test_samples: Vec<TrainingSample>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct WeeklyTrainingContext {
+    artifact_samples: Vec<TrainingSample>,
+    rolling_windows: Vec<WeeklyRollingWindowSamples>,
+    capital_source_observation_rows: Vec<CapitalSourceObservationRow>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct CapitalSourceObservationRow {
+    symbol: String,
+    as_of_date: NaiveDate,
+    observation_dates: BTreeMap<String, String>,
+    factor_values: BTreeMap<String, f64>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct WindowEvaluationRecord {
+    window_id: usize,
+    split_name: String,
+    as_of_date: NaiveDate,
+    label: f64,
+    predicted_probability: f64,
 }
 
 // 2026-04-09 CST: 这里实现 Task 5 的最小正式训练入口，原因是我们需要先把训练主链跑通，再继续做回算重估和晋级治理；
@@ -186,7 +270,16 @@ pub fn security_scorecard_training(
     let train_range = parse_date_range(&request.train_range)?;
     let valid_range = parse_date_range(&request.valid_range)?;
     let test_range = parse_date_range(&request.test_range)?;
-    let feature_configs = training_feature_configs();
+    let feature_configs = training_feature_configs(request);
+    if uses_nikkei_weekly_training_contract(request) {
+        return security_scorecard_training_weekly_contract(
+            request,
+            &train_range,
+            &valid_range,
+            &test_range,
+            &feature_configs,
+        );
+    }
     let samples = collect_samples(
         request,
         &train_range,
@@ -305,6 +398,129 @@ pub fn security_scorecard_training(
     })
 }
 
+fn security_scorecard_training_weekly_contract(
+    request: &SecurityScorecardTrainingRequest,
+    train_range: &TrainingDateRange,
+    valid_range: &TrainingDateRange,
+    test_range: &TrainingDateRange,
+    feature_configs: &[TrainingFeatureConfig],
+) -> Result<SecurityScorecardTrainingResult, SecurityScorecardTrainingError> {
+    // 2026-04-23 CST: Added because the approved Nikkei weekly route must keep
+    // artifact fitting and rolling-window evaluation as separate governed surfaces.
+    // Reason: flattening all weekly windows into one global split silently polluted valid/test counts.
+    // Purpose: train the persisted artifact once, while evaluating weekly accuracy on independent windows.
+    let weekly_context = build_weekly_training_context(
+        request,
+        train_range,
+        valid_range,
+        test_range,
+        feature_configs,
+    )?;
+    let samples = weekly_context.artifact_samples;
+    let train_samples = samples_for_split(&samples, "train");
+    if train_samples.len() < 2 {
+        return Err(SecurityScorecardTrainingError::Build(
+            "train split does not contain enough samples".to_string(),
+        ));
+    }
+    let positive_count = train_samples
+        .iter()
+        .filter(|sample| sample.label >= 0.5)
+        .count();
+    let negative_count = train_samples.len().saturating_sub(positive_count);
+    if positive_count == 0 || negative_count == 0 {
+        return Err(SecurityScorecardTrainingError::Build(
+            "train split must contain both positive and negative labels".to_string(),
+        ));
+    }
+
+    let feature_models = build_feature_models(&train_samples, feature_configs)?;
+    let train_matrix = encode_samples(&train_samples, &feature_models)?;
+    let trained_model = train_logistic_model(&train_matrix);
+    let artifact = build_artifact(request, &feature_models, &trained_model);
+
+    let runtime_root = resolve_runtime_root(request);
+    let artifact_path = runtime_root.join("scorecard_artifacts").join(format!(
+        "{}__{}.json",
+        sanitize_identifier(&artifact.model_id),
+        sanitize_identifier(&artifact.model_version)
+    ));
+    persist_json(&artifact_path, &artifact)?;
+
+    let training_diagnostic_report_json = build_training_diagnostic_report(
+        request,
+        &samples,
+        feature_configs,
+        &feature_models,
+        &trained_model,
+    )?;
+    let training_diagnostic_report_path =
+        runtime_root
+            .join("scorecard_training_diagnostics")
+            .join(format!(
+                "{}__{}.json",
+                sanitize_identifier(&artifact.model_id),
+                sanitize_identifier(&artifact.model_version)
+            ));
+    persist_json(
+        &training_diagnostic_report_path,
+        &training_diagnostic_report_json,
+    )?;
+
+    let metrics_summary_json = build_weekly_metrics_summary(
+        &samples,
+        &weekly_context.rolling_windows,
+        &weekly_context.capital_source_observation_rows,
+        feature_configs,
+        &feature_models,
+        &trained_model,
+        training_diagnostic_report_json
+            .get("summary")
+            .cloned()
+            .unwrap_or_else(|| json!({})),
+        valid_range.start,
+    )?;
+    let refit_result = security_scorecard_refit(&SecurityScorecardRefitRequest {
+        created_at: request.created_at.clone(),
+        refit_runtime_root: Some(runtime_root.to_string_lossy().to_string()),
+        market_scope: request.market_scope.clone(),
+        instrument_scope: request.instrument_scope.clone(),
+        feature_set_version: request.feature_set_version.clone(),
+        label_definition_version: request.label_definition_version.clone(),
+        train_range: request.train_range.clone(),
+        valid_range: request.valid_range.clone(),
+        test_range: request.test_range.clone(),
+        candidate_artifact: SecurityScorecardCandidateArtifactInput {
+            model_id: artifact.model_id.clone(),
+            model_version: artifact.model_version.clone(),
+            horizon_days: request.horizon_days,
+            target_head: request.target_head.clone(),
+            status: "candidate".to_string(),
+            artifact_path: artifact_path.to_string_lossy().to_string(),
+            metrics_summary_json: metrics_summary_json.clone(),
+            published_at: Some(request.created_at.clone()),
+            instrument_subscope: request.instrument_subscope.clone(),
+            model_grade: "candidate".to_string(),
+            grade_reason: "training pipeline default candidate grade".to_string(),
+        },
+        comparison_to_champion_json: None,
+        promotion_decision: Some("candidate_only".to_string()),
+    })?;
+
+    Ok(SecurityScorecardTrainingResult {
+        artifact,
+        artifact_path: artifact_path.to_string_lossy().to_string(),
+        training_diagnostic_report_path: training_diagnostic_report_path
+            .to_string_lossy()
+            .to_string(),
+        refit_run: refit_result.refit_run,
+        model_registry: refit_result.model_registry,
+        refit_run_path: refit_result.refit_run_path,
+        model_registry_path: refit_result.model_registry_path,
+        metrics_summary_json,
+    })
+}
+
 fn validate_request(
     request: &SecurityScorecardTrainingRequest,
 ) -> Result<(), SecurityScorecardTrainingError> {
@@ -343,6 +559,41 @@ fn validate_request(
             "symbol_list cannot be empty".to_string(),
         ));
     }
+    // 2026-04-22 CST: Added because scheme 2 introduces an explicit artifact root
+    // while retaining the legacy alias during migration.
+    // Purpose: fail closed when callers provide two different output-root meanings.
+    if let (Some(artifact_root), Some(legacy_root)) = (
+        normalized_artifact_runtime_root(request),
+        normalized_legacy_training_runtime_root(request),
+    ) {
+        if artifact_root != legacy_root {
+            return Err(SecurityScorecardTrainingError::Build(
+                "artifact_runtime_root conflicts with legacy training_runtime_root".to_string(),
+            ));
+        }
+    }
+    if let Some(mode) = normalized_capital_source_feature_mode(request) {
+        if mode != NIKKEI_JPX_MOF_CAPITAL_SOURCE_MODE {
+            return Err(SecurityScorecardTrainingError::Build(format!(
+                "unsupported capital_source_feature_mode `{mode}`"
+            )));
+        }
+        if !uses_nikkei_index_feature_contract(request) {
+            return Err(SecurityScorecardTrainingError::Build(
+                "capital_source_feature_mode is only supported for instrument_subscope `nikkei_index`"
+                    .to_string(),
+            ));
+        }
+        // 2026-04-22 CST: Added because enhanced Nikkei training must bind capital-source
+        // factors to one explicit input-data root instead of guessing from output paths.
+        // Purpose: reject source-boundary ambiguity before sample collection starts.
+        if normalized_capital_flow_runtime_root(request).is_none() {
+            return Err(SecurityScorecardTrainingError::Build(
+                "capital_flow_runtime_root is required when capital_source_feature_mode is enabled"
+                    .to_string(),
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -350,25 +601,34 @@ fn validate_request(
 // supported target heads from legacy positive-only assumptions before retraining.
 // Reason: the old validator and label builder only understood direction_head.
 // Purpose: centralize governed head semantics for validation, labeling, and artifact metadata.
+// 2026-04-21 CST: Extended because the approved Nikkei route now adds a repair-stable
+// head without replacing the existing direction heads.
+// Purpose: keep head validation and artifact semantics frozen in one governed switch.
 fn is_supported_target_head(target_head: &str) -> bool {
     matches!(
         target_head.trim(),
-        "direction_head" | "direction_up_head" | "direction_down_head"
+        "direction_head" | "direction_up_head" | "direction_down_head" | "repair_stable_head"
     )
 }
 
 fn resolve_target_label_definition(target_head: &str, horizon_days: usize) -> String {
+    if target_head.trim() == "direction_head" {
+        return "positive_return_1w".to_string();
+    }
     match target_head.trim() {
-        "direction_head" | "direction_up_head" => format!("positive_return_{}d", horizon_days),
+        "direction_up_head" => format!("positive_return_{}d", horizon_days),
         "direction_down_head" => format!("negative_return_{}d", horizon_days),
+        "repair_stable_head" => format!("repair_stable_{}d", horizon_days),
         _ => format!("unsupported_target_head_{}d", horizon_days),
     }
 }
 
 fn resolve_positive_label_definition(target_head: &str, horizon_days: usize) -> Option<String> {
     match target_head.trim() {
-        "direction_head" | "direction_up_head" => Some(format!("positive_return_{}d", horizon_days)),
+        "direction_head" => Some("positive_return_1w".to_string()),
+        "direction_up_head" => Some(format!("positive_return_{}d", horizon_days)),
         "direction_down_head" => None,
+        "repair_stable_head" => Some(format!("repair_stable_{}d", horizon_days)),
         _ => None,
     }
 }
@@ -393,31 +653,314 @@ fn resolve_training_label(outcome: &SecurityForwardOutcomeDocument, target_head:
     }
 }
 
-fn training_feature_configs() -> Vec<TrainingFeatureConfig> {
-    vec![
-        TrainingFeatureConfig {
-            feature_name: "integrated_stance",
-            group_name: "M",
-            kind: TrainingFeatureKind::Categorical,
-        },
+fn resolve_weekly_direction_label(current_close: f64, next_close: f64) -> Option<f64> {
+    if current_close.abs() <= f64::EPSILON {
+        return None;
+    }
+    Some(if (next_close / current_close) - 1.0 > 0.0 {
+        1.0
+    } else {
+        0.0
+    })
+}
+
+// 2026-04-21 CST: Added because the approved Nikkei retraining route now targets
+// "oversold can repair and stay repaired" instead of plain 10-day direction.
+// Reason: the user explicitly moved this workstream onto a path-based repair contract.
+// Purpose: freeze one binary label rule before sample collection and artifact output diverge.
+fn resolve_repair_stable_label_from_buckets(
+    current_bucket: &str,
+    future_buckets: &[String],
+) -> Option<f64> {
+    if !is_mean_reversion_lower_half_bucket(current_bucket) || future_buckets.is_empty() {
+        return None;
+    }
+
+    let hit_upper_half = future_buckets
+        .iter()
+        .any(|bucket| is_mean_reversion_upper_half_bucket(bucket));
+    let final_bucket = future_buckets.last()?;
+    let stable_finish = is_mean_reversion_non_lower_half_bucket(final_bucket);
+
+    Some(if hit_upper_half && stable_finish {
+        1.0
+    } else {
+        0.0
+    })
+}
+
+// 2026-04-21 CST: Added because repair training must only start from current lower-half states.
+// Reason: mixing neutral or upper-half starts back into the sample pool would violate the approved contract.
+// Purpose: keep the repair head focused on "oversold entry -> future repair stability" only.
+fn is_mean_reversion_lower_half_bucket(bucket: &str) -> bool {
+    matches!(bucket.trim(), "strong_down" | "weak_down")
+}
+
+// 2026-04-21 CST: Added because the repair path contract defines "repair hit" by first reaching
+// the upper half, not merely escaping into neutral.
+// Reason: the user explicitly separated "touched upper half" from "just bounced a little".
+// Purpose: preserve one auditable upper-half trigger for repair-path labels.
+fn is_mean_reversion_upper_half_bucket(bucket: &str) -> bool {
+    matches!(bucket.trim(), "weak_up" | "strong_up")
+}
+
+// 2026-04-21 CST: Added because repair_stable ends on day 10 as long as the path did not fall
+// back into the lower half, including neutral finishes.
+// Reason: the approved contract defines stability as "not back below neutral" after an upper-half hit.
+// Purpose: keep repair_stable and repair_hit separated by the final-day landing zone.
+fn is_mean_reversion_non_lower_half_bucket(bucket: &str) -> bool {
+    matches!(bucket.trim(), "neutral" | "weak_up" | "strong_up")
+}
+
+// 2026-04-21 CST: Added because the new repair head must sample from oversold dates rather than
+// from the full calendar and then accidentally skip almost everything.
+// Reason: the approved route is about lower-half repair candidates, not generic direction dates.
+// Purpose: pre-filter dates so monthly-like spacing happens inside the eligible repair population.
+fn filter_repair_stable_candidate_dates(
+    store: &StockHistoryStore,
+    symbol: &str,
+    dates: &[String],
+    lookback_days: usize,
+    horizon_days: usize,
+) -> Result<Vec<String>, SecurityScorecardTrainingError> {
+    let mut eligible_dates = Vec::new();
+    for date in dates {
+        let current_bucket =
+            derive_mean_reversion_bucket_for_date(store, symbol, date, lookback_days)?;
+        if !is_mean_reversion_lower_half_bucket(&current_bucket) {
+            continue;
+        }
+        let future_buckets =
+            derive_future_mean_reversion_buckets(store, symbol, date, lookback_days, horizon_days)?;
+        if future_buckets.len() == horizon_days {
+            eligible_dates.push(date.clone());
+        }
+    }
+    Ok(eligible_dates)
+}
+
+// 2026-04-21 CST: Added because both candidate filtering and future-path labeling need the
+// same local mean-reversion bucket semantics without reusing external network-dependent tools.
+// Reason: repair_stable_head is a price-path label, so local history must be enough to reproduce it.
+// Purpose: compute the governed ATR-normalized MA20 bucket directly from stored OHLC history.
+fn derive_mean_reversion_bucket_for_date(
+    store: &StockHistoryStore,
+    symbol: &str,
+    as_of_date: &str,
+    lookback_days: usize,
+) -> Result<String, SecurityScorecardTrainingError> {
+    let recent_rows = store.load_recent_rows(symbol, Some(as_of_date), lookback_days.max(20))?;
+    derive_mean_reversion_bucket_from_rows(&recent_rows)
+}
+
+// 2026-04-21 CST: Added because the repair head needs the whole forward path converted into
+// the same five buckets as the current snapshot.
+// Reason: the label depends on whether price ever reaches the upper half and where it ends on day 10.
+// Purpose: keep future-path repair classification on the same bucket vocabulary as the current state.
+fn derive_future_mean_reversion_buckets(
+    store: &StockHistoryStore,
+    symbol: &str,
+    as_of_date: &str,
+    lookback_days: usize,
+    horizon_days: usize,
+) -> Result<Vec<String>, SecurityScorecardTrainingError> {
+    let future_rows = store.load_forward_rows(symbol, as_of_date, horizon_days)?;
+    let mut future_buckets = Vec::with_capacity(future_rows.len());
+    for future_row in future_rows {
+        let recent_rows =
+            store.load_recent_rows(symbol, Some(&future_row.trade_date), lookback_days.max(20))?;
+        future_buckets.push(derive_mean_reversion_bucket_from_rows(&recent_rows)?);
+    }
+    Ok(future_buckets)
+}
+
+// 2026-04-21 CST: Added because repair_stable_head cannot depend on a precomputed snapshot for
+// every intermediate forward date.
+// Reason: the user approved a local path label, so training needs one internal bucket calculator.
+// Purpose: reproduce the ATR-normalized MA20 bucket using only stored rows and the shared formulas.
+fn derive_mean_reversion_bucket_from_rows(
+    recent_rows: &[StockHistoryRow],
+) -> Result<String, SecurityScorecardTrainingError> {
+    let close = recent_rows
+        .last()
+        .map(|row| row.close)
+        .ok_or_else(|| SecurityScorecardTrainingError::Build("missing latest close".to_string()))?;
+    let sma_20 = sma_last_from_rows(recent_rows, 20)?;
+    let atr_14 = atr_last_from_rows(recent_rows, 14)?;
+    let close_vs_sma20 = derive_ratio_delta(close, sma_20);
+    let atr_ratio_14 = derive_atr_ratio_14(close, atr_14);
+    let normalized_distance =
+        derive_mean_reversion_normalized_distance_20d(close_vs_sma20, atr_ratio_14);
+    Ok(derive_mean_reversion_deviation_bucket_20d(normalized_distance).to_string())
+}
+
+// 2026-04-21 CST: Added because the local repair-path label still needs the same SMA20 denominator
+// that the shared snapshot contract uses.
+// Reason: reusing only the last close would make the bucket drift away from the governed MA20 view.
+// Purpose: provide one minimal in-file SMA helper for repair labeling without widening module exposure.
+fn sma_last_from_rows(
+    rows: &[StockHistoryRow],
+    period: usize,
+) -> Result<f64, SecurityScorecardTrainingError> {
+    if rows.len() < period {
+        return Err(SecurityScorecardTrainingError::Build(format!(
+            "insufficient rows for sma_{period}: actual={}",
+            rows.len()
+        )));
+    }
+    let window = &rows[rows.len() - period..];
+    Ok(window.iter().map(|row| row.close).sum::<f64>() / period as f64)
+}
+
+// 2026-04-21 CST: Added because the ATR-normalized repair bucket must keep the same Wilder-style
+// volatility denominator used by the shared technical indicators.
+// Reason: using a plain average range here would make repair labels drift from the approved bucket semantics.
+// Purpose: reproduce atr_14 locally so forward-path dates can be labeled without new snapshot documents.
+fn atr_last_from_rows(
+    rows: &[StockHistoryRow],
+    period: usize,
+) -> Result<f64, SecurityScorecardTrainingError> {
+    if rows.len() < period + 1 {
+        return Err(SecurityScorecardTrainingError::Build(format!(
+            "insufficient rows for atr_{period}: actual={}",
+            rows.len()
+        )));
+    }
+
+    let true_ranges = true_ranges_from_rows(rows);
+    let mut atr = true_ranges[..period].iter().sum::<f64>() / period as f64;
+    for true_range in true_ranges.iter().skip(period) {
+        atr = ((atr * (period as f64 - 1.0)) + true_range) / period as f64;
+    }
+    Ok(atr)
+}
+
+// 2026-04-21 CST: Added because ATR needs one shared true-range sequence inside the repair label path.
+// Reason: duplicating the three-leg true-range formula inline would make later reviews harder to audit.
+// Purpose: keep the local repair-label volatility math compact and traceable.
+fn true_ranges_from_rows(rows: &[StockHistoryRow]) -> Vec<f64> {
+    let mut true_ranges = Vec::with_capacity(rows.len().saturating_sub(1));
+    for index in 1..rows.len() {
+        let current_row = &rows[index];
+        let previous_row = &rows[index - 1];
+        let high_low = current_row.high - current_row.low;
+        let high_close = (current_row.high - previous_row.close).abs();
+        let low_close = (current_row.low - previous_row.close).abs();
+        true_ranges.push(high_low.max(high_close).max(low_close));
+    }
+    true_ranges
+}
+
+fn training_feature_configs(
+    request: &SecurityScorecardTrainingRequest,
+) -> Vec<TrainingFeatureConfig> {
+    if uses_nikkei_weekly_training_contract(request) {
+        let mut feature_configs = vec![
+            TrainingFeatureConfig {
+                feature_name: "weekly_spot_return_min",
+                group_name: "W",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_spot_return_p10",
+                group_name: "W",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_spot_return_p25",
+                group_name: "W",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_spot_return_p50",
+                group_name: "W",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_spot_return_p75",
+                group_name: "W",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_spot_return_p90",
+                group_name: "W",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_spot_return_max",
+                group_name: "W",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_spot_close_position",
+                group_name: "W",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_spot_drawdown",
+                group_name: "W",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_spot_rebound",
+                group_name: "W",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_volume_ratio_4w",
+                group_name: "V",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_up_day_volume_share",
+                group_name: "V",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_down_day_volume_share",
+                group_name: "V",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_volume_price_confirmation",
+                group_name: "V",
+                kind: TrainingFeatureKind::Numeric,
+            },
+        ];
+        if uses_nikkei_futures_feature_contract(request) {
+            feature_configs.extend([
+                TrainingFeatureConfig {
+                    feature_name: "weekly_futures_return_p50",
+                    group_name: "X",
+                    kind: TrainingFeatureKind::Numeric,
+                },
+                TrainingFeatureConfig {
+                    feature_name: "weekly_basis_pct_p50",
+                    group_name: "X",
+                    kind: TrainingFeatureKind::Numeric,
+                },
+                TrainingFeatureConfig {
+                    feature_name: "weekly_futures_relative_strength_p50",
+                    group_name: "X",
+                    kind: TrainingFeatureKind::Numeric,
+                },
+            ]);
+        }
+        return feature_configs;
+    }
+
+    let mut feature_configs = vec![
         // 2026-04-16 CST: Added because A-1a starts the first formal regime/industry field
         // thickening pass before model-family upgrades.
         // Reason: the prior baseline lacked stable market-state segmentation, which made later
         // accuracy work look like a pure model problem.
         // Purpose: let training learn across market-regime and industry buckets instead of only
         // raw technical/fundamental event fields.
+        // 2026-04-21 CST: Updated because the user explicitly rejected the integrated summary
+        // label for Nikkei training after confirming the real risk sits in weight-driven structure.
+        // Purpose: keep only atomic market-state inputs in the governed Phase-B index contract.
         TrainingFeatureConfig {
             feature_name: "market_regime",
-            group_name: "M",
-            kind: TrainingFeatureKind::Categorical,
-        },
-        TrainingFeatureConfig {
-            feature_name: "industry_bucket",
-            group_name: "M",
-            kind: TrainingFeatureKind::Categorical,
-        },
-        TrainingFeatureConfig {
-            feature_name: "subindustry_bucket",
             group_name: "M",
             kind: TrainingFeatureKind::Categorical,
         },
@@ -459,31 +1002,6 @@ fn training_feature_configs() -> Vec<TrainingFeatureConfig> {
             kind: TrainingFeatureKind::Categorical,
         },
         TrainingFeatureConfig {
-            feature_name: "profit_signal",
-            group_name: "F",
-            kind: TrainingFeatureKind::Categorical,
-        },
-        TrainingFeatureConfig {
-            feature_name: "fundamental_status",
-            group_name: "F",
-            kind: TrainingFeatureKind::Categorical,
-        },
-        TrainingFeatureConfig {
-            feature_name: "disclosure_status",
-            group_name: "E",
-            kind: TrainingFeatureKind::Categorical,
-        },
-        TrainingFeatureConfig {
-            feature_name: "announcement_count",
-            group_name: "E",
-            kind: TrainingFeatureKind::Numeric,
-        },
-        TrainingFeatureConfig {
-            feature_name: "event_density_bucket",
-            group_name: "Q",
-            kind: TrainingFeatureKind::Categorical,
-        },
-        TrainingFeatureConfig {
             feature_name: "flow_status",
             group_name: "Q",
             kind: TrainingFeatureKind::Categorical,
@@ -504,39 +1022,6 @@ fn training_feature_configs() -> Vec<TrainingFeatureConfig> {
             kind: TrainingFeatureKind::Numeric,
         },
         TrainingFeatureConfig {
-            feature_name: "disclosure_risk_keyword_count",
-            group_name: "E",
-            kind: TrainingFeatureKind::Numeric,
-        },
-        TrainingFeatureConfig {
-            feature_name: "has_risk_warning_notice",
-            group_name: "E",
-            kind: TrainingFeatureKind::Categorical,
-        },
-        // 2026-04-17 CST: Added because disclosure event-side signals now have a governed weighted
-        // surface and should not rely only on sparse booleans during the next retraining pass.
-        // Purpose: promote the first explainable event-scoring family into the formal training contract.
-        TrainingFeatureConfig {
-            feature_name: "hard_risk_score",
-            group_name: "E",
-            kind: TrainingFeatureKind::Numeric,
-        },
-        TrainingFeatureConfig {
-            feature_name: "negative_attention_score",
-            group_name: "E",
-            kind: TrainingFeatureKind::Numeric,
-        },
-        TrainingFeatureConfig {
-            feature_name: "positive_support_score",
-            group_name: "E",
-            kind: TrainingFeatureKind::Numeric,
-        },
-        TrainingFeatureConfig {
-            feature_name: "event_net_impact_score",
-            group_name: "E",
-            kind: TrainingFeatureKind::Numeric,
-        },
-        TrainingFeatureConfig {
             feature_name: "data_gap_count",
             group_name: "R",
             kind: TrainingFeatureKind::Numeric,
@@ -545,26 +1030,6 @@ fn training_feature_configs() -> Vec<TrainingFeatureConfig> {
             feature_name: "risk_note_count",
             group_name: "R",
             kind: TrainingFeatureKind::Numeric,
-        },
-        TrainingFeatureConfig {
-            feature_name: "revenue_yoy_pct",
-            group_name: "F",
-            kind: TrainingFeatureKind::Numeric,
-        },
-        TrainingFeatureConfig {
-            feature_name: "net_profit_yoy_pct",
-            group_name: "F",
-            kind: TrainingFeatureKind::Numeric,
-        },
-        TrainingFeatureConfig {
-            feature_name: "roe_pct",
-            group_name: "F",
-            kind: TrainingFeatureKind::Numeric,
-        },
-        TrainingFeatureConfig {
-            feature_name: "shareholder_return_status",
-            group_name: "E",
-            kind: TrainingFeatureKind::Categorical,
         },
         // 2026-04-20 CST: Added because Task A replaces the mixed valuation_status factor with
         // plain position/quality buckets that users can inspect independently.
@@ -590,11 +1055,6 @@ fn training_feature_configs() -> Vec<TrainingFeatureConfig> {
             kind: TrainingFeatureKind::Categorical,
         },
         TrainingFeatureConfig {
-            feature_name: "quality_bucket",
-            group_name: "F",
-            kind: TrainingFeatureKind::Categorical,
-        },
-        TrainingFeatureConfig {
             feature_name: "rsi_14",
             group_name: "V",
             kind: TrainingFeatureKind::Numeric,
@@ -604,7 +1064,132 @@ fn training_feature_configs() -> Vec<TrainingFeatureConfig> {
             group_name: "V",
             kind: TrainingFeatureKind::Numeric,
         },
-    ]
+    ];
+
+    if uses_nikkei_index_feature_contract(request) {
+        // 2026-04-22 CST: Added because the user explicitly rejected risk_note_count as
+        // a meaningful Nikkei index risk factor after the first futures-proxy retrain.
+        // Reason: the field kept surfacing as a high-coefficient, low-information noise term.
+        // Purpose: keep the Nikkei-only contract focused on market structure rather than note-count metadata.
+        feature_configs.retain(|config| config.feature_name != "risk_note_count");
+    }
+
+    if uses_nikkei_futures_feature_contract(request) {
+        // 2026-04-21 CST: Added because the approved Nikkei route must stop
+        // training on zero-variance placeholders once futures factors are present.
+        // Reason: the last governed retrain showed these six fields carried no information.
+        // Purpose: keep the Nikkei-only contract lean while avoiding global feature deletion.
+        feature_configs.retain(|config| {
+            !matches!(
+                config.feature_name,
+                "instrument_subscope"
+                    | "volume_confirmation"
+                    | "flow_status"
+                    | "volume_ratio_20"
+                    | "mfi_14"
+                    | "data_gap_count"
+            )
+        });
+        // 2026-04-22 CST: Added because the user approved splitting the old mixed
+        // lead-strength factor into three atomic 3d futures/spot signals.
+        // Reason: the old delta compressed direction and relative outperformance into one opaque value.
+        // Purpose: let Nikkei retraining inspect futures direction, spot direction, and relative strength separately.
+        feature_configs.extend([
+            TrainingFeatureConfig {
+                feature_name: "futures_return_1d",
+                group_name: "X",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "futures_spot_basis_pct",
+                group_name: "X",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "futures_return_3d",
+                group_name: "X",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "spot_return_3d",
+                group_name: "X",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "futures_relative_strength_3d",
+                group_name: "X",
+                kind: TrainingFeatureKind::Numeric,
+            },
+        ]);
+    }
+
+    feature_configs
+}
+
+fn uses_nikkei_index_feature_contract(request: &SecurityScorecardTrainingRequest) -> bool {
+    matches!(
+        request.instrument_subscope.as_deref().map(str::trim),
+        Some("nikkei_index")
+    )
+}
+
+fn uses_nikkei_weekly_training_contract(request: &SecurityScorecardTrainingRequest) -> bool {
+    uses_nikkei_index_feature_contract(request) && request.target_head.trim() == "direction_head"
+}
+
+fn uses_nikkei_futures_feature_contract(request: &SecurityScorecardTrainingRequest) -> bool {
+    uses_nikkei_index_feature_contract(request)
+        && request
+            .futures_symbol
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|symbol| !symbol.is_empty())
+}
+
+fn normalized_capital_source_feature_mode(
+    request: &SecurityScorecardTrainingRequest,
+) -> Option<&str> {
+    request
+        .capital_source_feature_mode
+        .as_deref()
+        .map(str::trim)
+        .filter(|mode| !mode.is_empty())
+}
+
+fn normalized_artifact_runtime_root(request: &SecurityScorecardTrainingRequest) -> Option<String> {
+    request
+        .artifact_runtime_root
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn normalized_legacy_training_runtime_root(
+    request: &SecurityScorecardTrainingRequest,
+) -> Option<String> {
+    request
+        .training_runtime_root
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn normalized_capital_flow_runtime_root(
+    request: &SecurityScorecardTrainingRequest,
+) -> Option<String> {
+    request
+        .capital_flow_runtime_root
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn uses_nikkei_capital_source_feature_contract(request: &SecurityScorecardTrainingRequest) -> bool {
+    uses_nikkei_index_feature_contract(request)
+        && matches!(
+            normalized_capital_source_feature_mode(request),
+            Some(NIKKEI_JPX_MOF_CAPITAL_SOURCE_MODE)
+        )
 }
 
 fn parse_date_range(raw: &str) -> Result<TrainingDateRange, SecurityScorecardTrainingError> {
@@ -640,6 +1225,15 @@ fn collect_samples(
     test_range: &TrainingDateRange,
     feature_configs: &[TrainingFeatureConfig],
 ) -> Result<Vec<TrainingSample>, SecurityScorecardTrainingError> {
+    if uses_nikkei_weekly_training_contract(request) {
+        return collect_weekly_samples(
+            request,
+            train_range,
+            valid_range,
+            test_range,
+            feature_configs,
+        );
+    }
     let store = StockHistoryStore::workspace_default()?;
     let mut samples = Vec::new();
 
@@ -656,8 +1250,21 @@ fn collect_samples(
             ("valid", valid_range),
             ("test", test_range),
         ] {
-            let candidate_dates =
+            let mut candidate_dates =
                 load_dates_in_range(&store, symbol, range, 200, request.horizon_days)?;
+            // 2026-04-21 CST: Added because repair_stable_head must sample only from oversold
+            // starting points before spacing dates across the split.
+            // Reason: selecting monthly dates first and filtering later would collapse the repair sample density.
+            // Purpose: keep the approved lower-half repair population intact before cadence sampling.
+            if request.target_head.trim() == "repair_stable_head" {
+                candidate_dates = filter_repair_stable_candidate_dates(
+                    &store,
+                    symbol,
+                    &candidate_dates,
+                    request.lookback_days,
+                    request.horizon_days,
+                )?;
+            }
             let target_count = build_split_target_count(split_name, range);
             let selected_dates = select_evenly_spaced_dates(&candidate_dates, target_count);
             for as_of_date in selected_dates {
@@ -665,6 +1272,7 @@ fn collect_samples(
                     symbol: symbol.clone(),
                     market_symbol: effective_routing.market_symbol.clone(),
                     sector_symbol: effective_routing.sector_symbol.clone(),
+                    futures_symbol: request.futures_symbol.clone(),
                     market_profile: effective_routing.market_profile.clone(),
                     sector_profile: effective_routing.sector_profile.clone(),
                     as_of_date: Some(as_of_date.clone()),
@@ -688,10 +1296,40 @@ fn collect_samples(
                             "missing forward outcome for {symbol} at {as_of_date}"
                         ))
                     })?;
-                let feature_values = extract_feature_values(
-                    &outcome_result.snapshot.raw_features_json,
-                    feature_configs,
-                )?;
+                let merged_raw_features_json = outcome_result.snapshot.raw_features_json.clone();
+                let _capital_source_observation =
+                    load_capital_source_observation_row(request, symbol, &as_of_date)?;
+                let feature_values =
+                    extract_feature_values(&merged_raw_features_json, feature_configs)?;
+                // 2026-04-21 CST: Added because repair_stable_head uses a future-path label that
+                // cannot be read from the existing one-point forward outcome document.
+                // Reason: the approved contract now asks whether oversold states repair and stay repaired.
+                // Purpose: branch label resolution without changing legacy direction head semantics.
+                let label = if request.target_head.trim() == "repair_stable_head" {
+                    let current_bucket = merged_raw_features_json
+                        .get("mean_reversion_deviation_20d")
+                        .and_then(Value::as_str)
+                        .ok_or_else(|| {
+                            SecurityScorecardTrainingError::Build(format!(
+                                "snapshot missing mean_reversion_deviation_20d for {symbol} at {as_of_date}"
+                            ))
+                        })?;
+                    let future_buckets = derive_future_mean_reversion_buckets(
+                        &store,
+                        symbol,
+                        &as_of_date,
+                        request.lookback_days,
+                        request.horizon_days,
+                    )?;
+                    resolve_repair_stable_label_from_buckets(current_bucket, &future_buckets)
+                        .ok_or_else(|| {
+                            SecurityScorecardTrainingError::Build(format!(
+                                "repair_stable_head requires lower-half start for {symbol} at {as_of_date}"
+                            ))
+                        })?
+                } else {
+                    resolve_training_label(&outcome, &request.target_head)
+                };
                 samples.push(TrainingSample {
                     symbol: symbol.clone(),
                     as_of_date: NaiveDate::parse_from_str(&as_of_date, "%Y-%m-%d").map_err(
@@ -702,7 +1340,7 @@ fn collect_samples(
                         },
                     )?,
                     split_name: split_name.to_string(),
-                    label: resolve_training_label(&outcome, &request.target_head),
+                    label,
                     feature_values,
                 });
             }
@@ -716,6 +1354,542 @@ fn collect_samples(
     }
 
     Ok(samples)
+}
+
+fn collect_weekly_samples(
+    request: &SecurityScorecardTrainingRequest,
+    train_range: &TrainingDateRange,
+    _valid_range: &TrainingDateRange,
+    test_range: &TrainingDateRange,
+    feature_configs: &[TrainingFeatureConfig],
+) -> Result<Vec<TrainingSample>, SecurityScorecardTrainingError> {
+    let store = StockHistoryStore::workspace_default()?;
+    let mut samples = Vec::new();
+    let window_start = train_range.start.format("%Y-%m-%d").to_string();
+    let window_end = test_range.end.format("%Y-%m-%d").to_string();
+
+    for symbol in &request.symbol_list {
+        let effective_routing = resolve_effective_security_routing(
+            symbol,
+            request.market_symbol.as_deref(),
+            request.sector_symbol.as_deref(),
+            request.market_profile.as_deref(),
+            request.sector_profile.as_deref(),
+        );
+        let spot_rows = load_rows_for_weekly_training(&store, symbol, &window_start, &window_end)?;
+        let futures_rows = if let Some(futures_symbol) = request
+            .futures_symbol
+            .as_deref()
+            .map(str::trim)
+            .filter(|symbol| !symbol.is_empty())
+        {
+            Some(load_rows_for_weekly_training(
+                &store,
+                futures_symbol,
+                &window_start,
+                &window_end,
+            )?)
+        } else {
+            None
+        };
+
+        let weekly_feature_rows =
+            build_weekly_price_feature_rows(&spot_rows, futures_rows.as_deref())?;
+        let weekly_feature_map = weekly_feature_rows
+            .into_iter()
+            .map(|row| {
+                let week_end = NaiveDate::parse_from_str(&row.week_end_date, "%Y-%m-%d")
+                    .expect("weekly feature row week_end_date should parse");
+                (week_end.iso_week(), row)
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        let anchor_dates = build_training_anchor_dates(
+            request,
+            &store,
+            symbol,
+            &spot_rows,
+            train_range,
+            test_range,
+        )?;
+        let rolling_windows = build_weekly_rolling_split_plan(&anchor_dates, 24, 1, 1, 1)?;
+
+        let mut test_anchor_dates = std::collections::BTreeSet::<String>::new();
+        let mut valid_anchor_dates = std::collections::BTreeSet::<String>::new();
+        let mut train_anchor_dates = std::collections::BTreeSet::<String>::new();
+        for rolling_window in rolling_windows {
+            test_anchor_dates.extend(rolling_window.test_anchor_dates);
+            valid_anchor_dates.extend(
+                rolling_window
+                    .valid_anchor_dates
+                    .into_iter()
+                    .filter(|date| !test_anchor_dates.contains(date)),
+            );
+            train_anchor_dates.extend(rolling_window.train_anchor_dates.into_iter().filter(
+                |date| !valid_anchor_dates.contains(date) && !test_anchor_dates.contains(date),
+            ));
+        }
+
+        for (split_name, anchor_dates) in [
+            ("train".to_string(), train_anchor_dates),
+            ("valid".to_string(), valid_anchor_dates),
+            ("test".to_string(), test_anchor_dates),
+        ] {
+            for as_of_date in anchor_dates {
+                let as_of_week = NaiveDate::parse_from_str(&as_of_date, "%Y-%m-%d")
+                    .map_err(|error| {
+                        SecurityScorecardTrainingError::Build(format!(
+                            "invalid weekly anchor date `{as_of_date}` for {symbol}: {error}"
+                        ))
+                    })?
+                    .iso_week();
+                let weekly_features = weekly_feature_map.get(&as_of_week).ok_or_else(|| {
+                    SecurityScorecardTrainingError::Build(format!(
+                        "weekly feature row is missing for {symbol} at {as_of_date}"
+                    ))
+                })?;
+                let merged_raw_features_json = weekly_features
+                    .feature_values
+                    .iter()
+                    .map(|(feature_name, value)| (feature_name.clone(), Value::from(*value)))
+                    .collect::<BTreeMap<_, _>>();
+                match load_capital_source_observation_row(request, symbol, &as_of_date) {
+                    Ok(Some(_observation_row)) => {}
+                    Ok(None) => {}
+                    Err(error) if should_skip_weekly_anchor_due_to_capital_history(&error) => {
+                        continue;
+                    }
+                    Err(error) => return Err(error),
+                }
+                let outcome_result = security_forward_outcome(&SecurityForwardOutcomeRequest {
+                    symbol: symbol.clone(),
+                    market_symbol: effective_routing.market_symbol.clone(),
+                    sector_symbol: effective_routing.sector_symbol.clone(),
+                    futures_symbol: request.futures_symbol.clone(),
+                    market_profile: effective_routing.market_profile.clone(),
+                    sector_profile: effective_routing.sector_profile.clone(),
+                    as_of_date: Some(as_of_date.clone()),
+                    lookback_days: request.lookback_days,
+                    disclosure_limit: request.disclosure_limit,
+                    horizons: vec![request.horizon_days],
+                    stop_loss_pct: request.stop_loss_pct,
+                    target_return_pct: request.target_return_pct,
+                    label_definition_version: request.label_definition_version.clone(),
+                    external_proxy_inputs: None,
+                })?;
+                let outcome = outcome_result
+                    .forward_outcomes
+                    .first()
+                    .cloned()
+                    .ok_or_else(|| {
+                        SecurityScorecardTrainingError::Build(format!(
+                            "missing forward outcome for {symbol} at {as_of_date}"
+                        ))
+                    })?;
+                let feature_values =
+                    extract_feature_values(&merged_raw_features_json, feature_configs)?;
+                let label = resolve_training_label(&outcome, &request.target_head);
+                samples.push(TrainingSample {
+                    symbol: symbol.clone(),
+                    as_of_date: NaiveDate::parse_from_str(&as_of_date, "%Y-%m-%d").map_err(
+                        |error| {
+                            SecurityScorecardTrainingError::Build(format!(
+                                "invalid weekly as_of_date `{as_of_date}` for {symbol}: {error}"
+                            ))
+                        },
+                    )?,
+                    split_name: split_name.clone(),
+                    label,
+                    feature_values,
+                });
+            }
+        }
+    }
+
+    if samples.is_empty() {
+        return Err(SecurityScorecardTrainingError::Build(
+            "no weekly samples were collected for the requested ranges".to_string(),
+        ));
+    }
+    Ok(samples)
+}
+
+fn build_weekly_training_context(
+    request: &SecurityScorecardTrainingRequest,
+    train_range: &TrainingDateRange,
+    valid_range: &TrainingDateRange,
+    test_range: &TrainingDateRange,
+    feature_configs: &[TrainingFeatureConfig],
+) -> Result<WeeklyTrainingContext, SecurityScorecardTrainingError> {
+    let store = StockHistoryStore::workspace_default()?;
+    let mut artifact_samples = Vec::new();
+    let mut rolling_windows = Vec::new();
+    let mut capital_source_observation_rows = Vec::new();
+    let window_start = train_range.start.format("%Y-%m-%d").to_string();
+    let window_end = test_range.end.format("%Y-%m-%d").to_string();
+
+    for symbol in &request.symbol_list {
+        let spot_rows = load_rows_for_weekly_training(&store, symbol, &window_start, &window_end)?;
+        let futures_rows = if let Some(futures_symbol) = request
+            .futures_symbol
+            .as_deref()
+            .map(str::trim)
+            .filter(|symbol| !symbol.is_empty())
+        {
+            Some(load_rows_for_weekly_training(
+                &store,
+                futures_symbol,
+                &window_start,
+                &window_end,
+            )?)
+        } else {
+            None
+        };
+
+        let weekly_feature_rows =
+            build_weekly_price_feature_rows(&spot_rows, futures_rows.as_deref())?;
+        let weekly_feature_map = weekly_feature_rows
+            .into_iter()
+            .map(|row| {
+                let week_end = NaiveDate::parse_from_str(&row.week_end_date, "%Y-%m-%d")
+                    .expect("weekly feature row week_end_date should parse");
+                (week_end.iso_week(), row)
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        let anchor_dates = build_training_anchor_dates(
+            request,
+            &store,
+            symbol,
+            &spot_rows,
+            train_range,
+            test_range,
+        )?;
+        let rolling_plans = build_weekly_rolling_split_plan(&anchor_dates, 24, 1, 1, 1)?;
+        let mut anchor_sample_map = BTreeMap::<String, TrainingSample>::new();
+        let spot_close_by_date = spot_rows
+            .iter()
+            .map(|row| (row.trade_date.clone(), row.close))
+            .collect::<BTreeMap<_, _>>();
+
+        for (anchor_index, as_of_date) in anchor_dates.iter().enumerate() {
+            let Some(next_anchor_date) = anchor_dates.get(anchor_index + 1) else {
+                continue;
+            };
+            let as_of_week = NaiveDate::parse_from_str(as_of_date, "%Y-%m-%d")
+                .map_err(|error| {
+                    SecurityScorecardTrainingError::Build(format!(
+                        "invalid weekly anchor date `{as_of_date}` for {symbol}: {error}"
+                    ))
+                })?
+                .iso_week();
+            let weekly_features = match weekly_feature_map.get(&as_of_week) {
+                Some(features) => features,
+                None => continue,
+            };
+            let merged_raw_features_json = weekly_features
+                .feature_values
+                .iter()
+                .map(|(feature_name, value)| (feature_name.clone(), Value::from(*value)))
+                .collect::<BTreeMap<_, _>>();
+            match load_capital_source_observation_row(request, symbol, as_of_date) {
+                Ok(Some(observation_row)) => {
+                    capital_source_observation_rows.push(observation_row);
+                }
+                Ok(None) => {}
+                Err(error) if should_skip_weekly_anchor_due_to_capital_history(&error) => {
+                    continue;
+                }
+                Err(error) => return Err(error),
+            }
+            let feature_values =
+                extract_feature_values(&merged_raw_features_json, feature_configs)?;
+            let current_close = spot_close_by_date.get(as_of_date).copied().ok_or_else(|| {
+                SecurityScorecardTrainingError::Build(format!(
+                    "weekly spot close is missing for {symbol} at {as_of_date}"
+                ))
+            })?;
+            let next_close = spot_close_by_date
+                .get(next_anchor_date)
+                .copied()
+                .ok_or_else(|| {
+                    SecurityScorecardTrainingError::Build(format!(
+                        "weekly spot close is missing for {symbol} at next anchor {next_anchor_date}"
+                    ))
+                })?;
+            let label =
+                resolve_weekly_direction_label(current_close, next_close).ok_or_else(|| {
+                    SecurityScorecardTrainingError::Build(format!(
+                        "weekly direction label is unavailable for {symbol} at {as_of_date}"
+                    ))
+                })?;
+            let parsed_date =
+                NaiveDate::parse_from_str(as_of_date, "%Y-%m-%d").map_err(|error| {
+                    SecurityScorecardTrainingError::Build(format!(
+                        "invalid weekly as_of_date `{as_of_date}` for {symbol}: {error}"
+                    ))
+                })?;
+            let split_name = classify_weekly_artifact_split(parsed_date, valid_range, test_range);
+            let sample = TrainingSample {
+                symbol: symbol.clone(),
+                as_of_date: parsed_date,
+                split_name: split_name.to_string(),
+                label,
+                feature_values,
+            };
+            anchor_sample_map.insert(as_of_date.clone(), sample.clone());
+            artifact_samples.push(sample);
+        }
+
+        for (window_index, plan) in rolling_plans.into_iter().enumerate() {
+            let Some(train_samples) =
+                collect_weekly_window_samples(&anchor_sample_map, &plan.train_anchor_dates)
+            else {
+                continue;
+            };
+            let Some(valid_samples) =
+                collect_weekly_window_samples(&anchor_sample_map, &plan.valid_anchor_dates)
+            else {
+                continue;
+            };
+            let Some(test_samples) =
+                collect_weekly_window_samples(&anchor_sample_map, &plan.test_anchor_dates)
+            else {
+                continue;
+            };
+            rolling_windows.push(WeeklyRollingWindowSamples {
+                window_id: window_index + 1,
+                train_samples,
+                valid_samples,
+                test_samples,
+            });
+        }
+    }
+
+    if artifact_samples.is_empty() {
+        return Err(SecurityScorecardTrainingError::Build(
+            "no weekly samples were collected for the requested ranges".to_string(),
+        ));
+    }
+    if rolling_windows.is_empty() {
+        return Err(SecurityScorecardTrainingError::Build(
+            "weekly rolling split plan did not yield any complete evaluation windows".to_string(),
+        ));
+    }
+
+    artifact_samples.sort_by(|left, right| {
+        left.as_of_date
+            .cmp(&right.as_of_date)
+            .then_with(|| left.symbol.cmp(&right.symbol))
+    });
+
+    Ok(WeeklyTrainingContext {
+        artifact_samples,
+        rolling_windows,
+        capital_source_observation_rows,
+    })
+}
+
+fn collect_weekly_window_samples(
+    anchor_sample_map: &BTreeMap<String, TrainingSample>,
+    anchor_dates: &[String],
+) -> Option<Vec<TrainingSample>> {
+    anchor_dates
+        .iter()
+        .map(|anchor_date| anchor_sample_map.get(anchor_date).cloned())
+        .collect()
+}
+
+fn classify_weekly_artifact_split(
+    as_of_date: NaiveDate,
+    valid_range: &TrainingDateRange,
+    test_range: &TrainingDateRange,
+) -> &'static str {
+    if as_of_date >= test_range.start && as_of_date <= test_range.end {
+        "test"
+    } else if as_of_date >= valid_range.start && as_of_date <= valid_range.end {
+        "valid"
+    } else {
+        "train"
+    }
+}
+
+fn should_skip_weekly_anchor_due_to_capital_history(
+    error: &SecurityScorecardTrainingError,
+) -> bool {
+    match error {
+        SecurityScorecardTrainingError::Build(message) => {
+            message.contains("source history is insufficient")
+                || message.contains("has no governed observations")
+        }
+        _ => false,
+    }
+}
+
+fn load_rows_for_weekly_training(
+    store: &StockHistoryStore,
+    symbol: &str,
+    start_date: &str,
+    end_date: &str,
+) -> Result<Vec<StockHistoryRow>, SecurityScorecardTrainingError> {
+    let start = NaiveDate::parse_from_str(start_date, "%Y-%m-%d").map_err(|error| {
+        SecurityScorecardTrainingError::Build(format!(
+            "invalid weekly training start_date `{start_date}`: {error}"
+        ))
+    })?;
+    let end = NaiveDate::parse_from_str(end_date, "%Y-%m-%d").map_err(|error| {
+        SecurityScorecardTrainingError::Build(format!(
+            "invalid weekly training end_date `{end_date}`: {error}"
+        ))
+    })?;
+    let lookback_days = (end - start).num_days().unsigned_abs() as usize + 64;
+    let rows = store.load_recent_rows(symbol, Some(end_date), lookback_days.max(64))?;
+    Ok(rows
+        .into_iter()
+        .filter(|row| {
+            NaiveDate::parse_from_str(&row.trade_date, "%Y-%m-%d")
+                .map(|trade_date| trade_date >= start && trade_date <= end)
+                .unwrap_or(false)
+        })
+        .collect())
+}
+
+fn build_training_anchor_dates(
+    request: &SecurityScorecardTrainingRequest,
+    store: &StockHistoryStore,
+    symbol: &str,
+    spot_rows: &[StockHistoryRow],
+    train_range: &TrainingDateRange,
+    test_range: &TrainingDateRange,
+) -> Result<Vec<String>, SecurityScorecardTrainingError> {
+    let start_date = train_range.start.format("%Y-%m-%d").to_string();
+    let end_date = test_range.end.format("%Y-%m-%d").to_string();
+    if let Some(capital_flow_runtime_root) = normalized_capital_flow_runtime_root(request) {
+        let governed_weekly_dates = load_governed_weekly_observation_dates(
+            &capital_flow_runtime_root,
+            &start_date,
+            &end_date,
+        )?;
+        if !governed_weekly_dates.is_empty() {
+            return filter_weekly_training_anchor_dates(
+                store,
+                symbol,
+                request,
+                build_weekly_anchor_dates(
+                    spot_rows,
+                    &governed_weekly_dates,
+                    &start_date,
+                    &end_date,
+                )?,
+            );
+        }
+    }
+    filter_weekly_training_anchor_dates(
+        store,
+        symbol,
+        request,
+        build_weekly_price_buckets(spot_rows)?
+            .into_iter()
+            .map(|bucket| bucket.week_end.format("%Y-%m-%d").to_string())
+            .filter(|date| date >= &start_date && date <= &end_date)
+            .collect(),
+    )
+}
+
+fn filter_weekly_training_anchor_dates(
+    store: &StockHistoryStore,
+    symbol: &str,
+    request: &SecurityScorecardTrainingRequest,
+    anchor_dates: Vec<String>,
+) -> Result<Vec<String>, SecurityScorecardTrainingError> {
+    let mut filtered_anchor_dates = Vec::new();
+    for (index, anchor_date) in anchor_dates.iter().enumerate() {
+        let history_rows =
+            store.load_recent_rows(symbol, Some(anchor_date), request.lookback_days.max(200))?;
+        if history_rows.len() < 200 {
+            continue;
+        }
+        if uses_nikkei_weekly_training_contract(request) {
+            if index + 1 >= anchor_dates.len() {
+                continue;
+            }
+        } else {
+            let future_rows = store.load_forward_rows(symbol, anchor_date, request.horizon_days)?;
+            if future_rows.len() < request.horizon_days {
+                continue;
+            }
+        }
+        filtered_anchor_dates.push(anchor_date.clone());
+    }
+    Ok(filtered_anchor_dates)
+}
+
+fn load_capital_source_observation_row(
+    request: &SecurityScorecardTrainingRequest,
+    symbol: &str,
+    as_of_date: &str,
+) -> Result<Option<CapitalSourceObservationRow>, SecurityScorecardTrainingError> {
+    if !uses_nikkei_capital_source_feature_contract(request) {
+        return Ok(None);
+    }
+
+    // 2026-04-24 CST: Updated because the approved route demotes capital-source
+    // metrics from training features to observation-only output.
+    // Reason: the user wants to review funding metrics manually before letting
+    // them influence Nikkei weekly model fitting.
+    // Purpose: keep one governed observation fetch path while removing model input coupling.
+    let capital_flow_runtime_root =
+        normalized_capital_flow_runtime_root(request).ok_or_else(|| {
+            SecurityScorecardTrainingError::Build(
+                "capital_flow_runtime_root is required when capital_source_feature_mode is enabled"
+                    .to_string(),
+            )
+        })?;
+    let snapshot =
+        security_capital_source_factor_snapshot(&SecurityCapitalSourceFactorSnapshotRequest {
+            symbol: symbol.to_string(),
+            as_of_date: as_of_date.to_string(),
+            capital_flow_runtime_root: Some(capital_flow_runtime_root.clone()),
+            price_history_runtime_root: None,
+        })?;
+    if snapshot.observation_dates.is_empty() {
+        return Err(SecurityScorecardTrainingError::Build(format!(
+            "capital-flow runtime root `{capital_flow_runtime_root}` has no governed observations for {symbol} at {as_of_date}"
+        )));
+    }
+
+    let parsed_date = NaiveDate::parse_from_str(as_of_date, "%Y-%m-%d").map_err(|error| {
+        SecurityScorecardTrainingError::Build(format!(
+            "invalid capital-source observation date `{as_of_date}` for {symbol}: {error}"
+        ))
+    })?;
+    let factor_values = snapshot
+        .factors
+        .iter()
+        .filter_map(|(feature_name, factor)| {
+            factor.value.map(|value| (feature_name.clone(), value))
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    // 2026-04-24 CST: Updated because capital-source metrics now live in the
+    // observation-only layer instead of the training feature contract.
+    // Reason: requiring every observation metric to be available would wrongly
+    // drop otherwise valid weekly samples when one exploratory metric is sparse.
+    // Purpose: keep training sample eligibility independent from observation sparsity.
+    for (feature_name, numeric_value) in &factor_values {
+        if !numeric_value.is_finite() {
+            return Err(SecurityScorecardTrainingError::Build(format!(
+                "capital-source feature `{feature_name}` is invalid for {symbol} at {as_of_date}"
+            )));
+        }
+    }
+
+    Ok(Some(CapitalSourceObservationRow {
+        symbol: symbol.to_string(),
+        as_of_date: parsed_date,
+        observation_dates: snapshot.observation_dates,
+        factor_values,
+    }))
 }
 
 fn load_dates_in_range(
@@ -1800,7 +2974,10 @@ fn build_segment_slice_summary(
     trained_model: &TrainedLogisticModel,
 ) -> Result<Value, SecurityScorecardTrainingError> {
     let test_samples = samples_for_split(samples, "test");
-    let dimensions = ["integrated_stance", "market_regime", "industry_bucket"]
+    // 2026-04-21 CST: Updated because the approved follow-up cleanup also removes
+    // integrated_stance, so diagnostics must slice on retained atomic dimensions only.
+    // Purpose: keep segment summaries aligned with the live training contract after summary-label removal.
+    let dimensions = ["market_regime", "trend_bias", "breakout_signal"]
         .iter()
         .map(|feature_name| {
             Ok(json!({
@@ -2123,20 +3300,25 @@ fn build_governed_model_id(request: &SecurityScorecardTrainingRequest) -> String
     // 2026-04-20 CST: Added because Task 2 freezes Nikkei as a governed non-equity
     // training family and the old identity rule collapsed all index candidates together.
     // Purpose: keep artifact, diagnostics, and registry selection keyed by the approved instrument subscope.
+    let horizon_token = if uses_nikkei_weekly_training_contract(request) {
+        "1w".to_string()
+    } else {
+        format!("{}d", request.horizon_days)
+    };
     match request.instrument_subscope.as_deref().map(str::trim) {
         Some(subscope) if !subscope.is_empty() => format!(
-            "{}_{}_{}_{}d_{}",
+            "{}_{}_{}_{}_{}",
             request.market_scope.to_lowercase(),
             request.instrument_scope.to_lowercase(),
             sanitize_identifier(subscope),
-            request.horizon_days,
+            horizon_token,
             request.target_head
         ),
         _ => format!(
-            "{}_{}_{}d_{}",
+            "{}_{}_{}_{}",
             request.market_scope.to_lowercase(),
             request.instrument_scope.to_lowercase(),
-            request.horizon_days,
+            horizon_token,
             request.target_head
         ),
     }
@@ -2152,12 +3334,8 @@ fn build_metrics_summary(
     let train_metrics = evaluate_split(samples, "train", feature_models, trained_model);
     let valid_metrics = evaluate_split(samples, "valid", feature_models, trained_model);
     let test_metrics = evaluate_split(samples, "test", feature_models, trained_model);
-    let post_validation_holdout = evaluate_samples_after_cutoff(
-        samples,
-        validation_start,
-        feature_models,
-        trained_model,
-    );
+    let post_validation_holdout =
+        evaluate_samples_after_cutoff(samples, validation_start, feature_models, trained_model);
 
     json!({
         "train": train_metrics,
@@ -2168,6 +3346,160 @@ fn build_metrics_summary(
         "sample_count": samples.len(),
         "diagnostics": diagnostics_summary,
     })
+}
+
+fn build_weekly_metrics_summary(
+    artifact_samples: &[TrainingSample],
+    rolling_windows: &[WeeklyRollingWindowSamples],
+    capital_source_observation_rows: &[CapitalSourceObservationRow],
+    feature_configs: &[TrainingFeatureConfig],
+    artifact_feature_models: &[FeatureModel],
+    artifact_trained_model: &TrainedLogisticModel,
+    diagnostics_summary: Value,
+    validation_start: NaiveDate,
+) -> Result<Value, SecurityScorecardTrainingError> {
+    let train_metrics = evaluate_split(
+        artifact_samples,
+        "train",
+        artifact_feature_models,
+        artifact_trained_model,
+    );
+    let mut valid_records = Vec::new();
+    let mut test_records = Vec::new();
+    let mut skipped_windows = Vec::new();
+
+    for window in rolling_windows {
+        let train_refs = window.train_samples.iter().collect::<Vec<_>>();
+        let positive_count = train_refs
+            .iter()
+            .filter(|sample| sample.label >= 0.5)
+            .count();
+        let negative_count = train_refs.len().saturating_sub(positive_count);
+        if train_refs.len() < 2 || positive_count == 0 || negative_count == 0 {
+            skipped_windows.push(json!({
+                "window_id": window.window_id,
+                "reason": "train_window_missing_class_balance",
+                "train_sample_count": train_refs.len(),
+                "valid_sample_count": window.valid_samples.len(),
+                "test_sample_count": window.test_samples.len(),
+            }));
+            continue;
+        }
+        let fold_feature_models = build_feature_models(&train_refs, feature_configs)?;
+        let fold_train_matrix = encode_samples(&train_refs, &fold_feature_models)?;
+        let fold_model = train_logistic_model(&fold_train_matrix);
+        valid_records.extend(collect_window_evaluation_records(
+            window.window_id,
+            "valid",
+            &window.valid_samples,
+            &fold_feature_models,
+            &fold_model,
+        )?);
+        test_records.extend(collect_window_evaluation_records(
+            window.window_id,
+            "test",
+            &window.test_samples,
+            &fold_feature_models,
+            &fold_model,
+        )?);
+    }
+
+    let post_validation_holdout_records = test_records
+        .iter()
+        .filter(|record| record.as_of_date >= validation_start)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    Ok(json!({
+        "train": train_metrics,
+        "valid": summarize_window_evaluation_records(&valid_records),
+        "test": summarize_window_evaluation_records(&test_records),
+        "post_validation_holdout": summarize_window_holdout_records(
+            &post_validation_holdout_records,
+            validation_start,
+        ),
+        "feature_count": artifact_feature_models.len(),
+        "sample_count": artifact_samples.len(),
+        "rolling_window_count": valid_records
+            .iter()
+            .map(|record| record.window_id)
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        "capital_source_observation": build_capital_source_observation_summary(
+            capital_source_observation_rows,
+        ),
+        "skipped_window_count": skipped_windows.len(),
+        "skipped_windows": skipped_windows,
+        "diagnostics": diagnostics_summary,
+    }))
+}
+
+fn build_capital_source_observation_summary(
+    observation_rows: &[CapitalSourceObservationRow],
+) -> Value {
+    if observation_rows.is_empty() {
+        return Value::Null;
+    }
+
+    let mut latest_row = &observation_rows[0];
+    let mut factor_series = BTreeMap::<String, Vec<f64>>::new();
+    for row in observation_rows {
+        if row.as_of_date > latest_row.as_of_date {
+            latest_row = row;
+        }
+        for (factor_name, value) in &row.factor_values {
+            factor_series
+                .entry(factor_name.clone())
+                .or_default()
+                .push(*value);
+        }
+    }
+
+    let factor_stats = factor_series
+        .iter()
+        .map(|(factor_name, values)| {
+            let mut sorted_values = values.clone();
+            sorted_values.sort_by(|left, right| left.total_cmp(right));
+            let mean = if sorted_values.is_empty() {
+                0.0
+            } else {
+                sorted_values.iter().sum::<f64>() / sorted_values.len() as f64
+            };
+            (
+                factor_name.clone(),
+                json!({
+                    "sample_count": sorted_values.len(),
+                    "min": sorted_values.first().copied().unwrap_or(0.0),
+                    "p50": percentile(&sorted_values, 0.5),
+                    "max": sorted_values.last().copied().unwrap_or(0.0),
+                    "mean": round_metric(mean),
+                }),
+            )
+        })
+        .collect::<serde_json::Map<_, _>>();
+
+    json!({
+        "mode": "observation_only",
+        "sample_count": observation_rows.len(),
+        "factor_count": factor_series.len(),
+        "latest_as_of_date": latest_row.as_of_date.format("%Y-%m-%d").to_string(),
+        "latest_values": latest_row.factor_values,
+        "latest_observation_dates": latest_row.observation_dates,
+        "factor_stats": factor_stats,
+    })
+}
+
+fn percentile(sorted_values: &[f64], quantile: f64) -> f64 {
+    if sorted_values.is_empty() {
+        return 0.0;
+    }
+    let clamped_quantile = quantile.clamp(0.0, 1.0);
+    let index = ((sorted_values.len() - 1) as f64 * clamped_quantile).round() as usize;
+    round_metric(sorted_values[index])
+}
+
+fn round_metric(value: f64) -> f64 {
+    (value * 1_000_000.0).round() / 1_000_000.0
 }
 
 fn evaluate_samples_after_cutoff(
@@ -2210,6 +3542,84 @@ fn evaluate_split(
     evaluate_sample_refs(&split_samples, feature_models, trained_model)
 }
 
+fn collect_window_evaluation_records(
+    window_id: usize,
+    split_name: &str,
+    samples: &[TrainingSample],
+    feature_models: &[FeatureModel],
+    trained_model: &TrainedLogisticModel,
+) -> Result<Vec<WindowEvaluationRecord>, SecurityScorecardTrainingError> {
+    samples
+        .iter()
+        .map(|sample| {
+            Ok(WindowEvaluationRecord {
+                window_id,
+                split_name: split_name.to_string(),
+                as_of_date: sample.as_of_date,
+                label: sample.label,
+                predicted_probability: predict_probability(sample, feature_models, trained_model)?,
+            })
+        })
+        .collect()
+}
+
+fn summarize_window_evaluation_records(records: &[WindowEvaluationRecord]) -> Value {
+    let sample_count = records.len() as f64;
+    let accuracy = if sample_count <= 0.0 {
+        0.0
+    } else {
+        records
+            .iter()
+            .filter(|record| {
+                let predicted_label = if record.predicted_probability >= 0.5 {
+                    1.0
+                } else {
+                    0.0
+                };
+                (predicted_label - record.label).abs() <= f64::EPSILON
+            })
+            .count() as f64
+            / sample_count
+    };
+    let positive_rate = if sample_count <= 0.0 {
+        0.0
+    } else {
+        records.iter().filter(|record| record.label >= 0.5).count() as f64 / sample_count
+    };
+    json!({
+        "split_name": records
+            .first()
+            .map(|record| record.split_name.clone())
+            .unwrap_or_default(),
+        "sample_count": records.len(),
+        "accuracy": accuracy,
+        "positive_rate": positive_rate,
+        "start_date": records
+            .first()
+            .map(|record| record.as_of_date.to_string())
+            .unwrap_or_default(),
+        "end_date": records
+            .last()
+            .map(|record| record.as_of_date.to_string())
+            .unwrap_or_default(),
+    })
+}
+
+fn summarize_window_holdout_records(
+    records: &[WindowEvaluationRecord],
+    cutoff_date: NaiveDate,
+) -> Value {
+    let metrics = summarize_window_evaluation_records(records);
+    json!({
+        "cutoff_date": cutoff_date.to_string(),
+        "sample_count": metrics["sample_count"],
+        "accuracy": metrics["accuracy"],
+        "positive_rate": metrics["positive_rate"],
+        "start_date": metrics["start_date"],
+        "end_date": metrics["end_date"],
+    })
+}
+
 fn predict_probability(
     sample: &TrainingSample,
     feature_models: &[FeatureModel],
@@ -2228,16 +3638,486 @@ fn predict_probability(
 }
 
 fn resolve_runtime_root(request: &SecurityScorecardTrainingRequest) -> PathBuf {
-    request
-        .training_runtime_root
-        .as_ref()
-        .map(|path| PathBuf::from(path.trim()))
-        .filter(|path| !path.as_os_str().is_empty())
+    // 2026-04-22 CST: Updated because scheme 2 separates artifact persistence
+    // from source-data loading after the Nikkei capital-source miswiring.
+    // Reason: the old training_runtime_root remains as a legacy alias, but artifact output now has its own explicit boundary.
+    // Purpose: keep backward compatibility while preferring the explicit artifact root.
+    normalized_artifact_runtime_root(request)
+        .or_else(|| normalized_legacy_training_runtime_root(request))
+        .map(PathBuf::from)
         .unwrap_or_else(|| {
             PathBuf::from(".worktrees")
                 .join("SheetMind-Scenes-inspect")
                 .join(".sheetmind_scenes_runtime")
         })
+}
+
+pub fn debug_build_weekly_price_feature_rows(
+    spot_rows: &[StockHistoryRow],
+    futures_rows: Option<&[StockHistoryRow]>,
+) -> Result<Vec<WeeklyPriceFeatureRow>, SecurityScorecardTrainingError> {
+    build_weekly_price_feature_rows(spot_rows, futures_rows)
+}
+
+pub fn debug_load_governed_weekly_observation_dates(
+    capital_flow_runtime_root: &str,
+    start_date: &str,
+    end_date: &str,
+) -> Result<Vec<String>, SecurityScorecardTrainingError> {
+    load_governed_weekly_observation_dates(capital_flow_runtime_root, start_date, end_date)
+}
+
+pub fn debug_build_weekly_anchor_dates(
+    spot_rows: &[StockHistoryRow],
+    governed_weekly_dates: &[String],
+    start_date: &str,
+    end_date: &str,
+) -> Result<Vec<String>, SecurityScorecardTrainingError> {
+    build_weekly_anchor_dates(spot_rows, governed_weekly_dates, start_date, end_date)
+}
+
+pub fn debug_build_weekly_rolling_split_plan(
+    anchors: &[String],
+    train_weeks: usize,
+    valid_weeks: usize,
+    test_weeks: usize,
+    stride_weeks: usize,
+) -> Result<Vec<WeeklyRollingWindowPlan>, SecurityScorecardTrainingError> {
+    build_weekly_rolling_split_plan(anchors, train_weeks, valid_weeks, test_weeks, stride_weeks)
+}
+
+fn build_weekly_price_feature_rows(
+    spot_rows: &[StockHistoryRow],
+    futures_rows: Option<&[StockHistoryRow]>,
+) -> Result<Vec<WeeklyPriceFeatureRow>, SecurityScorecardTrainingError> {
+    let weekly_spot_rows = build_weekly_price_buckets(spot_rows)?;
+    let weekly_futures_rows = futures_rows
+        .map(build_weekly_price_buckets)
+        .transpose()?
+        .unwrap_or_default();
+    let futures_by_week = weekly_futures_rows
+        .into_iter()
+        .map(|bucket| (bucket.week_start, bucket))
+        .collect::<BTreeMap<_, _>>();
+
+    let mut feature_rows = Vec::new();
+    for (index, spot_bucket) in weekly_spot_rows.iter().enumerate() {
+        let mut feature_values = BTreeMap::new();
+        append_distribution_features(
+            &mut feature_values,
+            "weekly_spot_return",
+            &spot_bucket.daily_returns,
+        );
+        feature_values.insert(
+            "weekly_spot_close_position".to_string(),
+            spot_bucket.close_position,
+        );
+        feature_values.insert("weekly_spot_drawdown".to_string(), spot_bucket.drawdown);
+        feature_values.insert("weekly_spot_rebound".to_string(), spot_bucket.rebound);
+        let volume_source_bucket = futures_by_week
+            .get(&spot_bucket.week_start)
+            .filter(|bucket| bucket.total_volume > f64::EPSILON)
+            .unwrap_or(spot_bucket);
+        let prior_window = if index >= 4 {
+            &weekly_spot_rows[index - 4..index]
+        } else {
+            &weekly_spot_rows[..index]
+        };
+        let prior_volume_buckets = prior_window
+            .iter()
+            .map(|bucket| {
+                futures_by_week
+                    .get(&bucket.week_start)
+                    .filter(|futures_bucket| futures_bucket.total_volume > f64::EPSILON)
+                    .unwrap_or(bucket)
+            })
+            .collect::<Vec<_>>();
+        let prior_volume_mean = if prior_window.is_empty() {
+            None
+        } else {
+            Some(
+                prior_volume_buckets
+                    .iter()
+                    .map(|bucket| bucket.total_volume)
+                    .sum::<f64>()
+                    / prior_volume_buckets.len() as f64,
+            )
+        };
+        feature_values.insert(
+            "weekly_volume_ratio_4w".to_string(),
+            prior_volume_mean
+                .map(|mean| {
+                    if mean <= f64::EPSILON {
+                        1.0
+                    } else {
+                        volume_source_bucket.total_volume / mean
+                    }
+                })
+                .unwrap_or(1.0),
+        );
+        feature_values.insert(
+            "weekly_up_day_volume_share".to_string(),
+            volume_source_bucket.up_day_volume_share,
+        );
+        feature_values.insert(
+            "weekly_down_day_volume_share".to_string(),
+            volume_source_bucket.down_day_volume_share,
+        );
+        let weekly_return = match (spot_bucket.rows.first(), spot_bucket.rows.last()) {
+            (Some(first), Some(last)) if first.close.abs() > f64::EPSILON => {
+                (last.close / first.close) - 1.0
+            }
+            _ => 0.0,
+        };
+        let volume_ratio = feature_values
+            .get("weekly_volume_ratio_4w")
+            .copied()
+            .unwrap_or(1.0);
+        feature_values.insert(
+            "weekly_volume_price_confirmation".to_string(),
+            if weekly_return > 0.0 && volume_ratio >= 1.05 {
+                1.0
+            } else if weekly_return < 0.0 && volume_ratio >= 1.05 {
+                -1.0
+            } else {
+                0.0
+            },
+        );
+
+        if let Some(futures_bucket) = futures_by_week.get(&spot_bucket.week_start) {
+            append_distribution_features(
+                &mut feature_values,
+                "weekly_futures_return",
+                &futures_bucket.daily_returns,
+            );
+            append_distribution_features(
+                &mut feature_values,
+                "weekly_basis_pct",
+                &aligned_basis_series(&spot_bucket.rows, &futures_bucket.rows),
+            );
+            append_distribution_features(
+                &mut feature_values,
+                "weekly_futures_relative_strength",
+                &aligned_relative_strength_series(&spot_bucket.rows, &futures_bucket.rows),
+            );
+        }
+
+        feature_rows.push(WeeklyPriceFeatureRow {
+            week_start_date: spot_bucket.week_start.format("%Y-%m-%d").to_string(),
+            week_end_date: spot_bucket.week_end.format("%Y-%m-%d").to_string(),
+            feature_values,
+        });
+    }
+
+    Ok(feature_rows)
+}
+
+fn load_governed_weekly_observation_dates(
+    capital_flow_runtime_root: &str,
+    start_date: &str,
+    end_date: &str,
+) -> Result<Vec<String>, SecurityScorecardTrainingError> {
+    let store = SecurityCapitalFlowStore::new(
+        PathBuf::from(capital_flow_runtime_root).join("security_capital_flow.db"),
+    );
+    let mut dates = store
+        .load_metric_dates_in_range("jpx_weekly_investor_type", "weekly", start_date, end_date)
+        .map_err(|error| SecurityScorecardTrainingError::Build(error.to_string()))?;
+    if dates.is_empty() {
+        dates = store
+            .load_metric_dates_in_range("mof_weekly_cross_border", "weekly", start_date, end_date)
+            .map_err(|error| SecurityScorecardTrainingError::Build(error.to_string()))?;
+    }
+    Ok(dates)
+}
+
+fn build_weekly_anchor_dates(
+    spot_rows: &[StockHistoryRow],
+    governed_weekly_dates: &[String],
+    start_date: &str,
+    end_date: &str,
+) -> Result<Vec<String>, SecurityScorecardTrainingError> {
+    let start = NaiveDate::parse_from_str(start_date, "%Y-%m-%d").map_err(|error| {
+        SecurityScorecardTrainingError::Build(format!(
+            "invalid weekly anchor start_date `{start_date}`: {error}"
+        ))
+    })?;
+    let end = NaiveDate::parse_from_str(end_date, "%Y-%m-%d").map_err(|error| {
+        SecurityScorecardTrainingError::Build(format!(
+            "invalid weekly anchor end_date `{end_date}`: {error}"
+        ))
+    })?;
+    let price_weeks = build_weekly_price_buckets(spot_rows)?
+        .into_iter()
+        .map(|bucket| bucket.week_end.iso_week())
+        .collect::<std::collections::BTreeSet<_>>();
+
+    let mut anchors = Vec::new();
+    for metric_date in governed_weekly_dates {
+        let parsed_date = NaiveDate::parse_from_str(metric_date, "%Y-%m-%d").map_err(|error| {
+            SecurityScorecardTrainingError::Build(format!(
+                "invalid governed weekly date `{metric_date}`: {error}"
+            ))
+        })?;
+        if parsed_date < start || parsed_date > end {
+            continue;
+        }
+        if price_weeks.contains(&parsed_date.iso_week()) {
+            anchors.push(metric_date.clone());
+        }
+    }
+    Ok(anchors)
+}
+
+fn build_weekly_rolling_split_plan(
+    anchors: &[String],
+    train_weeks: usize,
+    valid_weeks: usize,
+    test_weeks: usize,
+    stride_weeks: usize,
+) -> Result<Vec<WeeklyRollingWindowPlan>, SecurityScorecardTrainingError> {
+    if train_weeks == 0 || valid_weeks == 0 || test_weeks == 0 || stride_weeks == 0 {
+        return Err(SecurityScorecardTrainingError::Build(
+            "weekly rolling plan requires all window sizes to be greater than 0".to_string(),
+        ));
+    }
+    let total_window = train_weeks + valid_weeks + test_weeks;
+    if anchors.len() < total_window {
+        return Ok(Vec::new());
+    }
+
+    let mut windows = Vec::new();
+    let mut start_index = 0;
+    while start_index + total_window <= anchors.len() {
+        let train_end = start_index + train_weeks;
+        let valid_end = train_end + valid_weeks;
+        let test_end = valid_end + test_weeks;
+        windows.push(WeeklyRollingWindowPlan {
+            train_anchor_dates: anchors[start_index..train_end].to_vec(),
+            valid_anchor_dates: anchors[train_end..valid_end].to_vec(),
+            test_anchor_dates: anchors[valid_end..test_end].to_vec(),
+        });
+        start_index += stride_weeks;
+    }
+    Ok(windows)
+}
+
+#[derive(Debug, Clone)]
+struct WeeklyPriceBucket {
+    week_start: NaiveDate,
+    week_end: NaiveDate,
+    rows: Vec<StockHistoryRow>,
+    daily_returns: Vec<f64>,
+    total_volume: f64,
+    up_day_volume_share: f64,
+    down_day_volume_share: f64,
+    close_position: f64,
+    drawdown: f64,
+    rebound: f64,
+}
+
+fn build_weekly_price_buckets(
+    rows: &[StockHistoryRow],
+) -> Result<Vec<WeeklyPriceBucket>, SecurityScorecardTrainingError> {
+    let mut parsed_rows = rows
+        .iter()
+        .cloned()
+        .map(|row| {
+            let trade_date =
+                NaiveDate::parse_from_str(&row.trade_date, "%Y-%m-%d").map_err(|error| {
+                    SecurityScorecardTrainingError::Build(format!(
+                        "invalid weekly aggregation trade_date `{}`: {error}",
+                        row.trade_date
+                    ))
+                })?;
+            Ok((trade_date, row))
+        })
+        .collect::<Result<Vec<_>, SecurityScorecardTrainingError>>()?;
+    parsed_rows.sort_by_key(|(trade_date, _)| *trade_date);
+
+    let mut grouped_rows = BTreeMap::<NaiveDate, Vec<StockHistoryRow>>::new();
+    for (trade_date, row) in parsed_rows {
+        grouped_rows
+            .entry(week_start_date(trade_date))
+            .or_default()
+            .push(row);
+    }
+
+    let mut buckets = Vec::new();
+    for (week_start, week_rows) in grouped_rows {
+        if week_rows.len() < 2 {
+            continue;
+        }
+        let week_end = week_rows
+            .last()
+            .and_then(|row| NaiveDate::parse_from_str(&row.trade_date, "%Y-%m-%d").ok())
+            .unwrap_or(week_start);
+        let close_values = week_rows.iter().map(|row| row.close).collect::<Vec<_>>();
+        let total_volume = week_rows
+            .iter()
+            .map(|row| row.volume.max(0) as f64)
+            .sum::<f64>();
+        let high_max = week_rows
+            .iter()
+            .map(|row| row.high)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let low_min = week_rows
+            .iter()
+            .map(|row| row.low)
+            .fold(f64::INFINITY, f64::min);
+        let last_close = *close_values.last().unwrap_or(&0.0);
+        let range = (high_max - low_min).abs();
+        let close_position = if range <= f64::EPSILON {
+            0.5
+        } else {
+            ((last_close - low_min) / range).clamp(0.0, 1.0)
+        };
+        let peak_close = close_values
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max);
+        let trough_close = close_values.iter().copied().fold(f64::INFINITY, f64::min);
+        let drawdown = if peak_close <= f64::EPSILON {
+            0.0
+        } else {
+            ((trough_close / peak_close) - 1.0).abs()
+        };
+        let rebound_range = (peak_close - trough_close).abs();
+        let rebound = if rebound_range <= f64::EPSILON {
+            0.0
+        } else {
+            ((last_close - trough_close) / rebound_range).clamp(0.0, 1.0)
+        };
+        let mut up_day_volume = 0.0;
+        let mut down_day_volume = 0.0;
+        for window in week_rows.windows(2) {
+            let previous = &window[0];
+            let current = &window[1];
+            if current.close > previous.close {
+                up_day_volume += current.volume.max(0) as f64;
+            } else if current.close < previous.close {
+                down_day_volume += current.volume.max(0) as f64;
+            }
+        }
+        buckets.push(WeeklyPriceBucket {
+            week_start,
+            week_end,
+            rows: week_rows,
+            daily_returns: pairwise_returns(&close_values),
+            total_volume,
+            up_day_volume_share: if total_volume <= f64::EPSILON {
+                0.0
+            } else {
+                up_day_volume / total_volume
+            },
+            down_day_volume_share: if total_volume <= f64::EPSILON {
+                0.0
+            } else {
+                down_day_volume / total_volume
+            },
+            close_position,
+            drawdown,
+            rebound,
+        });
+    }
+
+    Ok(buckets)
+}
+
+fn week_start_date(trade_date: NaiveDate) -> NaiveDate {
+    trade_date - Duration::days(trade_date.weekday().num_days_from_monday() as i64)
+}
+
+fn pairwise_returns(values: &[f64]) -> Vec<f64> {
+    values
+        .windows(2)
+        .filter_map(|window| {
+            let previous = window[0];
+            let current = window[1];
+            if previous.abs() <= f64::EPSILON {
+                None
+            } else {
+                Some((current / previous) - 1.0)
+            }
+        })
+        .collect()
+}
+
+fn aligned_basis_series(
+    spot_rows: &[StockHistoryRow],
+    futures_rows: &[StockHistoryRow],
+) -> Vec<f64> {
+    let spot_by_date = spot_rows
+        .iter()
+        .map(|row| (row.trade_date.as_str(), row.close))
+        .collect::<BTreeMap<_, _>>();
+    futures_rows
+        .iter()
+        .filter_map(|row| {
+            let spot_close = spot_by_date.get(row.trade_date.as_str())?;
+            if spot_close.abs() <= f64::EPSILON {
+                None
+            } else {
+                Some((row.close / *spot_close) - 1.0)
+            }
+        })
+        .collect()
+}
+
+fn aligned_relative_strength_series(
+    spot_rows: &[StockHistoryRow],
+    futures_rows: &[StockHistoryRow],
+) -> Vec<f64> {
+    let spot_returns = pairwise_returns(&spot_rows.iter().map(|row| row.close).collect::<Vec<_>>());
+    let futures_returns =
+        pairwise_returns(&futures_rows.iter().map(|row| row.close).collect::<Vec<_>>());
+    spot_returns
+        .into_iter()
+        .zip(futures_returns)
+        .map(|(spot_return, futures_return)| futures_return - spot_return)
+        .collect()
+}
+
+fn append_distribution_features(
+    feature_values: &mut BTreeMap<String, f64>,
+    prefix: &str,
+    values: &[f64],
+) {
+    if values.is_empty() {
+        return;
+    }
+    for (suffix, quantile) in [
+        ("min", 0.0),
+        ("p10", 0.10),
+        ("p25", 0.25),
+        ("p50", 0.50),
+        ("p75", 0.75),
+        ("p90", 0.90),
+        ("max", 1.0),
+    ] {
+        feature_values.insert(
+            format!("{prefix}_{suffix}"),
+            numeric_quantile(values, quantile),
+        );
+    }
+}
+
+fn numeric_quantile(values: &[f64], quantile: f64) -> f64 {
+    let mut sorted = values.to_vec();
+    sorted.sort_by(|left, right| left.partial_cmp(right).unwrap_or(std::cmp::Ordering::Equal));
+    if sorted.len() == 1 {
+        return sorted[0];
+    }
+    let position = (sorted.len() - 1) as f64 * quantile.clamp(0.0, 1.0);
+    let lower_index = position.floor() as usize;
+    let upper_index = position.ceil() as usize;
+    if lower_index == upper_index {
+        sorted[lower_index]
+    } else {
+        let lower = sorted[lower_index];
+        let upper = sorted[upper_index];
+        lower + (upper - lower) * (position - lower_index as f64)
+    }
 }
 
 fn persist_json<T: Serialize>(
@@ -2286,8 +4166,8 @@ fn default_target_return_pct() -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::Value;
     use crate::ops::stock::security_forward_outcome::SecurityForwardOutcomeDocument;
+    use serde_json::Value;
 
     // 2026-04-20 CST: Added because the approved contract change must first lock
     // the new target-head surface in red tests before trainer behavior is updated.
@@ -2296,6 +4176,7 @@ mod tests {
     fn build_training_request(target_head: &str) -> SecurityScorecardTrainingRequest {
         SecurityScorecardTrainingRequest {
             created_at: "2026-04-20T21:30:00+08:00".to_string(),
+            artifact_runtime_root: None,
             training_runtime_root: None,
             market_scope: "GLOBAL".to_string(),
             instrument_scope: "INDEX".to_string(),
@@ -2303,6 +4184,9 @@ mod tests {
             symbol_list: vec!["NK225.IDX".to_string()],
             market_symbol: Some("NK225.IDX".to_string()),
             sector_symbol: Some("NK225.IDX".to_string()),
+            futures_symbol: None,
+            capital_source_feature_mode: None,
+            capital_flow_runtime_root: None,
             market_profile: None,
             sector_profile: None,
             horizon_days: 10,
@@ -2323,6 +4207,60 @@ mod tests {
     fn validate_request_accepts_direction_up_and_down_heads() {
         assert!(validate_request(&build_training_request("direction_up_head")).is_ok());
         assert!(validate_request(&build_training_request("direction_down_head")).is_ok());
+        assert!(validate_request(&build_training_request("repair_stable_head")).is_ok());
+    }
+
+    #[test]
+    fn validate_request_accepts_nikkei_capital_source_feature_mode() {
+        let mut request = build_training_request("direction_head");
+        request.instrument_subscope = Some("nikkei_index".to_string());
+        request.capital_source_feature_mode = Some("nikkei_jpx_mof_v1".to_string());
+        request.capital_flow_runtime_root = Some("E:/SM/tests/runtime".to_string());
+        assert!(validate_request(&request).is_ok());
+    }
+
+    #[test]
+    fn validate_request_rejects_unknown_capital_source_feature_mode() {
+        let mut request = build_training_request("direction_head");
+        request.instrument_subscope = Some("nikkei_index".to_string());
+        request.capital_source_feature_mode = Some("unsupported_mode".to_string());
+        let error = validate_request(&request).expect_err("unsupported mode should be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("unsupported capital_source_feature_mode"),
+            "error={error}"
+        );
+    }
+
+    #[test]
+    fn validate_request_rejects_missing_capital_flow_runtime_root_for_enhanced_mode() {
+        let mut request = build_training_request("direction_head");
+        request.instrument_subscope = Some("nikkei_index".to_string());
+        request.capital_source_feature_mode = Some("nikkei_jpx_mof_v1".to_string());
+        let error =
+            validate_request(&request).expect_err("enhanced mode should require capital-flow root");
+        assert!(
+            error
+                .to_string()
+                .contains("capital_flow_runtime_root is required"),
+            "error={error}"
+        );
+    }
+
+    #[test]
+    fn validate_request_rejects_conflicting_artifact_runtime_roots() {
+        let mut request = build_training_request("direction_head");
+        request.training_runtime_root = Some("E:/SM/legacy_artifacts".to_string());
+        request.artifact_runtime_root = Some("E:/SM/new_artifacts".to_string());
+        let error = validate_request(&request)
+            .expect_err("conflicting artifact root aliases should be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("artifact_runtime_root conflicts"),
+            "error={error}"
+        );
     }
 
     #[test]
@@ -2332,9 +4270,27 @@ mod tests {
             coefficients: Vec::new(),
         };
 
-        let up_artifact_json =
-            serde_json::to_value(build_artifact(&build_training_request("direction_up_head"), &[], &trained_model))
-                .expect("up artifact should serialize");
+        let weekly_artifact_json = serde_json::to_value(build_artifact(
+            &build_training_request("direction_head"),
+            &[],
+            &trained_model,
+        ))
+        .expect("weekly artifact should serialize");
+        assert_eq!(
+            weekly_artifact_json["target_label_definition"],
+            Value::String("positive_return_1w".to_string())
+        );
+        assert_eq!(
+            weekly_artifact_json["positive_label_definition"],
+            Value::String("positive_return_1w".to_string())
+        );
+
+        let up_artifact_json = serde_json::to_value(build_artifact(
+            &build_training_request("direction_up_head"),
+            &[],
+            &trained_model,
+        ))
+        .expect("up artifact should serialize");
         assert_eq!(
             up_artifact_json["target_label_definition"],
             Value::String("positive_return_10d".to_string())
@@ -2344,14 +4300,32 @@ mod tests {
             Value::String("positive_return_10d".to_string())
         );
 
-        let down_artifact_json =
-            serde_json::to_value(build_artifact(&build_training_request("direction_down_head"), &[], &trained_model))
-                .expect("down artifact should serialize");
+        let down_artifact_json = serde_json::to_value(build_artifact(
+            &build_training_request("direction_down_head"),
+            &[],
+            &trained_model,
+        ))
+        .expect("down artifact should serialize");
         assert_eq!(
             down_artifact_json["target_label_definition"],
             Value::String("negative_return_10d".to_string())
         );
         assert_eq!(down_artifact_json["positive_label_definition"], Value::Null);
+
+        let repair_artifact_json = serde_json::to_value(build_artifact(
+            &build_training_request("repair_stable_head"),
+            &[],
+            &trained_model,
+        ))
+        .expect("repair artifact should serialize");
+        assert_eq!(
+            repair_artifact_json["target_label_definition"],
+            Value::String("repair_stable_10d".to_string())
+        );
+        assert_eq!(
+            repair_artifact_json["positive_label_definition"],
+            Value::String("repair_stable_10d".to_string())
+        );
     }
 
     #[test]
@@ -2404,6 +4378,58 @@ mod tests {
         assert_eq!(
             resolve_training_label(&positive_outcome, "direction_up_head"),
             1.0
+        );
+    }
+
+    #[test]
+    fn resolve_weekly_direction_label_uses_next_anchor_close_direction() {
+        assert_eq!(resolve_weekly_direction_label(38000.0, 38250.0), Some(1.0));
+        assert_eq!(resolve_weekly_direction_label(38000.0, 37950.0), Some(0.0));
+        assert_eq!(resolve_weekly_direction_label(38000.0, 38000.0), Some(0.0));
+        assert_eq!(resolve_weekly_direction_label(0.0, 38000.0), None);
+    }
+
+    #[test]
+    fn resolve_repair_stable_label_separates_stable_repair_from_hit_and_fail() {
+        assert_eq!(
+            resolve_repair_stable_label_from_buckets(
+                "weak_down",
+                &[
+                    "weak_down".to_string(),
+                    "neutral".to_string(),
+                    "weak_up".to_string(),
+                ],
+            ),
+            Some(1.0)
+        );
+        assert_eq!(
+            resolve_repair_stable_label_from_buckets(
+                "strong_down",
+                &[
+                    "neutral".to_string(),
+                    "weak_up".to_string(),
+                    "weak_down".to_string(),
+                ],
+            ),
+            Some(0.0)
+        );
+        assert_eq!(
+            resolve_repair_stable_label_from_buckets(
+                "strong_down",
+                &[
+                    "weak_down".to_string(),
+                    "neutral".to_string(),
+                    "neutral".to_string(),
+                ],
+            ),
+            Some(0.0)
+        );
+        assert_eq!(
+            resolve_repair_stable_label_from_buckets(
+                "neutral",
+                &["weak_up".to_string(), "weak_up".to_string()],
+            ),
+            None
         );
     }
 }

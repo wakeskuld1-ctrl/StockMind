@@ -1,6 +1,11 @@
 mod common;
 
 use chrono::{Duration, NaiveDate};
+use excel_skill::ops::stock::security_scorecard_training::{
+    debug_build_weekly_anchor_dates, debug_build_weekly_price_feature_rows,
+    debug_build_weekly_rolling_split_plan, debug_load_governed_weekly_observation_dates,
+};
+use excel_skill::runtime::stock_history_store::StockHistoryRow;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
@@ -243,7 +248,7 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
     // 2026-04-17 CST: Added because disclosure events now enter training as weighted component
     // scores instead of only sparse boolean/risk-count hints.
     // Purpose: lock the first formal event-scoring feature family into the training contract.
-    assert_eq!(output["data"]["metrics_summary_json"]["feature_count"], 38);
+    assert_eq!(output["data"]["metrics_summary_json"]["feature_count"], 19);
     assert!(
         output["data"]["metrics_summary_json"]["sample_count"]
             .as_u64()
@@ -382,42 +387,27 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
         .iter()
         .filter_map(|feature| feature["feature_name"].as_str())
         .collect::<Vec<_>>();
+    // 2026-04-21 CST: Updated because the approved follow-up step now removes the
+    // integrated summary label itself from training after the non-index cleanup.
+    // Purpose: lock the retained index-focused atomic feature surface in the artifact contract.
     for expected_feature in [
-        "integrated_stance",
+        "market_regime",
+        "instrument_subscope",
         "technical_alignment",
         "trend_bias",
         "trend_strength",
         "volume_confirmation",
+        "breakout_signal",
         "momentum_signal",
-        "profit_signal",
-        "fundamental_status",
-        "disclosure_status",
-        "announcement_count",
-        "disclosure_risk_keyword_count",
-        "has_risk_warning_notice",
-        "hard_risk_score",
-        "negative_attention_score",
-        "positive_support_score",
-        "event_net_impact_score",
-        "data_gap_count",
-        "risk_note_count",
-        "revenue_yoy_pct",
-        "net_profit_yoy_pct",
-        "roe_pct",
-        "market_regime",
-        "industry_bucket",
-        "subindustry_bucket",
-        "instrument_subscope",
-        "event_density_bucket",
         "flow_status",
         "volume_ratio_20",
         "mfi_14",
         "macd_histogram",
-        "shareholder_return_status",
+        "data_gap_count",
+        "risk_note_count",
         "bollinger_position_20d",
         "range_position_14d",
         "mean_reversion_deviation_20d",
-        "quality_bucket",
         "rsi_14",
         "atr_ratio_14",
     ] {
@@ -426,6 +416,34 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
                 .iter()
                 .any(|feature_name| feature_name == &expected_feature),
             "expected trained feature `{expected_feature}` to exist in artifact"
+        );
+    }
+    for removed_feature in [
+        "industry_bucket",
+        "subindustry_bucket",
+        "profit_signal",
+        "fundamental_status",
+        "disclosure_status",
+        "announcement_count",
+        "event_density_bucket",
+        "disclosure_risk_keyword_count",
+        "has_risk_warning_notice",
+        "hard_risk_score",
+        "negative_attention_score",
+        "positive_support_score",
+        "event_net_impact_score",
+        "revenue_yoy_pct",
+        "net_profit_yoy_pct",
+        "roe_pct",
+        "shareholder_return_status",
+        "quality_bucket",
+        "integrated_stance",
+    ] {
+        assert!(
+            !feature_names
+                .iter()
+                .any(|feature_name| feature_name == &removed_feature),
+            "expected removed Phase-A feature `{removed_feature}` to stay out of artifact"
         );
     }
     // 2026-04-21 CST: Added because the approved Nikkei retraining route replaces the older
@@ -476,7 +494,7 @@ fn security_scorecard_training_generates_artifact_and_registers_refit_outputs() 
     // summary without replaying the entire training run in memory.
     assert_eq!(
         persisted_model_registry["metrics_summary_json"]["feature_count"],
-        38
+        19
     );
     assert!(
         persisted_model_registry["metrics_summary_json"]["sample_count"]
@@ -722,12 +740,18 @@ fn security_scorecard_training_supports_direction_down_head_contract() {
     );
 
     assert_eq!(output["status"], "ok", "output={output}");
-    assert_eq!(output["data"]["artifact"]["target_head"], "direction_down_head");
+    assert_eq!(
+        output["data"]["artifact"]["target_head"],
+        "direction_down_head"
+    );
     assert_eq!(
         output["data"]["artifact"]["target_label_definition"],
         "negative_return_10d"
     );
-    assert_eq!(output["data"]["artifact"]["positive_label_definition"], Value::Null);
+    assert_eq!(
+        output["data"]["artifact"]["positive_label_definition"],
+        Value::Null
+    );
     assert_eq!(
         output["data"]["model_registry"]["target_head"],
         "direction_down_head"
@@ -742,8 +766,252 @@ fn security_scorecard_training_supports_direction_down_head_contract() {
         serde_json::from_slice(&fs::read(&artifact_path).expect("artifact should be readable"))
             .expect("artifact should be valid json");
     assert_eq!(artifact_json["target_head"], "direction_down_head");
-    assert_eq!(artifact_json["target_label_definition"], "negative_return_10d");
+    assert_eq!(
+        artifact_json["target_label_definition"],
+        "negative_return_10d"
+    );
     assert_eq!(artifact_json["positive_label_definition"], Value::Null);
+}
+
+#[test]
+fn security_scorecard_training_supports_repair_stable_head_contract() {
+    // 2026-04-21 CST: Added because the approved Nikkei retraining route now pivots
+    // from plain direction to oversold-repair stability.
+    // Reason: the user explicitly accepted a new binary head instead of reusing direction_up/down.
+    // Purpose: lock the repair-stable artifact contract before the new head reaches real training.
+    let runtime_db_path = create_test_runtime_db("security_scorecard_training_repair_stable");
+    let runtime_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have parent")
+        .join("scorecard_training_runtime");
+    let fixture_dir = create_training_fixture_dir("security_scorecard_training_repair_stable");
+    let nikkei_csv = fixture_dir.join("nikkei_decade.csv");
+
+    fs::write(
+        &nikkei_csv,
+        build_nikkei_decade_rows(3900, 16800.0).join("\n"),
+    )
+    .expect("nikkei csv should be written");
+    import_history_csv(&runtime_db_path, &nikkei_csv, "NK225.IDX");
+
+    let server = spawn_http_route_server(vec![
+        (
+            "/financials",
+            "HTTP/1.1 406 Not Acceptable",
+            "<html><body>financials unavailable for repair-stable index fixture</body></html>",
+            "text/html",
+        ),
+        (
+            "/announcements",
+            "HTTP/1.1 200 OK",
+            r#"{"data":{"list":[]}}"#,
+            "application/json",
+        ),
+    ]);
+
+    let request = json!({
+        "tool": "security_scorecard_training",
+        "args": {
+            "created_at": "2026-04-21T10:20:00+08:00",
+            "training_runtime_root": runtime_root.to_string_lossy(),
+            "market_scope": "GLOBAL",
+            "instrument_scope": "INDEX",
+            "instrument_subscope": "nikkei_index",
+            "symbol_list": ["NK225.IDX"],
+            "market_symbol": "NK225.IDX",
+            "sector_symbol": "NK225.IDX",
+            "horizon_days": 10,
+            "target_head": "repair_stable_head",
+            "train_range": "2016-04-20..2025-09-30",
+            "valid_range": "2025-10-01..2025-12-31",
+            "test_range": "2026-01-01..2026-04-20",
+            "feature_set_version": "security_feature_snapshot.v1",
+            "label_definition_version": "security_forward_outcome.v1"
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &[
+            (
+                "EXCEL_SKILL_EASTMONEY_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
+                "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+        ],
+    );
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    assert_eq!(
+        output["data"]["artifact"]["target_head"],
+        "repair_stable_head"
+    );
+    assert_eq!(
+        output["data"]["artifact"]["target_label_definition"],
+        "repair_stable_10d"
+    );
+    assert_eq!(
+        output["data"]["artifact"]["positive_label_definition"],
+        "repair_stable_10d"
+    );
+    assert_eq!(
+        output["data"]["model_registry"]["target_head"],
+        "repair_stable_head"
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["sample_count"]
+            .as_u64()
+            .expect("sample_count should be numeric")
+            >= 3
+    );
+
+    let artifact_path = PathBuf::from(
+        output["data"]["artifact_path"]
+            .as_str()
+            .expect("artifact path should exist"),
+    );
+    let artifact_json: Value =
+        serde_json::from_slice(&fs::read(&artifact_path).expect("artifact should be readable"))
+            .expect("artifact should be valid json");
+    assert_eq!(artifact_json["target_head"], "repair_stable_head");
+    assert_eq!(
+        artifact_json["target_label_definition"],
+        "repair_stable_10d"
+    );
+    assert_eq!(
+        artifact_json["positive_label_definition"],
+        "repair_stable_10d"
+    );
+}
+
+#[test]
+fn security_scorecard_training_nikkei_repair_contract_uses_futures_factors_and_drops_zero_variance_fields()
+ {
+    let runtime_db_path = create_test_runtime_db("security_scorecard_training_nikkei_futures");
+    let runtime_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have parent")
+        .join("scorecard_training_runtime");
+    let fixture_dir = create_training_fixture_dir("security_scorecard_training_nikkei_futures");
+    let nikkei_csv = fixture_dir.join("nikkei_decade.csv");
+    let futures_csv = fixture_dir.join("nikkei_futures_decade.csv");
+
+    fs::write(
+        &nikkei_csv,
+        build_nikkei_decade_rows(3900, 16800.0).join("\n"),
+    )
+    .expect("nikkei csv should be written");
+    fs::write(
+        &futures_csv,
+        build_nikkei_futures_decade_rows(3900, 16860.0).join("\n"),
+    )
+    .expect("nikkei futures csv should be written");
+    import_history_csv(&runtime_db_path, &nikkei_csv, "NK225.IDX");
+    import_history_csv(&runtime_db_path, &futures_csv, "NK225_F1.FUT");
+
+    let server = spawn_http_route_server(vec![
+        (
+            "/financials",
+            "HTTP/1.1 406 Not Acceptable",
+            "<html><body>financials unavailable for nikkei futures fixture</body></html>",
+            "text/html",
+        ),
+        (
+            "/announcements",
+            "HTTP/1.1 200 OK",
+            r#"{"data":{"list":[]}}"#,
+            "application/json",
+        ),
+    ]);
+
+    let request = json!({
+        "tool": "security_scorecard_training",
+        "args": {
+            "created_at": "2026-04-21T22:10:00+08:00",
+            "training_runtime_root": runtime_root.to_string_lossy(),
+            "market_scope": "GLOBAL",
+            "instrument_scope": "INDEX",
+            "instrument_subscope": "nikkei_index",
+            "symbol_list": ["NK225.IDX"],
+            "market_symbol": "NK225.IDX",
+            "sector_symbol": "NK225.IDX",
+            "futures_symbol": "NK225_F1.FUT",
+            "horizon_days": 10,
+            "target_head": "repair_stable_head",
+            "train_range": "2016-04-20..2025-09-30",
+            "valid_range": "2025-10-01..2025-12-31",
+            "test_range": "2026-01-01..2026-04-20",
+            "feature_set_version": "security_feature_snapshot.v1",
+            "label_definition_version": "security_forward_outcome.v1"
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &[
+            (
+                "EXCEL_SKILL_EASTMONEY_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
+                "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+        ],
+    );
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    let artifact_path = PathBuf::from(
+        output["data"]["artifact_path"]
+            .as_str()
+            .expect("artifact path should exist"),
+    );
+    let artifact_json: Value =
+        serde_json::from_slice(&fs::read(&artifact_path).expect("artifact should be readable"))
+            .expect("artifact should be valid json");
+    let feature_names = artifact_json["features"]
+        .as_array()
+        .expect("features should be an array")
+        .iter()
+        .filter_map(|feature| feature["feature_name"].as_str())
+        .collect::<Vec<_>>();
+
+    for expected_feature in [
+        "futures_return_1d",
+        "futures_spot_basis_pct",
+        "futures_return_3d",
+        "spot_return_3d",
+        "futures_relative_strength_3d",
+    ] {
+        assert!(
+            feature_names
+                .iter()
+                .any(|feature_name| feature_name == &expected_feature),
+            "expected Nikkei futures feature `{expected_feature}` to exist in artifact"
+        );
+    }
+    for removed_feature in [
+        "instrument_subscope",
+        "volume_confirmation",
+        "flow_status",
+        "volume_ratio_20",
+        "mfi_14",
+        "data_gap_count",
+        "risk_note_count",
+        "futures_lead_strength_3d",
+    ] {
+        assert!(
+            !feature_names
+                .iter()
+                .any(|feature_name| feature_name == &removed_feature),
+            "expected zero-information Nikkei feature `{removed_feature}` to stay out of artifact"
+        );
+    }
 }
 
 #[test]
@@ -826,17 +1094,32 @@ fn security_scorecard_training_generates_nikkei_index_artifact() {
     let artifact_json: Value =
         serde_json::from_slice(&fs::read(&artifact_path).expect("artifact should be readable"))
             .expect("artifact should be valid json");
+    let feature_names = artifact_json["features"]
+        .as_array()
+        .expect("features should be an array")
+        .iter()
+        .filter_map(|feature| feature["feature_name"].as_str())
+        .collect::<Vec<_>>();
     assert_eq!(
         artifact_json["model_id"],
-        "global_index_nikkei_index_10d_direction_head"
+        "global_index_nikkei_index_1w_direction_head"
     );
     assert_eq!(artifact_json["instrument_subscope"], "nikkei_index");
-    assert_eq!(artifact_json["label_definition"], "security_forward_outcome.v1");
+    assert_eq!(
+        artifact_json["label_definition"],
+        "security_forward_outcome.v1"
+    );
     assert!(
         output["data"]["metrics_summary_json"]["sample_count"]
             .as_u64()
             .expect("sample_count should be numeric")
             >= 3
+    );
+    assert!(
+        !feature_names
+            .iter()
+            .any(|feature_name| *feature_name == "risk_note_count"),
+        "expected Nikkei index artifact to drop risk_note_count because it is not a governed index risk factor"
     );
 }
 
@@ -914,7 +1197,7 @@ fn security_scorecard_training_supports_decade_nikkei_training_and_post_2025_10_
     assert_eq!(output["status"], "ok", "output={output}");
     assert_eq!(
         output["data"]["artifact"]["model_id"],
-        "global_index_nikkei_index_10d_direction_head"
+        "global_index_nikkei_index_1w_direction_head"
     );
     assert!(
         output["data"]["metrics_summary_json"]["train"]["sample_count"]
@@ -932,6 +1215,18 @@ fn security_scorecard_training_supports_decade_nikkei_training_and_post_2025_10_
         output["data"]["metrics_summary_json"]["post_validation_holdout"]["cutoff_date"],
         "2025-10-01"
     );
+    let feature_names = output["data"]["artifact"]["features"]
+        .as_array()
+        .expect("artifact features should be an array")
+        .iter()
+        .filter_map(|feature| feature["feature_name"].as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        feature_names
+            .iter()
+            .any(|feature_name| *feature_name == "weekly_spot_return_p50"),
+        "nikkei weekly training artifact should expose weekly spot features"
+    );
     assert!(
         output["data"]["metrics_summary_json"]["post_validation_holdout"]["sample_count"]
             .as_u64()
@@ -947,8 +1242,456 @@ fn security_scorecard_training_supports_decade_nikkei_training_and_post_2025_10_
 }
 
 #[test]
-fn security_scorecard_training_keeps_numeric_feature_contract_when_fundamental_metrics_are_missing()
-{
+fn security_scorecard_training_nikkei_weekly_route_emits_weekly_artifact_features() {
+    let runtime_db_path = create_test_runtime_db("security_scorecard_training_nikkei_weekly_route");
+    let runtime_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have parent")
+        .join("scorecard_training_runtime");
+    let fixture_dir =
+        create_training_fixture_dir("security_scorecard_training_nikkei_weekly_route");
+    let nikkei_csv = fixture_dir.join("nikkei_weekly_route.csv");
+    let futures_csv = fixture_dir.join("nikkei_futures_weekly_route.csv");
+
+    fs::write(
+        &nikkei_csv,
+        build_nikkei_decade_rows(420, 16800.0).join("\n"),
+    )
+    .expect("nikkei weekly route csv should be written");
+    fs::write(
+        &futures_csv,
+        build_nikkei_futures_decade_rows(420, 16840.0).join("\n"),
+    )
+    .expect("nikkei futures weekly route csv should be written");
+    import_history_csv(&runtime_db_path, &nikkei_csv, "NK225.IDX");
+    import_history_csv(&runtime_db_path, &futures_csv, "NK225_F1.FUT");
+    seed_capital_flow_history_for_training(
+        &runtime_db_path,
+        NaiveDate::from_ymd_opt(2015, 8, 14).expect("seed date should be valid"),
+        80,
+    );
+
+    let request = json!({
+        "tool": "security_scorecard_training",
+        "args": {
+            "created_at": "2026-04-23T15:00:00+08:00",
+            "artifact_runtime_root": runtime_root.to_string_lossy(),
+            "capital_flow_runtime_root": runtime_db_path.parent().expect("runtime db should have parent").to_string_lossy(),
+            "market_scope": "GLOBAL",
+            "instrument_scope": "INDEX",
+            "instrument_subscope": "nikkei_index",
+            "symbol_list": ["NK225.IDX"],
+            "market_symbol": "NK225.IDX",
+            "sector_symbol": "NK225.IDX",
+            "futures_symbol": "NK225_F1.FUT",
+            "horizon_days": 10,
+            "target_head": "direction_head",
+            "train_range": "2016-03-01..2016-08-31",
+            "valid_range": "2016-09-01..2016-09-14",
+            "test_range": "2016-09-15..2016-09-30",
+            "feature_set_version": "security_feature_snapshot.v1",
+            "label_definition_version": "security_forward_outcome.v1",
+            "capital_source_feature_mode": "nikkei_jpx_mof_v1"
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(&request.to_string(), &runtime_db_path, &[]);
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    let feature_names = output["data"]["artifact"]["features"]
+        .as_array()
+        .expect("artifact features should be an array")
+        .iter()
+        .filter_map(|feature| feature["feature_name"].as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        feature_names
+            .iter()
+            .any(|feature_name| *feature_name == "weekly_spot_return_p50"),
+        "weekly route should emit weekly spot feature names"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|feature_name| *feature_name == "weekly_basis_pct_p50"),
+        "weekly route should emit weekly basis feature names"
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["train"]["sample_count"]
+            .as_u64()
+            .expect("train sample count should be numeric")
+            >= 24
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["train"]["sample_count"]
+            .as_u64()
+            .expect("train sample count should be numeric")
+            <= 28,
+        "weekly rolling route should deduplicate repeated train anchors instead of replaying the same week in every rolling window"
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["valid"]["sample_count"]
+            .as_u64()
+            .expect("valid sample count should be numeric")
+            >= 4
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["test"]["sample_count"]
+            .as_u64()
+            .expect("test sample count should be numeric")
+            >= 4
+    );
+    assert_eq!(
+        output["data"]["metrics_summary_json"]["valid"]["sample_count"],
+        output["data"]["metrics_summary_json"]["test"]["sample_count"],
+        "weekly rolling route should score one valid week and one test week per rolling window"
+    );
+    assert!(
+        output["data"]["metrics_summary_json"]["rolling_window_count"]
+            .as_u64()
+            .expect("rolling window count should be numeric")
+            >= 4
+    );
+    assert_eq!(
+        output["data"]["metrics_summary_json"]["valid"]["sample_count"],
+        output["data"]["metrics_summary_json"]["rolling_window_count"],
+        "weekly rolling route should aggregate validation by executed windows instead of flattening all weeks into one global pool"
+    );
+    assert_eq!(
+        output["data"]["metrics_summary_json"]["test"]["sample_count"],
+        output["data"]["metrics_summary_json"]["rolling_window_count"],
+        "weekly rolling route should aggregate test by executed windows instead of flattening all weeks into one global pool"
+    );
+}
+
+#[test]
+fn security_scorecard_training_keeps_capital_source_metrics_as_observation_only_in_nikkei_run() {
+    // 2026-04-24 CST: Updated because the approved route now keeps capital-source
+    // metrics as observation-only output instead of training features.
+    // Reason: the user explicitly asked to observe funding metrics first before
+    // allowing them to influence weekly Nikkei training.
+    // Purpose: lock the new boundary between training features and observation output.
+    let runtime_db_path =
+        create_test_runtime_db("security_scorecard_training_nikkei_capital_source_ab");
+    let capital_flow_runtime_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have parent")
+        .to_path_buf();
+    let runtime_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have parent")
+        .join("scorecard_training_runtime");
+    let fixture_dir =
+        create_training_fixture_dir("security_scorecard_training_nikkei_capital_source_ab");
+    let nikkei_csv = fixture_dir.join("nikkei_decade.csv");
+
+    fs::write(
+        &nikkei_csv,
+        build_nikkei_decade_rows(3900, 16800.0).join("\n"),
+    )
+    .expect("nikkei decade csv should be written");
+    import_history_csv(&runtime_db_path, &nikkei_csv, "NK225.IDX");
+    seed_capital_flow_history_for_training(
+        &runtime_db_path,
+        NaiveDate::from_ymd_opt(2015, 8, 14).expect("seed date should be valid"),
+        560,
+    );
+
+    let server = spawn_http_route_server(vec![
+        (
+            "/financials",
+            "HTTP/1.1 406 Not Acceptable",
+            "<html><body>financials unavailable for capital source ab fixture</body></html>",
+            "text/html",
+        ),
+        (
+            "/announcements",
+            "HTTP/1.1 200 OK",
+            r#"{"data":{"list":[]}}"#,
+            "application/json",
+        ),
+    ]);
+
+    let baseline_request = json!({
+        "tool": "security_scorecard_training",
+        "args": {
+            "created_at": "2026-04-22T13:40:00+08:00",
+            "artifact_runtime_root": runtime_root.to_string_lossy(),
+            "market_scope": "GLOBAL",
+            "instrument_scope": "INDEX",
+            "instrument_subscope": "nikkei_index",
+            "symbol_list": ["NK225.IDX"],
+            "market_symbol": "NK225.IDX",
+            "sector_symbol": "NK225.IDX",
+            "horizon_days": 10,
+            "target_head": "direction_head",
+            "train_range": "2016-04-20..2025-09-30",
+            "valid_range": "2025-10-01..2025-12-31",
+            "test_range": "2026-01-01..2026-04-20",
+            "feature_set_version": "security_feature_snapshot.v1",
+            "label_definition_version": "security_forward_outcome.v1"
+        }
+    });
+    let enhanced_request = json!({
+        "tool": "security_scorecard_training",
+        "args": {
+            "created_at": "2026-04-22T13:41:00+08:00",
+            "artifact_runtime_root": runtime_root.to_string_lossy(),
+            "capital_flow_runtime_root": capital_flow_runtime_root.to_string_lossy(),
+            "market_scope": "GLOBAL",
+            "instrument_scope": "INDEX",
+            "instrument_subscope": "nikkei_index",
+            "symbol_list": ["NK225.IDX"],
+            "market_symbol": "NK225.IDX",
+            "sector_symbol": "NK225.IDX",
+            "horizon_days": 10,
+            "target_head": "direction_head",
+            "train_range": "2016-04-20..2025-09-30",
+            "valid_range": "2025-10-01..2025-12-31",
+            "test_range": "2026-01-01..2026-04-20",
+            "feature_set_version": "security_feature_snapshot.v1",
+            "label_definition_version": "security_forward_outcome.v1",
+            "capital_source_feature_mode": "nikkei_jpx_mof_v1"
+        }
+    });
+
+    let baseline_output = run_cli_with_json_runtime_and_envs(
+        &baseline_request.to_string(),
+        &runtime_db_path,
+        &[
+            (
+                "EXCEL_SKILL_EASTMONEY_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
+                "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+        ],
+    );
+    let enhanced_output = run_cli_with_json_runtime_and_envs(
+        &enhanced_request.to_string(),
+        &runtime_db_path,
+        &[
+            (
+                "EXCEL_SKILL_EASTMONEY_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
+                "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+        ],
+    );
+
+    assert_eq!(baseline_output["status"], "ok", "output={baseline_output}");
+    assert_eq!(enhanced_output["status"], "ok", "output={enhanced_output}");
+    assert_eq!(
+        baseline_output["data"]["metrics_summary_json"]["sample_count"],
+        enhanced_output["data"]["metrics_summary_json"]["sample_count"]
+    );
+
+    let baseline_artifact_path = PathBuf::from(
+        baseline_output["data"]["artifact_path"]
+            .as_str()
+            .expect("baseline artifact path should exist"),
+    );
+    let enhanced_artifact_path = PathBuf::from(
+        enhanced_output["data"]["artifact_path"]
+            .as_str()
+            .expect("enhanced artifact path should exist"),
+    );
+    let baseline_artifact_json: Value = serde_json::from_slice(
+        &fs::read(&baseline_artifact_path).expect("baseline artifact should be readable"),
+    )
+    .expect("baseline artifact should be valid json");
+    let enhanced_artifact_json: Value = serde_json::from_slice(
+        &fs::read(&enhanced_artifact_path).expect("enhanced artifact should be readable"),
+    )
+    .expect("enhanced artifact should be valid json");
+
+    let baseline_feature_names = baseline_artifact_json["features"]
+        .as_array()
+        .expect("baseline features should be an array")
+        .iter()
+        .filter_map(|feature| feature["feature_name"].as_str())
+        .collect::<Vec<_>>();
+    let enhanced_feature_names = enhanced_artifact_json["features"]
+        .as_array()
+        .expect("enhanced features should be an array")
+        .iter()
+        .filter_map(|feature| feature["feature_name"].as_str())
+        .collect::<Vec<_>>();
+
+    for forbidden_feature in [
+        "overseas_flow_persistence_4w",
+        "domestic_flow_persistence_4w",
+        "overseas_vs_domestic_spread",
+        "foreign_net_buy_ratio_ma2_vs_prev2",
+        "investment_trust_net_buy_ratio_wow_1w",
+        "mof_foreign_japan_equity_net_ma2_vs_prev2",
+        "recent_up_move_foreign_inflow_share",
+        "recent_up_move_domestic_inflow_share",
+        "recent_down_move_foreign_outflow_share",
+        "recent_down_move_domestic_outflow_share",
+    ] {
+        assert!(
+            !baseline_feature_names
+                .iter()
+                .any(|feature_name| feature_name == &forbidden_feature),
+            "baseline run should not expose observation-only capital-source metric `{forbidden_feature}`"
+        );
+        assert!(
+            !enhanced_feature_names
+                .iter()
+                .any(|feature_name| feature_name == &forbidden_feature),
+            "enhanced run should keep observation-only capital-source metric `{forbidden_feature}` out of training"
+        );
+    }
+    for removed_feature in [
+        "foreign_net_buy_ratio_1w",
+        "foreign_net_buy_ratio_wow_1w",
+        "investment_trust_net_buy_ratio_1w",
+        "mof_foreign_japan_equity_net_4w",
+        "mof_foreign_japan_equity_net_wow_1w",
+    ] {
+        assert!(
+            !enhanced_feature_names
+                .iter()
+                .any(|feature_name| feature_name == &removed_feature),
+            "enhanced run should stop exposing stale capital-source feature `{removed_feature}`"
+        );
+    }
+    assert!(
+        baseline_output["data"]["metrics_summary_json"]["capital_source_observation"].is_null(),
+        "baseline run should not emit capital-source observation summary"
+    );
+    assert!(
+        enhanced_output["data"]["metrics_summary_json"]["capital_source_observation"].is_object(),
+        "enhanced run should emit capital-source observation summary"
+    );
+    assert_eq!(
+        enhanced_output["data"]["metrics_summary_json"]["capital_source_observation"]["mode"],
+        "observation_only"
+    );
+    assert!(
+        enhanced_output["data"]["metrics_summary_json"]["capital_source_observation"]["factor_count"]
+            .as_u64()
+            .expect("capital-source observation factor count should be numeric")
+            >= 10
+    );
+    assert!(
+        enhanced_output["data"]["metrics_summary_json"]["capital_source_observation"]["latest_values"]
+            ["overseas_flow_persistence_4w"]
+            .is_number(),
+        "enhanced run should retain latest observation value for overseas flow persistence"
+    );
+    for observation_key in [
+        "total_net_flow_ratio_4w",
+        "total_net_flow_ratio_13w",
+        "total_net_flow_ratio_26w",
+        "total_net_flow_ratio_52w",
+        "total_positive_flow_share_13w",
+        "total_positive_flow_share_26w",
+        "total_positive_flow_share_52w",
+        "total_net_flow_ratio_13w_vs_prev13w",
+        "total_net_flow_ratio_26w_vs_prev26w",
+    ] {
+        assert!(
+            enhanced_output["data"]["metrics_summary_json"]["capital_source_observation"]["latest_values"]
+                [observation_key]
+                .is_number(),
+            "enhanced run should expose total-flow observation metric `{observation_key}`"
+        );
+        assert!(
+            enhanced_output["data"]["metrics_summary_json"]["capital_source_observation"]["factor_stats"]
+                [observation_key]
+                .is_object(),
+            "enhanced run should expose factor stats for total-flow observation metric `{observation_key}`"
+        );
+    }
+
+    let enhanced_diagnostic_path = PathBuf::from(
+        enhanced_output["data"]["training_diagnostic_report_path"]
+            .as_str()
+            .expect("enhanced diagnostic path should exist"),
+    );
+    let enhanced_diagnostic_json: Value = serde_json::from_slice(
+        &fs::read(&enhanced_diagnostic_path).expect("enhanced diagnostic should be readable"),
+    )
+    .expect("enhanced diagnostic should be valid json");
+    assert!(
+        !enhanced_diagnostic_json["feature_coverage_summary"]["features"]
+            .as_array()
+            .expect("feature coverage should be an array")
+            .iter()
+            .any(|feature| feature["feature_name"] == "overseas_flow_persistence_4w"),
+        "enhanced diagnostics should keep observation-only capital-source metrics out of training coverage"
+    );
+    let zero_variance_features =
+        enhanced_diagnostic_json["correlation_summary"]["zero_variance_features"]
+            .as_array()
+            .expect("zero variance features should be an array")
+            .iter()
+            .filter_map(Value::as_str)
+            .collect::<Vec<_>>();
+    assert!(
+        !zero_variance_features
+            .iter()
+            .any(|feature_name| *feature_name == "overseas_flow_persistence_4w"),
+        "observation-only capital-source metrics should stay out of training diagnostics"
+    );
+}
+
+#[test]
+fn security_scorecard_training_rejects_capital_source_run_without_explicit_capital_flow_runtime_root()
+ {
+    // 2026-04-22 CST: Added because scheme 2 splits artifact output paths from
+    // capital-flow data roots and must fail closed when the data root is omitted.
+    // Purpose: prevent the trainer from guessing that artifact runtime paths also hold source data.
+    let runtime_db_path =
+        create_test_runtime_db("security_scorecard_training_missing_capital_flow_runtime_root");
+    let runtime_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have parent")
+        .join("scorecard_training_runtime");
+
+    let request = json!({
+        "tool": "security_scorecard_training",
+        "args": {
+            "created_at": "2026-04-22T16:00:00+08:00",
+            "artifact_runtime_root": runtime_root.to_string_lossy(),
+            "market_scope": "GLOBAL",
+            "instrument_scope": "INDEX",
+            "instrument_subscope": "nikkei_index",
+            "symbol_list": ["NK225.IDX"],
+            "market_symbol": "NK225.IDX",
+            "sector_symbol": "NK225.IDX",
+            "horizon_days": 10,
+            "target_head": "direction_head",
+            "train_range": "2016-04-20..2025-09-30",
+            "valid_range": "2025-10-01..2025-12-31",
+            "test_range": "2026-01-01..2026-04-20",
+            "feature_set_version": "security_feature_snapshot.v1",
+            "label_definition_version": "security_forward_outcome.v1",
+            "capital_source_feature_mode": "nikkei_jpx_mof_v1"
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(&request.to_string(), &runtime_db_path, &[]);
+
+    assert_eq!(output["status"], "error", "output={output}");
+    assert!(
+        output["error"]
+            .as_str()
+            .expect("error should be a string")
+            .contains("capital_flow_runtime_root"),
+        "output={output}"
+    );
+}
+
+#[test]
+fn security_scorecard_training_drops_fundamental_and_disclosure_features_in_phase_a_contract() {
     // 2026-04-10 CST: 这里先补真实训练失败的复现测试，原因是当前真实训练在基本面数值缺失时会把 null 透传进训练特征，
     // 直接触发 `revenue_yoy_pct` 等 numeric feature 构建失败。
     // 目的：先锁住“证据层输出给训练的 numeric feature 必须始终保持 numeric 合同”这个统一标准，再修正式实现。
@@ -1059,14 +1802,33 @@ fn security_scorecard_training_keeps_numeric_feature_contract_when_fundamental_m
     let artifact_json: Value =
         serde_json::from_slice(&fs::read(&artifact_path).expect("artifact should be readable"))
             .expect("artifact should be valid json");
-    for feature_name in ["revenue_yoy_pct", "net_profit_yoy_pct", "roe_pct"] {
+    // 2026-04-21 CST: Updated because Phase A removes the whole company-data family
+    // instead of keeping null-normalized placeholders inside index-focused training.
+    // Purpose: make the new contract fail if removed equity-only fields leak back in.
+    for feature_name in [
+        "profit_signal",
+        "fundamental_status",
+        "disclosure_status",
+        "announcement_count",
+        "disclosure_risk_keyword_count",
+        "has_risk_warning_notice",
+        "hard_risk_score",
+        "negative_attention_score",
+        "positive_support_score",
+        "event_net_impact_score",
+        "revenue_yoy_pct",
+        "net_profit_yoy_pct",
+        "roe_pct",
+        "shareholder_return_status",
+        "quality_bucket",
+    ] {
         assert!(
-            artifact_json["features"]
+            !artifact_json["features"]
                 .as_array()
                 .expect("features should be an array")
                 .iter()
                 .any(|feature| feature["feature_name"] == feature_name),
-            "artifact should still carry normalized numeric feature `{feature_name}`"
+            "artifact should exclude removed Phase-A feature `{feature_name}`"
         );
     }
 }
@@ -1193,16 +1955,19 @@ fn security_scorecard_training_tolerates_unseen_categorical_values_in_diagnostic
     let artifact_json: Value =
         serde_json::from_slice(&fs::read(&artifact_path).expect("artifact should be readable"))
             .expect("artifact should be valid json");
-    let risk_warning_feature = artifact_json["features"]
+    // 2026-04-21 CST: Updated because the next cleanup step removes integrated_stance too,
+    // while the unseen-category guard itself must remain alive on a retained categorical feature.
+    // Purpose: keep the diagnostic fallback contract independent from removed summary fields.
+    let market_regime_feature = artifact_json["features"]
         .as_array()
         .expect("features should be an array")
         .iter()
-        .find(|feature| feature["feature_name"] == "has_risk_warning_notice")
-        .expect("risk warning feature should exist");
+        .find(|feature| feature["feature_name"] == "market_regime")
+        .expect("market regime feature should exist");
     assert!(
-        risk_warning_feature["bins"]
+        market_regime_feature["bins"]
             .as_array()
-            .expect("risk warning bins should be an array")
+            .expect("market regime bins should be an array")
             .iter()
             .any(|bin| bin["bin_label"] == "__unseen__"),
         "artifact should expose the governed unseen categorical fallback bin"
@@ -1225,6 +1990,117 @@ fn import_history_csv(runtime_db_path: &Path, csv_path: &Path, symbol: &str) {
         &[],
     );
     assert_eq!(output["status"], "ok");
+}
+
+fn seed_capital_flow_history_for_training(
+    runtime_db_path: &Path,
+    start_date: NaiveDate,
+    week_count: usize,
+) {
+    // 2026-04-22 CST: Added because the Nikkei capital-source A/B training test
+    // needs governed weekly JPX/MOF history before the enhanced contract can expose new features.
+    // Purpose: build one deterministic long-span weekly flow history in the same runtime as training.
+    let mut records = Vec::new();
+    for week_offset in 0..week_count {
+        let metric_date = (start_date + Duration::days((week_offset * 7) as i64))
+            .format("%Y-%m-%d")
+            .to_string();
+        // 2026-04-23 CST: Updated because the enhanced Nikkei capital-source
+        // training contract now consumes 4-week aggregated persistence factors.
+        // Reason: the old even/odd fixture made every rolling 4-week aggregate
+        // constant and falsely downgraded the new factors to zero-variance.
+        // Purpose: keep the seeded weekly flow history deterministic while still
+        // producing non-constant 4-week capital-source features for diagnostics.
+        let cycle = week_offset % 6;
+        let structural_shift = (week_offset / 12) as f64 * 0.45;
+        let foreign_value = match cycle {
+            0 => 18.0,
+            1 => 9.5,
+            2 => 22.0,
+            3 => 7.0,
+            4 => 15.0,
+            _ => 11.5,
+        } + structural_shift;
+        let trust_bank_value = match cycle {
+            0 => 4.0,
+            1 => 7.5,
+            2 => 5.5,
+            3 => 8.0,
+            4 => 6.0,
+            _ => 9.0,
+        } + structural_shift * 0.35;
+        let investment_trust_value = match cycle {
+            0 => 2.0,
+            1 => 5.0,
+            2 => 3.0,
+            3 => 6.5,
+            4 => 4.0,
+            _ => 7.0,
+        } + structural_shift * 0.25;
+        let individual_value = -match cycle {
+            0 => 7.0,
+            1 => 12.5,
+            2 => 8.5,
+            3 => 14.0,
+            4 => 9.5,
+            _ => 11.0,
+        } - structural_shift * 0.2;
+        let mof_value = match cycle {
+            0 => 24.0,
+            1 => 12.0,
+            2 => 28.0,
+            3 => 10.0,
+            4 => 19.0,
+            _ => 14.0,
+        } + structural_shift * 0.6;
+
+        for (series_key, value) in [
+            ("foreign_net_buy", foreign_value),
+            ("trust_bank_net_buy", trust_bank_value),
+            ("investment_trust_net_buy", investment_trust_value),
+            ("individual_net_buy", individual_value),
+        ] {
+            records.push(json!({
+                "dataset_id": "jpx_weekly_investor_type",
+                "frequency": "weekly",
+                "metric_date": metric_date,
+                "series_key": series_key,
+                "value": value,
+                "source": "training_fixture_capital_flow",
+                "payload_json": {
+                    "reason": "nikkei_capital_source_ab_test",
+                    "week_offset": week_offset
+                }
+            }));
+        }
+        records.push(json!({
+            "dataset_id": "mof_weekly_cross_border",
+            "frequency": "weekly",
+            "metric_date": metric_date,
+            "series_key": "foreign_japan_equity_net",
+            "value": mof_value,
+            "source": "training_fixture_capital_flow",
+            "payload_json": {
+                "reason": "nikkei_capital_source_ab_test",
+                "week_offset": week_offset
+            }
+        }));
+    }
+
+    let request = json!({
+        "tool": "security_capital_flow_backfill",
+        "args": {
+            "batch_id": "security_scorecard_training_nikkei_capital_source_seed",
+            "created_at": "2026-04-22T13:30:00+08:00",
+            "records": records
+        }
+    });
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path.to_path_buf(),
+        &[],
+    );
+    assert_eq!(output["status"], "ok", "output={output}");
 }
 
 // 2026-04-09 CST: 这里构造可控趋势样本，原因是训练测试需要同时覆盖正负标签，但不希望把失败点散到复杂行情生成上；
@@ -1322,6 +2198,61 @@ fn build_nikkei_decade_rows(day_count: usize, start_close: f64) -> Vec<String> {
     rows
 }
 
+fn build_nikkei_futures_decade_rows(day_count: usize, start_close: f64) -> Vec<String> {
+    let mut rows = vec!["trade_date,open,high,low,close,adj_close,volume".to_string()];
+    let start_date = NaiveDate::from_ymd_opt(2015, 8, 8).expect("seed date should be valid");
+    let mut close = start_close;
+
+    for offset in 0..day_count {
+        let trade_date = start_date + Duration::days(offset as i64);
+        let phase = (offset / 63) % 6;
+        let daily_drift = match phase {
+            0 => 58.0,
+            1 => -36.0,
+            2 => 44.0,
+            3 => -61.0,
+            4 => 69.0,
+            _ => -24.0,
+        } + ((offset % 7) as f64 - 3.0) * 4.0;
+        let basis_drift = match offset % 44 {
+            0..=14 => 22.0,
+            15..=29 => -12.0,
+            _ => 16.0,
+        };
+        let next_close = (close + daily_drift + basis_drift).max(9000.0);
+        let open = close;
+        let high = open.max(next_close) + 62.0 + (offset % 9) as f64 * 2.5;
+        let low = open.min(next_close) - 64.0 - (offset % 13) as f64 * 2.0;
+        let volume = 970_000 + (offset % 17) as i64 * 24_000;
+        rows.push(format!(
+            "{},{open:.2},{high:.2},{low:.2},{next_close:.2},{next_close:.2},{volume}",
+            trade_date.format("%Y-%m-%d")
+        ));
+        close = next_close;
+    }
+
+    rows
+}
+
+fn parse_fixture_rows(csv_rows: &[String]) -> Vec<StockHistoryRow> {
+    csv_rows
+        .iter()
+        .skip(1)
+        .map(|line| {
+            let columns = line.split(',').collect::<Vec<_>>();
+            StockHistoryRow {
+                trade_date: columns[0].to_string(),
+                open: columns[1].parse().expect("open should parse"),
+                high: columns[2].parse().expect("high should parse"),
+                low: columns[3].parse().expect("low should parse"),
+                close: columns[4].parse().expect("close should parse"),
+                adj_close: columns[5].parse().expect("adj close should parse"),
+                volume: columns[6].parse().expect("volume should parse"),
+            }
+        })
+        .collect()
+}
+
 #[test]
 fn build_trend_rows_keeps_low_series_variable_in_downtrend_fixture() {
     // 2026-04-09 CST: 这里先补训练夹具退化根因的失败测试，原因是 Task 5 的真实问题不是训练器本身，
@@ -1337,5 +2268,241 @@ fn build_trend_rows_keeps_low_series_variable_in_downtrend_fixture() {
     assert_eq!(
         collapsed_low_count, 0,
         "下跌夹具不应该把 low 压成重复的 0.10 楼板价"
+    );
+}
+
+#[test]
+fn weekly_price_aggregation_emits_distribution_quantiles_for_nikkei_training() {
+    let spot_rows = parse_fixture_rows(&build_nikkei_decade_rows(220, 16800.0));
+    let futures_rows = parse_fixture_rows(&build_nikkei_futures_decade_rows(220, 16840.0));
+    let weekly_rows = debug_build_weekly_price_feature_rows(&spot_rows, Some(&futures_rows))
+        .expect("weekly aggregation should succeed");
+    let feature_names = weekly_rows
+        .first()
+        .expect("weekly feature rows should not be empty")
+        .feature_values
+        .keys()
+        .cloned()
+        .collect::<Vec<_>>();
+
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_spot_return_min"),
+        "weekly spot quantile features should exist in artifact"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_spot_return_p10"),
+        "weekly spot p10 feature should exist in artifact"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_spot_return_p25"),
+        "weekly spot p25 feature should exist in artifact"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_spot_return_p50"),
+        "weekly spot p50 feature should exist in artifact"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_spot_return_p75"),
+        "weekly spot p75 feature should exist in artifact"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_spot_return_p90"),
+        "weekly spot p90 feature should exist in artifact"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_spot_return_max"),
+        "weekly spot max feature should exist in artifact"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_futures_return_p50"),
+        "weekly futures median feature should exist in weekly row"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_basis_pct_p50"),
+        "weekly basis median feature should exist in weekly row"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_futures_relative_strength_p50"),
+        "weekly relative strength median feature should exist in weekly row"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_spot_close_position"),
+        "weekly close position path feature should exist in weekly row"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_spot_drawdown"),
+        "weekly drawdown path feature should exist in weekly row"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_spot_rebound"),
+        "weekly rebound path feature should exist in weekly row"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_volume_ratio_4w"),
+        "weekly volume ratio feature should exist in weekly row"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_up_day_volume_share"),
+        "weekly up-day volume share feature should exist in weekly row"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_down_day_volume_share"),
+        "weekly down-day volume share feature should exist in weekly row"
+    );
+    assert!(
+        feature_names
+            .iter()
+            .any(|name| name == &"weekly_volume_price_confirmation"),
+        "weekly volume-price confirmation feature should exist in weekly row"
+    );
+    let volume_ratio_values = weekly_rows
+        .iter()
+        .filter_map(|row| row.feature_values.get("weekly_volume_ratio_4w").copied())
+        .collect::<Vec<_>>();
+    let up_share_values = weekly_rows
+        .iter()
+        .filter_map(|row| row.feature_values.get("weekly_up_day_volume_share").copied())
+        .collect::<Vec<_>>();
+    let confirmation_values = weekly_rows
+        .iter()
+        .filter_map(|row| row.feature_values.get("weekly_volume_price_confirmation").copied())
+        .collect::<Vec<_>>();
+    assert!(
+        volume_ratio_values
+            .windows(2)
+            .any(|pair| (pair[0] - pair[1]).abs() > f64::EPSILON),
+        "weekly volume ratio should vary when futures volume varies even if index spot volume is unavailable"
+    );
+    assert!(
+        up_share_values
+            .windows(2)
+            .any(|pair| (pair[0] - pair[1]).abs() > f64::EPSILON),
+        "weekly up-day volume share should vary when futures volume varies"
+    );
+    assert!(
+        confirmation_values
+            .iter()
+            .any(|value| value.abs() > f64::EPSILON),
+        "weekly volume-price confirmation should produce non-zero states when futures volume confirms a move"
+    );
+}
+
+#[test]
+fn weekly_anchor_calendar_uses_governed_weekly_dates_and_respects_cutoff() {
+    let runtime_db_path = create_test_runtime_db("security_scorecard_training_weekly_anchor");
+    seed_capital_flow_history_for_training(
+        &runtime_db_path,
+        NaiveDate::from_ymd_opt(2015, 8, 14).expect("seed date should be valid"),
+        80,
+    );
+    let capital_flow_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have parent")
+        .to_string_lossy()
+        .to_string();
+    let governed_dates = debug_load_governed_weekly_observation_dates(
+        &capital_flow_root,
+        "2015-08-14",
+        "2016-02-28",
+    )
+    .expect("governed weekly dates should load");
+    let spot_rows = parse_fixture_rows(&build_nikkei_decade_rows(260, 16800.0));
+    let anchors =
+        debug_build_weekly_anchor_dates(&spot_rows, &governed_dates, "2015-08-14", "2016-02-28")
+            .expect("weekly anchors should be built");
+
+    assert!(!anchors.is_empty(), "weekly anchors should not be empty");
+    assert_eq!(
+        anchors.first().expect("first anchor should exist"),
+        "2015-08-14",
+        "weekly anchors should start from governed weekly dates"
+    );
+    assert!(
+        anchors.windows(2).all(|window| window[0] < window[1]),
+        "weekly anchors should stay ordered"
+    );
+    assert!(
+        anchors
+            .iter()
+            .all(|date: &String| date.as_str() <= "2016-02-28"),
+        "weekly anchors should stop at the approved cutoff"
+    );
+}
+
+#[test]
+fn weekly_rolling_split_plan_uses_24w_1w_1w_stride_contract() {
+    let anchors = (0..30)
+        .map(|offset| {
+            (NaiveDate::from_ymd_opt(2025, 1, 3).expect("seed date should be valid")
+                + Duration::days((offset * 7) as i64))
+            .format("%Y-%m-%d")
+            .to_string()
+        })
+        .collect::<Vec<_>>();
+
+    let plan = debug_build_weekly_rolling_split_plan(&anchors, 24, 1, 1, 1)
+        .expect("weekly rolling split plan should build");
+
+    assert_eq!(
+        plan.len(),
+        5,
+        "30 weekly anchors should yield 5 rolling windows"
+    );
+    let first_window = plan.first().expect("first rolling window should exist");
+    assert_eq!(
+        first_window.train_anchor_dates.len(),
+        24,
+        "first rolling window should keep exactly 24 training weeks"
+    );
+    assert_eq!(
+        first_window.valid_anchor_dates,
+        vec!["2025-06-20".to_string()],
+        "the first validation slice should consume one week after the 24 training weeks"
+    );
+    assert_eq!(
+        first_window.test_anchor_dates,
+        vec!["2025-06-27".to_string()],
+        "the first test slice should consume the next week"
+    );
+    let second_window = plan.get(1).expect("second rolling window should exist");
+    assert_eq!(
+        second_window
+            .train_anchor_dates
+            .first()
+            .expect("second train window should have first date"),
+        "2025-01-10",
+        "rolling stride should advance by exactly one week"
     );
 }
