@@ -234,3 +234,8 @@ tests/runtime_fixtures/result_ref_store_datetime/
 tests/runtime_fixtures/result_ref_store_dense_nulls/
 tests/runtime_fixtures/result_ref_store_non_finite/
 tests/runtime_fixtures/table_ref_store/
+
+# 2026-04-24 CST: Ignore standardized local verification artifacts produced by
+# the isolated Cargo runner. These are machine-local rerun byproducts, not
+# canonical fixtures or delivery artifacts.
+.verification/

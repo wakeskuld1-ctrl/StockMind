@@ -107,11 +107,25 @@ cargo check
 cargo test -- --nocapture
 ```
 
+On Windows local worktrees, prefer the isolated Cargo runner for trustworthy reruns:
+
+```powershell
+.\scripts\invoke_isolated_cargo.ps1 -RunLabel repo_check -CargoCommand check
+.\scripts\invoke_isolated_cargo.ps1 -RunLabel repo_full -CargoCommand test -CargoArguments @('--','--nocapture')
+```
+
 For a lighter smoke run:
 
 ```bash
 cargo test --test stock_formal_boundary_manifest_source_guard -- --nocapture
 cargo test --test security_lifecycle_validation_cli -- --nocapture
+```
+
+Windows-local smoke examples with isolated targets:
+
+```powershell
+.\scripts\invoke_isolated_cargo.ps1 -RunLabel smoke_guard -CargoCommand test -CargoArguments @('--test','stock_formal_boundary_manifest_source_guard','--','--nocapture')
+.\scripts\invoke_isolated_cargo.ps1 -RunLabel scorecard_full -CargoCommand test -CargoArguments @('--test','security_scorecard_training_cli','--','--nocapture')
 ```
 
 ## CLI usage

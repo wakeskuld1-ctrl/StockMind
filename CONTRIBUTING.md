@@ -52,6 +52,15 @@ If your task changes the verified state of the branch, update the affected hando
 
 Use the lightest verification that honestly proves the change, then scale up when needed.
 
+On Windows local worktrees, do not trust reused `target/` or ad-hoc recycled `target_*` directories for branch-health claims when exe/file-lock pollution is plausible.
+
+Prefer the standardized isolated runner:
+
+```powershell
+.\scripts\invoke_isolated_cargo.ps1 -RunLabel repo_check -CargoCommand check
+.\scripts\invoke_isolated_cargo.ps1 -RunLabel repo_full -CargoCommand test -CargoArguments @('--','--nocapture')
+```
+
 ### Structure acceptance
 
 Use for boundary, layering, or catalog changes:
