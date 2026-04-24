@@ -25,6 +25,27 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         "security_disclosure_history_backfill" => {
             stock_ops::dispatch_security_disclosure_history_backfill(request.args)
         }
+        "security_capital_flow_backfill" => {
+            stock_ops::dispatch_security_capital_flow_backfill(request.args)
+        }
+        "security_capital_flow_raw_audit" => {
+            stock_ops::dispatch_security_capital_flow_raw_audit(request.args)
+        }
+        "security_capital_flow_jpx_weekly_import" => {
+            stock_ops::dispatch_security_capital_flow_jpx_weekly_import(request.args)
+        }
+        "security_capital_flow_jpx_weekly_live_backfill" => {
+            stock_ops::dispatch_security_capital_flow_jpx_weekly_live_backfill(request.args)
+        }
+        "security_capital_flow_mof_weekly_import" => {
+            stock_ops::dispatch_security_capital_flow_mof_weekly_import(request.args)
+        }
+        "security_capital_source_factor_snapshot" => {
+            stock_ops::dispatch_security_capital_source_factor_snapshot(request.args)
+        }
+        "security_capital_source_factor_audit" => {
+            stock_ops::dispatch_security_capital_source_factor_audit(request.args)
+        }
         "security_external_proxy_backfill" => {
             stock_ops::dispatch_security_external_proxy_backfill(request.args)
         }
@@ -107,6 +128,9 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         }
         "security_portfolio_execution_apply_bridge" => {
             stock_ops::dispatch_security_portfolio_execution_apply_bridge(request.args)
+        }
+        "security_portfolio_execution_status_bridge" => {
+            stock_ops::dispatch_security_portfolio_execution_status_bridge(request.args)
         }
         "security_position_contract" => {
             stock_ops::dispatch_security_position_contract(request.args)

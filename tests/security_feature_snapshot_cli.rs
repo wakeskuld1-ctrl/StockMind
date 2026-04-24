@@ -287,9 +287,10 @@ fn security_feature_snapshot_freezes_raw_and_group_features_with_hash() {
     // Reason: the snapshot test must prove the bucket comes from a volatility-adjusted
     // distance field rather than the former raw percentage threshold.
     // Purpose: lock the normalized raw factor and its replay bucket into one governed contract.
-    let mean_reversion_normalized_distance_20d = raw_features["mean_reversion_normalized_distance_20d"]
-        .as_f64()
-        .expect("mean_reversion_normalized_distance_20d should be numeric");
+    let mean_reversion_normalized_distance_20d =
+        raw_features["mean_reversion_normalized_distance_20d"]
+            .as_f64()
+            .expect("mean_reversion_normalized_distance_20d should be numeric");
     let expected_mean_reversion_bucket = if mean_reversion_normalized_distance_20d < -2.6 {
         "strong_down"
     } else if mean_reversion_normalized_distance_20d < -0.15 {
@@ -323,7 +324,10 @@ fn security_feature_snapshot_freezes_raw_and_group_features_with_hash() {
         group_features["V"]["bollinger_position_20d"],
         expected_bollinger_bucket
     );
-    assert_eq!(group_features["V"]["range_position_14d"], expected_range_bucket);
+    assert_eq!(
+        group_features["V"]["range_position_14d"],
+        expected_range_bucket
+    );
     assert_eq!(
         group_features["V"]["mean_reversion_deviation_20d"],
         expected_mean_reversion_bucket
@@ -388,7 +392,88 @@ fn security_feature_snapshot_classifies_idx_subject_as_index_instead_of_equity()
 
     assert_eq!(output["status"], "ok", "output={output}");
     assert_eq!(output["data"]["instrument_type"], "INDEX");
-    assert_eq!(output["data"]["raw_features_json"]["subject_asset_class"], "index");
+    assert_eq!(
+        output["data"]["raw_features_json"]["subject_asset_class"],
+        "index"
+    );
+}
+
+#[test]
+fn security_feature_snapshot_exposes_nikkei_futures_proxy_fields_when_futures_symbol_present() {
+    let runtime_db_path = create_test_runtime_db("security_feature_snapshot_nikkei_futures_proxy");
+
+    let spot_csv = create_stock_history_csv(
+        "security_feature_snapshot_nikkei_futures_proxy",
+        "nikkei_spot.csv",
+        &build_nikkei_spot_proxy_rows(320, 32000.0),
+    );
+    let futures_csv = create_stock_history_csv(
+        "security_feature_snapshot_nikkei_futures_proxy",
+        "nikkei_futures.csv",
+        &build_nikkei_futures_proxy_rows(320, 32080.0),
+    );
+    import_history_csv(&runtime_db_path, &spot_csv, "NK225.IDX");
+    import_history_csv(&runtime_db_path, &futures_csv, "NK225_F1.FUT");
+
+    let server = spawn_http_route_server(vec![
+        (
+            "/financials",
+            "HTTP/1.1 406 Not Acceptable",
+            "<html><body>financials unavailable for nikkei index fixture</body></html>",
+            "text/html",
+        ),
+        (
+            "/announcements",
+            "HTTP/1.1 200 OK",
+            r#"{"data":{"list":[]}}"#,
+            "application/json",
+        ),
+    ]);
+
+    let request = json!({
+        "tool": "security_feature_snapshot",
+        "args": {
+            "symbol": "NK225.IDX",
+            "market_symbol": "NK225.IDX",
+            "sector_symbol": "NK225.IDX",
+            "futures_symbol": "NK225_F1.FUT",
+            "stop_loss_pct": 0.05,
+            "target_return_pct": 0.12
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &[
+            (
+                "EXCEL_SKILL_EASTMONEY_FINANCIAL_URL_BASE",
+                format!("{server}/financials"),
+            ),
+            (
+                "EXCEL_SKILL_EASTMONEY_ANNOUNCEMENT_URL_BASE",
+                format!("{server}/announcements"),
+            ),
+        ],
+    );
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    let raw_features = output["data"]["raw_features_json"]
+        .as_object()
+        .expect("raw features should be an object");
+    assert_eq!(raw_features["futures_proxy_status"], "available");
+    assert_eq!(raw_features["futures_symbol"], "NK225_F1.FUT");
+    assert!(raw_features["futures_return_1d"].is_number());
+    assert!(raw_features["futures_return_3d"].is_number());
+    assert!(raw_features["spot_return_3d"].is_number());
+    assert!(raw_features["futures_spot_basis_pct"].is_number());
+    assert!(raw_features["futures_relative_strength_3d"].is_number());
+    assert!(raw_features["futures_roll_window_flag"].is_boolean());
+    assert!(raw_features["futures_abnormal_move_flag"].is_boolean());
+    assert!(
+        raw_features.get("futures_lead_strength_3d").is_none(),
+        "expected the old mixed lead-strength factor to be replaced by explicit 3d return fields"
+    );
 }
 
 #[test]
@@ -1721,6 +1806,53 @@ fn build_confirmed_breakout_rows(day_count: usize, start_close: f64) -> Vec<Stri
         let adj_close = next_close;
         rows.push(format!(
             "{},{open:.2},{high:.2},{low:.2},{next_close:.2},{adj_close:.2},{volume}",
+            trade_date.format("%Y-%m-%d")
+        ));
+        close = next_close;
+    }
+
+    rows
+}
+
+fn build_nikkei_spot_proxy_rows(day_count: usize, start_close: f64) -> Vec<String> {
+    let mut rows = vec!["trade_date,open,high,low,close,adj_close,volume".to_string()];
+    let start_date = NaiveDate::from_ymd_opt(2025, 1, 1).expect("seed date should be valid");
+    let mut close = start_close;
+
+    for offset in 0..day_count {
+        let trade_date = start_date + Duration::days(offset as i64);
+        let daily_drift = if offset % 21 < 11 { 115.0 } else { -72.0 };
+        let next_close = (close + daily_drift).max(1000.0);
+        let open = close;
+        let high = open.max(next_close) + 85.0;
+        let low = open.min(next_close) - 85.0;
+        let volume = 1_250_000 + offset as i64 * 2_700;
+        rows.push(format!(
+            "{},{open:.2},{high:.2},{low:.2},{next_close:.2},{next_close:.2},{volume}",
+            trade_date.format("%Y-%m-%d")
+        ));
+        close = next_close;
+    }
+
+    rows
+}
+
+fn build_nikkei_futures_proxy_rows(day_count: usize, start_close: f64) -> Vec<String> {
+    let mut rows = vec!["trade_date,open,high,low,close,adj_close,volume".to_string()];
+    let start_date = NaiveDate::from_ymd_opt(2025, 1, 1).expect("seed date should be valid");
+    let mut close = start_close;
+
+    for offset in 0..day_count {
+        let trade_date = start_date + Duration::days(offset as i64);
+        let lead_component = if offset % 21 < 9 { 132.0 } else { -84.0 };
+        let basis_component = if offset % 34 < 17 { 24.0 } else { -18.0 };
+        let next_close = (close + lead_component + basis_component).max(1000.0);
+        let open = close;
+        let high = open.max(next_close) + 110.0;
+        let low = open.min(next_close) - 110.0;
+        let volume = 930_000 + offset as i64 * 2_000;
+        rows.push(format!(
+            "{},{open:.2},{high:.2},{low:.2},{next_close:.2},{next_close:.2},{volume}",
             trade_date.format("%Y-%m-%d")
         ));
         close = next_close;

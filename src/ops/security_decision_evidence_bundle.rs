@@ -654,7 +654,9 @@ pub fn build_evidence_bundle_feature_seed(
     // current training contract untouched until the direction-separated target design is approved.
     features.insert(
         "trend_direction_state".to_string(),
-        Value::String(self::derive_alignment_direction(stock_analysis.trend_bias.as_str()).to_string()),
+        Value::String(
+            self::derive_alignment_direction(stock_analysis.trend_bias.as_str()).to_string(),
+        ),
     );
     features.insert(
         "trend_direction_strength".to_string(),
@@ -678,15 +680,21 @@ pub fn build_evidence_bundle_feature_seed(
     );
     features.insert(
         "breakout_direction".to_string(),
-        Value::String(self::derive_breakout_direction(stock_analysis.breakout_signal.as_str()).to_string()),
+        Value::String(
+            self::derive_breakout_direction(stock_analysis.breakout_signal.as_str()).to_string(),
+        ),
     );
     features.insert(
         "breakout_stage".to_string(),
-        Value::String(self::derive_breakout_stage(stock_analysis.breakout_signal.as_str()).to_string()),
+        Value::String(
+            self::derive_breakout_stage(stock_analysis.breakout_signal.as_str()).to_string(),
+        ),
     );
     features.insert(
         "alignment_direction".to_string(),
-        Value::String(self::derive_alignment_direction(stock_analysis.trend_bias.as_str()).to_string()),
+        Value::String(
+            self::derive_alignment_direction(stock_analysis.trend_bias.as_str()).to_string(),
+        ),
     );
     features.insert(
         "alignment_consistency".to_string(),
@@ -713,8 +721,20 @@ pub fn build_evidence_bundle_feature_seed(
                         .bias
                         .as_str(),
                 ),
-                Some(bundle.technical_context.market_analysis.breakout_signal.as_str()),
-                Some(bundle.technical_context.market_analysis.momentum_signal.as_str()),
+                Some(
+                    bundle
+                        .technical_context
+                        .market_analysis
+                        .breakout_signal
+                        .as_str(),
+                ),
+                Some(
+                    bundle
+                        .technical_context
+                        .market_analysis
+                        .momentum_signal
+                        .as_str(),
+                ),
             )
             .to_string(),
         ),
@@ -735,21 +755,26 @@ pub fn build_evidence_bundle_feature_seed(
     features.insert(
         "flow_direction_state".to_string(),
         Value::String(
-            self::derive_flow_direction_state(stock_analysis.money_flow_signal.as_str()).to_string(),
+            self::derive_flow_direction_state(stock_analysis.money_flow_signal.as_str())
+                .to_string(),
         ),
     );
     features.insert(
         "mean_reversion_direction_state".to_string(),
         Value::String(
-            self::derive_mean_reversion_direction_state(stock_analysis.mean_reversion_signal.as_str())
-                .to_string(),
+            self::derive_mean_reversion_direction_state(
+                stock_analysis.mean_reversion_signal.as_str(),
+            )
+            .to_string(),
         ),
     );
     features.insert(
         "range_position_direction_state".to_string(),
         Value::String(
-            self::derive_range_position_direction_state(stock_analysis.range_position_signal.as_str())
-                .to_string(),
+            self::derive_range_position_direction_state(
+                stock_analysis.range_position_signal.as_str(),
+            )
+            .to_string(),
         ),
     );
     features.insert(
@@ -772,17 +797,22 @@ pub fn build_evidence_bundle_feature_seed(
     );
     features.insert(
         "rsrs_direction_state".to_string(),
-        Value::String(self::derive_rsrs_direction_state(stock_analysis.rsrs_signal.as_str()).to_string()),
+        Value::String(
+            self::derive_rsrs_direction_state(stock_analysis.rsrs_signal.as_str()).to_string(),
+        ),
     );
     features.insert(
         "divergence_direction_state".to_string(),
         Value::String(
-            self::derive_divergence_direction_state(stock_analysis.divergence_signal.as_str()).to_string(),
+            self::derive_divergence_direction_state(stock_analysis.divergence_signal.as_str())
+                .to_string(),
         ),
     );
     features.insert(
         "timing_direction_state".to_string(),
-        Value::String(self::derive_timing_direction_state(stock_analysis.timing_signal.as_str()).to_string()),
+        Value::String(
+            self::derive_timing_direction_state(stock_analysis.timing_signal.as_str()).to_string(),
+        ),
     );
     // 2026-04-16 CST: Added because P0 data thickening must expose the governed numeric flow and
     // extension snapshot to downstream sample builders.
@@ -818,10 +848,7 @@ pub fn build_evidence_bundle_feature_seed(
     // `close_vs_sma*`, `rsrs_zscore_18_60`, and key-level gap fields directly.
     // Purpose: widen the feature family without silently dropping the stable aliases that the
     // current StockMind runtime already depends on.
-    features.insert(
-        "close_vs_sma20".to_string(),
-        json!(close_vs_sma20),
-    );
+    features.insert("close_vs_sma20".to_string(), json!(close_vs_sma20));
     features.insert(
         "close_vs_sma50".to_string(),
         json!(derive_ratio_delta(
@@ -860,10 +887,7 @@ pub fn build_evidence_bundle_feature_seed(
         json!(indicator_snapshot.rsrs_zscore_18_60),
     );
     features.insert("atr_14".to_string(), json!(indicator_snapshot.atr_14));
-    features.insert(
-        "atr_ratio_14".to_string(),
-        json!(atr_ratio_14),
-    );
+    features.insert("atr_ratio_14".to_string(), json!(atr_ratio_14));
     // 2026-04-20 CST: Added because the approved Nikkei route now reviews and trains
     // mean reversion in ATR-normalized units instead of raw percentage alone.
     // Reason: the user explicitly asked to keep the middle bucket small after the
@@ -1856,9 +1880,7 @@ pub fn derive_range_position_direction_state(range_position_signal: &str) -> &'s
     }
 }
 
-pub fn derive_bollinger_position_direction_state(
-    bollinger_position_signal: &str,
-) -> &'static str {
+pub fn derive_bollinger_position_direction_state(bollinger_position_signal: &str) -> &'static str {
     let bollinger_position_signal = bollinger_position_signal.to_ascii_lowercase();
     if bollinger_position_signal.contains("lower") {
         "up"
@@ -1869,9 +1891,7 @@ pub fn derive_bollinger_position_direction_state(
     }
 }
 
-pub fn derive_bollinger_midline_direction_state(
-    bollinger_midline_signal: &str,
-) -> &'static str {
+pub fn derive_bollinger_midline_direction_state(bollinger_midline_signal: &str) -> &'static str {
     let bollinger_midline_signal = bollinger_midline_signal.to_ascii_lowercase();
     if bollinger_midline_signal.contains("support") {
         "up"
@@ -2167,10 +2187,7 @@ pub fn derive_trend_direction_strength(trend_bias: &str, trend_strength: &str) -
 // 2026-04-20 CST: Added because the current volume label says whether volume confirms, but not
 // which side it confirms.
 // Purpose: freeze one directional volume helper before the next factor-selection pass.
-pub fn derive_volume_direction_state(
-    trend_bias: &str,
-    volume_confirmation: &str,
-) -> &'static str {
+pub fn derive_volume_direction_state(trend_bias: &str, volume_confirmation: &str) -> &'static str {
     let volume_confirmation = volume_confirmation.to_ascii_lowercase();
     if volume_confirmation.contains("weak") {
         return "weakening";
@@ -2377,8 +2394,7 @@ mod tests {
         derive_event_density_bucket, derive_macd_histogram_direction,
         derive_market_direction_regime, derive_market_volatility_regime,
         derive_mean_reversion_bucket_20d, derive_mean_reversion_deviation_bucket_20d,
-        derive_mean_reversion_normalized_distance_20d,
-        derive_quality_bucket,
+        derive_mean_reversion_normalized_distance_20d, derive_quality_bucket,
         derive_range_position_bucket_14d, derive_rsi_direction_state, derive_rsi_extreme_state,
         derive_trend_direction_strength, derive_volume_direction_state,
     };
@@ -2414,9 +2430,15 @@ mod tests {
             "down"
         );
         assert_eq!(derive_breakout_direction("range_bound"), "none");
-        assert_eq!(derive_breakout_stage("confirmed_resistance_breakout"), "confirmed");
+        assert_eq!(
+            derive_breakout_stage("confirmed_resistance_breakout"),
+            "confirmed"
+        );
         assert_eq!(derive_breakout_stage("support_breakdown_watch"), "watch");
-        assert_eq!(derive_breakout_stage("failed_resistance_breakout"), "failed");
+        assert_eq!(
+            derive_breakout_stage("failed_resistance_breakout"),
+            "failed"
+        );
         assert_eq!(derive_breakout_stage("range_bound"), "range");
     }
 
@@ -2542,12 +2564,8 @@ mod tests {
         // Reason: the user wants the middle bucket compressed and the weak-direction buckets
         // to remain meaningful after the 2025 volatility regime shift.
         // Purpose: lock the 0.15 ATR / 2.6 ATR bucket edges before snapshot and training consume them.
-        assert!(
-            (derive_mean_reversion_normalized_distance_20d(0.026, 0.01) - 2.6).abs() < 1e-9
-        );
-        assert!(
-            (derive_mean_reversion_normalized_distance_20d(-0.013, 0.01) + 1.3).abs() < 1e-9
-        );
+        assert!((derive_mean_reversion_normalized_distance_20d(0.026, 0.01) - 2.6).abs() < 1e-9);
+        assert!((derive_mean_reversion_normalized_distance_20d(-0.013, 0.01) + 1.3).abs() < 1e-9);
         assert_eq!(
             derive_mean_reversion_deviation_bucket_20d(-2.61),
             "strong_down"
@@ -2560,26 +2578,11 @@ mod tests {
             derive_mean_reversion_deviation_bucket_20d(-0.16),
             "weak_down"
         );
-        assert_eq!(
-            derive_mean_reversion_deviation_bucket_20d(-0.15),
-            "neutral"
-        );
-        assert_eq!(
-            derive_mean_reversion_deviation_bucket_20d(0.0),
-            "neutral"
-        );
-        assert_eq!(
-            derive_mean_reversion_deviation_bucket_20d(0.15),
-            "neutral"
-        );
-        assert_eq!(
-            derive_mean_reversion_deviation_bucket_20d(0.16),
-            "weak_up"
-        );
-        assert_eq!(
-            derive_mean_reversion_deviation_bucket_20d(2.60),
-            "weak_up"
-        );
+        assert_eq!(derive_mean_reversion_deviation_bucket_20d(-0.15), "neutral");
+        assert_eq!(derive_mean_reversion_deviation_bucket_20d(0.0), "neutral");
+        assert_eq!(derive_mean_reversion_deviation_bucket_20d(0.15), "neutral");
+        assert_eq!(derive_mean_reversion_deviation_bucket_20d(0.16), "weak_up");
+        assert_eq!(derive_mean_reversion_deviation_bucket_20d(2.60), "weak_up");
         assert_eq!(
             derive_mean_reversion_deviation_bucket_20d(2.61),
             "strong_up"

@@ -223,10 +223,8 @@ fn build_confirmed_breakout_rows(day_count: usize, start_close: f64) -> Vec<Stri
         // against recent high-derived key levels instead of only close-to-close drift.
         // Purpose: make this fixture close decisively above prior resistance rather than
         // hiding the move under oversized upper shadows that only produce `range_wait`.
-        let high = next_close.max(open)
-            + if offset < day_count - 20 { 0.28 } else { 0.14 };
-        let low = next_close.min(open)
-            - if offset < day_count - 20 { 0.24 } else { 0.12 };
+        let high = next_close.max(open) + if offset < day_count - 20 { 0.28 } else { 0.14 };
+        let low = next_close.min(open) - if offset < day_count - 20 { 0.24 } else { 0.12 };
         let adj_close = next_close;
         rows.push(format!(
             "{},{open:.2},{high:.2},{low:.2},{next_close:.2},{adj_close:.2},{volume}",
@@ -296,10 +294,8 @@ fn build_confirmed_breakdown_rows(day_count: usize, start_close: f64) -> Vec<Str
         // support using low-derived key levels, so this fixture must finish below the
         // prior floor instead of leaving oversized lower shadows that blur the signal.
         // Purpose: keep contextual headwind/tailwind tests anchored to real breakdown samples.
-        let high = next_close.max(open)
-            + if offset < day_count - 20 { 0.24 } else { 0.12 };
-        let low = next_close.min(open)
-            - if offset < day_count - 20 { 0.28 } else { 0.14 };
+        let high = next_close.max(open) + if offset < day_count - 20 { 0.24 } else { 0.12 };
+        let low = next_close.min(open) - if offset < day_count - 20 { 0.28 } else { 0.14 };
         let adj_close = next_close;
         rows.push(format!(
             "{},{open:.2},{high:.2},{low:.2},{next_close:.2},{adj_close:.2},{volume}",

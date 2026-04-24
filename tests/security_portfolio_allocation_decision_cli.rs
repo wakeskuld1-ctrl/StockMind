@@ -1,6 +1,6 @@
 mod common;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use crate::common::run_cli_with_json;
 
@@ -28,7 +28,8 @@ fn tool_catalog_includes_security_portfolio_allocation_decision() {
 // replacing the formal P11 replacement solver.
 // Purpose: lock the enhanced happy-path P12 output shape on the CLI surface.
 #[test]
-fn security_portfolio_allocation_decision_applies_priority_fill_when_residual_cash_and_turnover_slack_exist() {
+fn security_portfolio_allocation_decision_applies_priority_fill_when_residual_cash_and_turnover_slack_exist()
+ {
     let (account_objective_contract, portfolio_candidate_set, portfolio_replacement_plan) =
         build_p11_documents();
 
@@ -102,7 +103,8 @@ fn security_portfolio_allocation_decision_applies_priority_fill_when_residual_ca
             .expect("allocation_refinement_summary should be an array")
             .iter()
             .any(|entry| {
-                entry.as_str()
+                entry
+                    .as_str()
                     .expect("summary entry should be a string")
                     .contains("601916.SH")
             }),

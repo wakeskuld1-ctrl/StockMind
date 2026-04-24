@@ -131,9 +131,7 @@ pub enum SecurityPortfolioAllocationDecisionError {
         "security portfolio allocation decision build failed: residual cash mismatch detected `{0}` vs `{1}`"
     )]
     ResidualCashMismatch(f64, f64),
-    #[error(
-        "security portfolio allocation decision build failed: objective limit mismatch `{0}`"
-    )]
+    #[error("security portfolio allocation decision build failed: objective limit mismatch `{0}`")]
     ObjectiveLimitMismatch(String),
 }
 
@@ -144,27 +142,26 @@ pub enum SecurityPortfolioAllocationDecisionError {
 // Purpose: expose the P12 allocation decision builder on the stock bus.
 pub fn security_portfolio_allocation_decision(
     request: &SecurityPortfolioAllocationDecisionRequest,
-) -> Result<
-    SecurityPortfolioAllocationDecisionResult,
-    SecurityPortfolioAllocationDecisionError,
-> {
+) -> Result<SecurityPortfolioAllocationDecisionResult, SecurityPortfolioAllocationDecisionError> {
     build_security_portfolio_allocation_decision(request)
 }
 
 pub fn build_security_portfolio_allocation_decision(
     request: &SecurityPortfolioAllocationDecisionRequest,
-) -> Result<
-    SecurityPortfolioAllocationDecisionResult,
-    SecurityPortfolioAllocationDecisionError,
-> {
+) -> Result<SecurityPortfolioAllocationDecisionResult, SecurityPortfolioAllocationDecisionError> {
     validate_request_accounts(request)?;
 
     let generated_at = normalize_created_at(&request.created_at);
-    let account_id = request.account_objective_contract.account_id.trim().to_string();
+    let account_id = request
+        .account_objective_contract
+        .account_id
+        .trim()
+        .to_string();
     let current_weight_map = build_weight_map(&request.portfolio_replacement_plan.current_weights);
     let baseline_target_weight_map =
         build_weight_map(&request.portfolio_replacement_plan.target_weights);
-    let governed_candidate_symbols = build_governed_candidate_symbols(&request.portfolio_candidate_set);
+    let governed_candidate_symbols =
+        build_governed_candidate_symbols(&request.portfolio_candidate_set);
 
     validate_weight_symbols(&baseline_target_weight_map, &governed_candidate_symbols)?;
 
@@ -240,14 +237,18 @@ pub fn build_security_portfolio_allocation_decision(
         .filter(|weight_pct| **weight_pct > 0.0)
         .count();
     if target_position_count > request.account_objective_contract.position_count_limit {
-        return Err(SecurityPortfolioAllocationDecisionError::ObjectiveLimitMismatch(
-            "position count limit exceeded".to_string(),
-        ));
+        return Err(
+            SecurityPortfolioAllocationDecisionError::ObjectiveLimitMismatch(
+                "position count limit exceeded".to_string(),
+            ),
+        );
     }
     if gross_turnover_weight_pct > request.account_objective_contract.turnover_limit + 1e-9 {
-        return Err(SecurityPortfolioAllocationDecisionError::ObjectiveLimitMismatch(
-            "turnover limit exceeded".to_string(),
-        ));
+        return Err(
+            SecurityPortfolioAllocationDecisionError::ObjectiveLimitMismatch(
+                "turnover limit exceeded".to_string(),
+            ),
+        );
     }
 
     let total_target_risk_budget_pct = round_pct(compute_total_target_risk_budget_pct(
@@ -255,15 +256,14 @@ pub fn build_security_portfolio_allocation_decision(
         &refined_target_weight_map,
     ));
     if total_target_risk_budget_pct > request.account_objective_contract.risk_budget_limit + 1e-9 {
-        return Err(SecurityPortfolioAllocationDecisionError::ObjectiveLimitMismatch(
-            "risk budget limit exceeded".to_string(),
-        ));
+        return Err(
+            SecurityPortfolioAllocationDecisionError::ObjectiveLimitMismatch(
+                "risk budget limit exceeded".to_string(),
+            ),
+        );
     }
 
-    validate_max_weight_caps(
-        &request.portfolio_candidate_set,
-        &refined_target_weight_map,
-    )?;
+    validate_max_weight_caps(&request.portfolio_candidate_set, &refined_target_weight_map)?;
 
     let baseline_target_allocations = build_final_target_allocations(
         &request.portfolio_replacement_plan.target_weights,
@@ -380,7 +380,11 @@ fn validate_request_accounts(
     // any final allocation decision is frozen.
     // Reason: downstream approval and execution bridges assume one governed account scope.
     // Purpose: keep account identity validation explicit at the P12 boundary.
-    let request_account = request.account_objective_contract.account_id.trim().to_string();
+    let request_account = request
+        .account_objective_contract
+        .account_id
+        .trim()
+        .to_string();
 
     if request.portfolio_candidate_set.account_id.trim() != request_account {
         return Err(
@@ -464,9 +468,11 @@ fn validate_weight_conservation(
     // Reason: non-conserving weights cannot be frozen into a governed decision.
     // Purpose: reject invalid current or target weight totals.
     if total_weight_pct < -1e-9 || total_weight_pct > 1.0 + 1e-9 {
-        return Err(SecurityPortfolioAllocationDecisionError::WeightNonConservation(
-            section_name.to_string(),
-        ));
+        return Err(
+            SecurityPortfolioAllocationDecisionError::WeightNonConservation(
+                section_name.to_string(),
+            ),
+        );
     }
 
     Ok(())
@@ -482,9 +488,11 @@ fn validate_weight_conservation_against_plan(
     // Reason: plan/document drift must fail explicitly at the final governance boundary.
     // Purpose: keep target and current closure aligned with the upstream plan metadata.
     if (observed_weight_pct - round_pct(planned_weight_pct)).abs() > 1e-9 {
-        return Err(SecurityPortfolioAllocationDecisionError::WeightNonConservation(
-            section_name.to_string(),
-        ));
+        return Err(
+            SecurityPortfolioAllocationDecisionError::WeightNonConservation(
+                section_name.to_string(),
+            ),
+        );
     }
 
     Ok(())
@@ -499,18 +507,23 @@ fn validate_residual_cash(
     // Reason: negative or drifted residual cash would break later execution interpretation.
     // Purpose: reject residual-cash contradictions before readiness can be declared.
     if observed_residual_cash_weight_pct < -1e-9 {
-        return Err(SecurityPortfolioAllocationDecisionError::ResidualCashMismatch(
-            observed_residual_cash_weight_pct,
-            planned_residual_cash_weight_pct,
-        ));
+        return Err(
+            SecurityPortfolioAllocationDecisionError::ResidualCashMismatch(
+                observed_residual_cash_weight_pct,
+                planned_residual_cash_weight_pct,
+            ),
+        );
     }
 
-    if (observed_residual_cash_weight_pct - round_pct(planned_residual_cash_weight_pct)).abs() > 1e-9
+    if (observed_residual_cash_weight_pct - round_pct(planned_residual_cash_weight_pct)).abs()
+        > 1e-9
     {
-        return Err(SecurityPortfolioAllocationDecisionError::ResidualCashMismatch(
-            observed_residual_cash_weight_pct,
-            planned_residual_cash_weight_pct,
-        ));
+        return Err(
+            SecurityPortfolioAllocationDecisionError::ResidualCashMismatch(
+                observed_residual_cash_weight_pct,
+                planned_residual_cash_weight_pct,
+            ),
+        );
     }
 
     Ok(())
@@ -524,10 +537,12 @@ fn validate_residual_cash_floor(
     // Reason: only the non-negative floor stays invariant after bounded refinement.
     // Purpose: reject over-allocation while allowing legal residual-cash deployment.
     if observed_residual_cash_weight_pct < -1e-9 {
-        return Err(SecurityPortfolioAllocationDecisionError::ResidualCashMismatch(
-            observed_residual_cash_weight_pct,
-            0.0,
-        ));
+        return Err(
+            SecurityPortfolioAllocationDecisionError::ResidualCashMismatch(
+                observed_residual_cash_weight_pct,
+                0.0,
+            ),
+        );
     }
 
     Ok(())
@@ -542,9 +557,11 @@ fn validate_turnover_against_plan(
     // Reason: a drifted turnover figure would weaken the explicit route separation.
     // Purpose: keep final decision validation aligned with upstream plan closure.
     if (observed_turnover_weight_pct - round_pct(planned_turnover_weight_pct)).abs() > 1e-9 {
-        return Err(SecurityPortfolioAllocationDecisionError::WeightNonConservation(
-            "gross_turnover_weight_pct".to_string(),
-        ));
+        return Err(
+            SecurityPortfolioAllocationDecisionError::WeightNonConservation(
+                "gross_turnover_weight_pct".to_string(),
+            ),
+        );
     }
 
     Ok(())
@@ -636,7 +653,9 @@ fn apply_residual_cash_priority_fill(
     let mut remaining_residual_cash = baseline_residual_cash_weight_pct;
     let mut allocation_refinement_summary = Vec::new();
 
-    for candidate in build_refinement_candidates(portfolio_candidate_set, baseline_target_weight_map) {
+    for candidate in
+        build_refinement_candidates(portfolio_candidate_set, baseline_target_weight_map)
+    {
         if remaining_turnover_slack <= 1e-9 || remaining_residual_cash <= 1e-9 {
             break;
         }
@@ -645,7 +664,8 @@ fn apply_residual_cash_priority_fill(
             .get(&candidate.symbol)
             .copied()
             .unwrap_or(0.0);
-        let spare_capacity = round_pct((candidate.max_weight_pct - current_target_weight_pct).max(0.0));
+        let spare_capacity =
+            round_pct((candidate.max_weight_pct - current_target_weight_pct).max(0.0));
         if spare_capacity <= 1e-9 {
             continue;
         }
@@ -661,22 +681,19 @@ fn apply_residual_cash_priority_fill(
 
         let refined_target_weight_pct = round_pct(current_target_weight_pct + added_weight_pct);
         refined_target_weight_map.insert(candidate.symbol.clone(), refined_target_weight_pct);
-        remaining_turnover_slack = round_pct((remaining_turnover_slack - added_weight_pct).max(0.0));
+        remaining_turnover_slack =
+            round_pct((remaining_turnover_slack - added_weight_pct).max(0.0));
         remaining_residual_cash = round_pct((remaining_residual_cash - added_weight_pct).max(0.0));
         allocation_refinement_summary.push(format!(
             "{} priority_fill +{:.6} -> {:.6} (score={:.6})",
-            candidate.symbol,
-            added_weight_pct,
-            refined_target_weight_pct,
-            candidate.priority_score
+            candidate.symbol, added_weight_pct, refined_target_weight_pct, candidate.priority_score
         ));
     }
 
     let refinement_applied = !allocation_refinement_summary.is_empty();
     if !refinement_applied {
-        allocation_refinement_summary.push(
-            "no_refinement:turnover_slack_exhausted_or_no_symbol_capacity".to_string(),
-        );
+        allocation_refinement_summary
+            .push("no_refinement:turnover_slack_exhausted_or_no_symbol_capacity".to_string());
     }
 
     (
@@ -704,16 +721,12 @@ fn build_refinement_candidates(
                 live_position.expected_annual_return_pct.unwrap_or(0.0),
                 live_position.expected_drawdown_pct.unwrap_or(0.01),
             ),
-            max_weight_pct: round_pct(
-                live_position
-                    .max_weight_pct
-                    .unwrap_or_else(|| {
-                        baseline_target_weight_map
-                            .get(&live_position.symbol)
-                            .copied()
-                            .unwrap_or(0.0)
-                    }),
-            ),
+            max_weight_pct: round_pct(live_position.max_weight_pct.unwrap_or_else(|| {
+                baseline_target_weight_map
+                    .get(&live_position.symbol)
+                    .copied()
+                    .unwrap_or(0.0)
+            })),
         })
         .chain(
             portfolio_candidate_set
@@ -776,9 +789,11 @@ fn validate_max_weight_caps(
     for (symbol, target_weight_pct) in refined_target_weight_map {
         if let Some(max_weight_pct) = max_weight_map.get(symbol) {
             if *target_weight_pct > round_pct(*max_weight_pct) + 1e-9 {
-                return Err(SecurityPortfolioAllocationDecisionError::ObjectiveLimitMismatch(
-                    format!("max weight exceeded on {symbol}"),
-                ));
+                return Err(
+                    SecurityPortfolioAllocationDecisionError::ObjectiveLimitMismatch(format!(
+                        "max weight exceeded on {symbol}"
+                    )),
+                );
             }
         }
     }

@@ -72,8 +72,14 @@ fn fixture_technical_result(symbol: &str, analysis_date: &str) -> serde_json::Va
         "recommended_actions": ["继续跟踪突破确认"],
         "watch_points": ["观察量能延续"],
         "indicator_snapshot": {
+            // 2026-04-21 CST: Added because TechnicalIndicatorSnapshot now requires
+            // one explicit SMA20 field in addition to the older SMA50/SMA200 fields.
+            // Reason: this builder fixture should track schema drift without changing
+            // any chair-resolution branch semantics under test.
+            // Purpose: keep the fixture aligned with the governed technical snapshot contract.
             "close": 10.5,
             "ema_10": 10.2,
+            "sma_20": 10.0,
             "sma_50": 9.8,
             "sma_200": 8.9,
             "adx_14": 24.0,

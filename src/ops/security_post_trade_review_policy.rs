@@ -166,8 +166,9 @@ fn derive_next_account_adjustment_hint(account_plan_alignment: &str) -> String {
         // wording after an English drift regressed the review output contract.
         "aligned" => "继续沿用当前账户预算与分层执行纪律。".to_string(),
         "under_budget" => "先确认计划层数为何未执行完整，再决定是否补回剩余仓位。".to_string(),
-        "over_budget" => "下次同类机会先回到计划层数，未重新通过账户预算复核前不要继续追加强度。"
-            .to_string(),
+        "over_budget" => {
+            "下次同类机会先回到计划层数，未重新通过账户预算复核前不要继续追加强度。".to_string()
+        }
         _ => "先暂停原账户动作，重新核对方向、预算与分层模板后再恢复执行。".to_string(),
     }
 }

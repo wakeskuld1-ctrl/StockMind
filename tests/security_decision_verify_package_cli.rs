@@ -1,7 +1,7 @@
 mod common;
 
 use chrono::{Duration, NaiveDate};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::{Read, Write};
@@ -24,8 +24,8 @@ use excel_skill::ops::stock::security_decision_approval_brief::{
     SecurityDecisionApprovalBrief,
 };
 use excel_skill::ops::stock::security_decision_package::{
-    build_security_decision_package, sha256_for_json_value, SecurityDecisionPackageArtifact,
-    SecurityDecisionPackageBuildInput,
+    SecurityDecisionPackageArtifact, SecurityDecisionPackageBuildInput,
+    build_security_decision_package, sha256_for_json_value,
 };
 use excel_skill::ops::stock::security_position_plan::{
     PositionAddPlan, PositionEntryPlan, PositionReducePlan, PositionStopLossPlan,
@@ -536,11 +536,13 @@ fn tool_catalog_includes_security_decision_verify_package() {
 
     // 2026-04-02 CST: 这里先锁住 verify Tool 的可发现性，原因是 package 校验如果不进 catalog，就无法进入正式产品主链；
     // 目的：确保 CLI / Skill / 后续自动化都能稳定发现“审批包校验”入口。
-    assert!(output["data"]["tool_catalog"]
-        .as_array()
-        .expect("tool catalog should be an array")
-        .iter()
-        .any(|tool| tool == "security_decision_verify_package"));
+    assert!(
+        output["data"]["tool_catalog"]
+            .as_array()
+            .expect("tool catalog should be an array")
+            .iter()
+            .any(|tool| tool == "security_decision_verify_package")
+    );
 }
 
 #[test]
@@ -654,25 +656,33 @@ fn security_decision_verify_package_accepts_signed_package_and_writes_report() {
         verify_output["data"]["recommended_action"],
         "proceed_with_review"
     );
-    assert!(verify_output["data"]["verification_report_path"]
-        .as_str()
-        .expect("verification report path should exist")
-        .contains("decision_packages_verification"));
-    assert!(verify_output["data"]["artifact_checks"]
-        .as_array()
-        .expect("artifact checks should be array")
-        .iter()
-        .all(|item| item["exists_on_disk"] == true));
-    assert!(verify_output["data"]["hash_checks"]
-        .as_array()
-        .expect("hash checks should be array")
-        .iter()
-        .all(|item| item["matched"] == true));
-    assert!(verify_output["data"]["signature_checks"]
-        .as_array()
-        .expect("signature checks should be array")
-        .iter()
-        .any(|item| item["signature_valid"] == true));
+    assert!(
+        verify_output["data"]["verification_report_path"]
+            .as_str()
+            .expect("verification report path should exist")
+            .contains("decision_packages_verification")
+    );
+    assert!(
+        verify_output["data"]["artifact_checks"]
+            .as_array()
+            .expect("artifact checks should be array")
+            .iter()
+            .all(|item| item["exists_on_disk"] == true)
+    );
+    assert!(
+        verify_output["data"]["hash_checks"]
+            .as_array()
+            .expect("hash checks should be array")
+            .iter()
+            .all(|item| item["matched"] == true)
+    );
+    assert!(
+        verify_output["data"]["signature_checks"]
+            .as_array()
+            .expect("signature checks should be array")
+            .iter()
+            .any(|item| item["signature_valid"] == true)
+    );
     // 2026-04-08 CST: 这里先锁定 verify 输出中的对象图一致性结果，原因是 Task 1 不仅要写入 object_graph，还要把它纳入正式校验；
     // 目的：确保后续 package 就算文件还在，也不能在对象引用漂移时被误判为有效。
     assert_eq!(
@@ -848,11 +858,13 @@ fn security_decision_verify_package_fails_after_approval_brief_is_tampered() {
             .len()
             >= 1
     );
-    assert!(verify_output["data"]["hash_checks"]
-        .as_array()
-        .expect("hash checks should be array")
-        .iter()
-        .any(|item| item["artifact_role"] == "approval_brief" && item["matched"] == false));
+    assert!(
+        verify_output["data"]["hash_checks"]
+            .as_array()
+            .expect("hash checks should be array")
+            .iter()
+            .any(|item| item["artifact_role"] == "approval_brief" && item["matched"] == false)
+    );
 }
 
 #[test]
@@ -970,14 +982,16 @@ fn security_decision_verify_package_fails_after_object_graph_is_tampered() {
         verify_output["data"]["governance_checks"]["object_graph_consistent"],
         false
     );
-    assert!(verify_output["data"]["issues"]
-        .as_array()
-        .expect("issues should be array")
-        .iter()
-        .any(|item| item
-            .as_str()
-            .expect("issue should be string")
-            .contains("object_graph")));
+    assert!(
+        verify_output["data"]["issues"]
+            .as_array()
+            .expect("issues should be array")
+            .iter()
+            .any(|item| item
+                .as_str()
+                .expect("issue should be string")
+                .contains("object_graph"))
+    );
 }
 
 #[test]
@@ -1106,14 +1120,16 @@ fn security_decision_verify_package_fails_after_position_plan_binding_is_tampere
         verify_output["data"]["governance_checks"]["position_plan_binding_consistent"],
         false
     );
-    assert!(verify_output["data"]["issues"]
-        .as_array()
-        .expect("issues should be array")
-        .iter()
-        .any(|item| item
-            .as_str()
-            .expect("issue should be string")
-            .contains("position_plan_binding")));
+    assert!(
+        verify_output["data"]["issues"]
+            .as_array()
+            .expect("issues should be array")
+            .iter()
+            .any(|item| item
+                .as_str()
+                .expect("issue should be string")
+                .contains("position_plan_binding"))
+    );
 }
 
 #[test]
@@ -1240,14 +1256,16 @@ fn security_decision_verify_package_fails_after_position_plan_direction_is_tampe
         verify_output["data"]["governance_checks"]["position_plan_direction_aligned"],
         false
     );
-    assert!(verify_output["data"]["issues"]
-        .as_array()
-        .expect("issues should be array")
-        .iter()
-        .any(|item| item
-            .as_str()
-            .expect("issue should be string")
-            .contains("position_plan direction")));
+    assert!(
+        verify_output["data"]["issues"]
+            .as_array()
+            .expect("issues should be array")
+            .iter()
+            .any(|item| item
+                .as_str()
+                .expect("issue should be string")
+                .contains("position_plan direction"))
+    );
 }
 
 #[test]
@@ -1378,14 +1396,16 @@ fn security_decision_verify_package_fails_after_scorecard_action_is_tampered() {
         verify_output["data"]["governance_checks"]["scorecard_action_aligned"],
         false
     );
-    assert!(verify_output["data"]["issues"]
-        .as_array()
-        .expect("issues should be array")
-        .iter()
-        .any(|item| item
-            .as_str()
-            .expect("issue should be string")
-            .contains("security_scorecard action")));
+    assert!(
+        verify_output["data"]["issues"]
+            .as_array()
+            .expect("issues should be array")
+            .iter()
+            .any(|item| item
+                .as_str()
+                .expect("issue should be string")
+                .contains("security_scorecard action"))
+    );
 }
 
 #[test]
@@ -1514,14 +1534,16 @@ fn security_decision_verify_package_fails_after_scorecard_identity_binding_is_ta
         verify_output["data"]["governance_checks"]["scorecard_binding_consistent"],
         false
     );
-    assert!(verify_output["data"]["issues"]
-        .as_array()
-        .expect("issues should be array")
-        .iter()
-        .any(|item| item
-            .as_str()
-            .expect("issue should be string")
-            .contains("security_scorecard binding mismatch")));
+    assert!(
+        verify_output["data"]["issues"]
+            .as_array()
+            .expect("issues should be array")
+            .iter()
+            .any(|item| item
+                .as_str()
+                .expect("issue should be string")
+                .contains("security_scorecard binding mismatch"))
+    );
 }
 
 #[test]
@@ -1561,14 +1583,16 @@ fn security_decision_verify_package_fails_after_chair_resolution_ref_is_tampered
         verify_output["data"]["governance_checks"]["object_graph_consistent"],
         true
     );
-    assert!(verify_output["data"]["issues"]
-        .as_array()
-        .expect("issues should be array")
-        .iter()
-        .any(|item| item
-            .as_str()
-            .expect("issue should be string")
-            .contains("security_post_meeting_conclusion binding mismatch")));
+    assert!(
+        verify_output["data"]["issues"]
+            .as_array()
+            .expect("issues should be array")
+            .iter()
+            .any(|item| item
+                .as_str()
+                .expect("issue should be string")
+                .contains("security_post_meeting_conclusion binding mismatch"))
+    );
 }
 
 #[test]
@@ -1609,14 +1633,16 @@ fn security_decision_verify_package_fails_after_post_meeting_chair_ref_is_tamper
         verify_output["data"]["governance_checks"]["object_graph_consistent"],
         true
     );
-    assert!(verify_output["data"]["issues"]
-        .as_array()
-        .expect("issues should be array")
-        .iter()
-        .any(|item| item
-            .as_str()
-            .expect("issue should be string")
-            .contains("security_post_meeting_conclusion binding mismatch")));
+    assert!(
+        verify_output["data"]["issues"]
+            .as_array()
+            .expect("issues should be array")
+            .iter()
+            .any(|item| item
+                .as_str()
+                .expect("issue should be string")
+                .contains("security_post_meeting_conclusion binding mismatch"))
+    );
 }
 
 #[test]
@@ -1656,14 +1682,16 @@ fn security_decision_verify_package_fails_after_post_meeting_chair_ref_is_cleare
         verify_output["data"]["governance_checks"]["object_graph_consistent"],
         true
     );
-    assert!(verify_output["data"]["issues"]
-        .as_array()
-        .expect("issues should be array")
-        .iter()
-        .any(|item| item
-            .as_str()
-            .expect("issue should be string")
-            .contains("security_post_meeting_conclusion binding mismatch")));
+    assert!(
+        verify_output["data"]["issues"]
+            .as_array()
+            .expect("issues should be array")
+            .iter()
+            .any(|item| item
+                .as_str()
+                .expect("issue should be string")
+                .contains("security_post_meeting_conclusion binding mismatch"))
+    );
 }
 
 #[test]
@@ -1697,22 +1725,26 @@ fn security_decision_verify_package_fails_after_post_meeting_artifact_file_is_mi
         verify_output["data"]["recommended_action"],
         "quarantine_and_rebuild"
     );
-    assert!(verify_output["data"]["artifact_checks"]
-        .as_array()
-        .expect("artifact checks should be array")
-        .iter()
-        .any(|item| {
-            item["artifact_role"] == "security_post_meeting_conclusion"
-                && item["exists_on_disk"] == false
-        }));
-    assert!(verify_output["data"]["issues"]
-        .as_array()
-        .expect("issues should be array")
-        .iter()
-        .any(|item| item
-            .as_str()
-            .expect("issue should be string")
-            .contains("security_post_meeting_conclusion")));
+    assert!(
+        verify_output["data"]["artifact_checks"]
+            .as_array()
+            .expect("artifact checks should be array")
+            .iter()
+            .any(|item| {
+                item["artifact_role"] == "security_post_meeting_conclusion"
+                    && item["exists_on_disk"] == false
+            })
+    );
+    assert!(
+        verify_output["data"]["issues"]
+            .as_array()
+            .expect("issues should be array")
+            .iter()
+            .any(|item| item
+                .as_str()
+                .expect("issue should be string")
+                .contains("security_post_meeting_conclusion"))
+    );
 }
 
 fn resolve_post_meeting_artifact_path(package_path: &Path) -> PathBuf {

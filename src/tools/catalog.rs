@@ -6,6 +6,13 @@ pub const STOCK_TOOL_NAMES: &[&str] = &[
     "security_fundamental_history_live_backfill",
     "security_disclosure_history_backfill",
     "security_disclosure_history_live_backfill",
+    "security_capital_flow_backfill",
+    "security_capital_flow_raw_audit",
+    "security_capital_flow_jpx_weekly_import",
+    "security_capital_flow_jpx_weekly_live_backfill",
+    "security_capital_flow_mof_weekly_import",
+    "security_capital_source_factor_snapshot",
+    "security_capital_source_factor_audit",
     "security_external_proxy_history_import",
     "security_external_proxy_backfill",
     "stock_training_data_backfill",
@@ -65,6 +72,10 @@ pub const STOCK_TOOL_NAMES: &[&str] = &[
     // bridge that writes runtime facts through the existing execution-record path.
     // Purpose: make the apply bridge discoverable on the public stock catalog.
     "security_portfolio_execution_apply_bridge",
+    // 2026-04-22 CST: Added because P16 now introduces one pure status-freeze
+    // layer downstream of the governed P15 apply bridge.
+    // Purpose: make the execution-status bridge discoverable without implying reconciliation.
+    "security_portfolio_execution_status_bridge",
     "security_record_position_adjustment",
     // post_trade: review and conclusion after the in-trade loop.
     "security_post_trade_review",

@@ -162,6 +162,14 @@ pub mod security_portfolio_execution_request_enrichment;
 #[path = "security_portfolio_execution_apply_bridge.rs"]
 pub mod security_portfolio_execution_apply_bridge;
 
+// 2026-04-22 CST: Added because P16 now introduces one pure execution-status
+// freeze layer immediately after the governed P15 apply bridge.
+// Reason: the approved route keeps status freezing separate from later
+// reconciliation and position-materialization work.
+// Purpose: expose the portfolio execution status bridge on the formal stock boundary.
+#[path = "security_portfolio_execution_status_bridge.rs"]
+pub mod security_portfolio_execution_status_bridge;
+
 // 2026-04-18 CST: Added because Task 2 now lands the only formal live
 // governance object between approved intake and active holdings.
 // Reason: the user fixed `PositionContract` as a new object that must stay
@@ -360,6 +368,47 @@ pub mod security_forward_outcome;
 // 目的：先恢复证券主链对 dated proxy backfill 的可见性，避免编译阶段误判为“模块不存在”而不是“实现未对齐”。
 #[path = "security_external_proxy_backfill.rs"]
 pub mod security_external_proxy_backfill;
+
+// 2026-04-22 CST: Added because Task 1 lands the governed capital-flow backfill
+// tool on the formal stock boundary before any JPX/MOF fetch adapters exist.
+// Reason: dispatcher and grouped data-pipeline surfaces need one stable module
+// export instead of reaching the op file through ad-hoc private paths.
+// Purpose: expose the approved raw capital-flow ingestion contract without
+// widening the change surface into factor generation or training.
+#[path = "security_capital_flow_backfill.rs"]
+pub mod security_capital_flow_backfill;
+// 2026-04-22 CST: Added because the user requested one direct raw-source audit
+// layer before any ratio or training interpretation continues.
+// Purpose: expose governed JPX/MOF raw weekly table rendering on the formal stock boundary.
+#[path = "security_capital_flow_raw_audit.rs"]
+pub mod security_capital_flow_raw_audit;
+
+// 2026-04-21 CST: Added because Task 2.1 now needs one JPX-specific workbook
+// import bridge above the governed capital-flow backfill contract.
+// Purpose: expose the approved JPX weekly investor-type import path on the formal stock boundary.
+#[path = "security_capital_flow_jpx_weekly_import.rs"]
+pub mod security_capital_flow_jpx_weekly_import;
+// 2026-04-22 CST: Added because the approved source-supplement route now needs
+// one live JPX archive bridge above the single-file workbook import contract.
+// Purpose: expose multi-week official JPX raw backfill on the formal stock boundary.
+#[path = "security_capital_flow_jpx_weekly_live_backfill.rs"]
+pub mod security_capital_flow_jpx_weekly_live_backfill;
+
+// 2026-04-21 CST: Added because Task 2.2 now needs one MOF-specific weekly CSV
+// import bridge above the governed capital-flow backfill contract.
+// Purpose: expose the approved MOF weekly cross-border import path on the formal stock boundary.
+#[path = "security_capital_flow_mof_weekly_import.rs"]
+pub mod security_capital_flow_mof_weekly_import;
+// 2026-04-22 CST: Added because scheme A now needs one standalone factor layer
+// above governed JPX/MOF raw flows and below any audit or training merge decision.
+// Purpose: expose the capital-source factor snapshot on the formal stock boundary.
+#[path = "security_capital_source_factor_snapshot.rs"]
+pub mod security_capital_source_factor_snapshot;
+// 2026-04-22 CST: Added because scheme A also needs one standalone factor-audit
+// route before any capital-source feature is allowed near the main trainer.
+// Purpose: expose factor-level backtesting on the formal stock boundary.
+#[path = "security_capital_source_factor_audit.rs"]
+pub mod security_capital_source_factor_audit;
 
 // 2026-04-14 CST: 这里补回历史扩容模块导出，原因是 shadow evaluation 仍直接依赖
 // history expansion 文档来判断样本覆盖和晋升准备度。

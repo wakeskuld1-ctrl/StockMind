@@ -56,6 +56,11 @@ pub use super::security_portfolio_execution_request_enrichment;
 // position surface while reusing the existing execution-record runtime path.
 // Purpose: make the P15 apply bridge reachable through the grouped gateway.
 pub use super::security_portfolio_execution_apply_bridge;
+// 2026-04-22 CST: Added because P16 now freezes the governed P15 apply result
+// into one explicit execution-status artifact on the same execution-and-position surface.
+// Reason: later reconciliation should start from one named status bridge, not raw apply rows.
+// Purpose: make the P16 execution-status bridge reachable through the grouped gateway.
+pub use super::security_portfolio_execution_status_bridge;
 // 2026-04-18 CST: Added because Task 2 introduces the live contract object that
 // stands between approved intake and later active-position state.
 // Reason: the user approved keeping the live contract on the post-open data path.

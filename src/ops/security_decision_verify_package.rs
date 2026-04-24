@@ -5,14 +5,14 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 
 use crate::ops::stock::security_approval_brief_signature::{
-    verify_security_approval_brief_document, SecurityApprovalBriefSignatureEnvelope,
+    SecurityApprovalBriefSignatureEnvelope, verify_security_approval_brief_document,
 };
 use crate::ops::stock::security_decision_approval_bridge::{
     PersistedApprovalRequest, PersistedDecisionCard,
 };
 use crate::ops::stock::security_decision_approval_brief::SecurityDecisionApprovalBrief;
 use crate::ops::stock::security_decision_package::{
-    sha256_for_bytes, SecurityDecisionPackageArtifact, SecurityDecisionPackageDocument,
+    SecurityDecisionPackageArtifact, SecurityDecisionPackageDocument, sha256_for_bytes,
 };
 use crate::ops::stock::security_position_plan::SecurityPositionPlan;
 use crate::ops::stock::security_record_post_meeting_conclusion::SecurityPostMeetingConclusionDocument;

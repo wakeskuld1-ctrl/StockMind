@@ -1,7 +1,7 @@
 mod common;
 
 use chrono::{Duration, NaiveDate};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
@@ -293,11 +293,13 @@ fn security_decision_package_accepts_current_builder_contract() {
         output["data"]["object_graph"]["chair_resolution_ref"],
         "chair-decision-601916-SH-2026-04-16"
     );
-    assert!(output["data"]["artifact_manifest"]
-        .as_array()
-        .expect("artifact manifest should be an array")
-        .iter()
-        .any(|artifact| artifact["artifact_role"] == "security_post_meeting_conclusion"));
+    assert!(
+        output["data"]["artifact_manifest"]
+            .as_array()
+            .expect("artifact manifest should be an array")
+            .iter()
+            .any(|artifact| artifact["artifact_role"] == "security_post_meeting_conclusion")
+    );
 }
 
 #[test]
@@ -380,14 +382,16 @@ fn security_decision_verify_package_flags_post_meeting_binding_misalignment_on_p
         verify_output["data"]["governance_checks"]["post_meeting_binding_consistent"],
         false
     );
-    assert!(verify_output["data"]["issues"]
-        .as_array()
-        .expect("issues should be an array")
-        .iter()
-        .any(|item| item
-            .as_str()
-            .unwrap_or_default()
-            .contains("security_post_meeting_conclusion")));
+    assert!(
+        verify_output["data"]["issues"]
+            .as_array()
+            .expect("issues should be an array")
+            .iter()
+            .any(|item| item
+                .as_str()
+                .unwrap_or_default()
+                .contains("security_post_meeting_conclusion"))
+    );
 }
 
 // 2026-04-16 CST: Reason=share a live submit_approval package fixture across the

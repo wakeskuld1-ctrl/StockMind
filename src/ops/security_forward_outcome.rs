@@ -25,6 +25,12 @@ pub struct SecurityForwardOutcomeRequest {
     pub sector_profile: Option<String>,
     #[serde(default)]
     pub as_of_date: Option<String>,
+    // 2026-04-21 CST: Added because the approved Nikkei route must preserve one
+    // explicit futures proxy contract from training down into snapshot enrichment.
+    // Reason: forward labels and snapshots must stay aligned on the same daily futures identity.
+    // Purpose: thread futures context without repurposing market/sector proxy semantics.
+    #[serde(default)]
+    pub futures_symbol: Option<String>,
     #[serde(default = "default_lookback_days")]
     pub lookback_days: usize,
     #[serde(default = "default_disclosure_limit")]
@@ -97,6 +103,7 @@ pub fn security_forward_outcome(
         as_of_date: request.as_of_date.clone(),
         underlying_symbol: None,
         fx_symbol: None,
+        futures_symbol: request.futures_symbol.clone(),
         lookback_days: request.lookback_days,
         disclosure_limit: request.disclosure_limit,
         stop_loss_pct: request.stop_loss_pct,

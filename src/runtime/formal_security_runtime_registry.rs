@@ -72,6 +72,18 @@ impl FormalSecurityRuntimeRegistry {
         )
     }
 
+    // 2026-04-22 CST: Added because the approved Nikkei capital-source Task 1
+    // needs one governed runtime SQLite path before JPX/MOF raw rows can be
+    // persisted by the new backfill tool.
+    // Purpose: keep capital-flow storage under the same env-override + shared
+    // runtime-root policy used by the rest of the formal securities stores.
+    pub fn capital_flow_db_path() -> Result<PathBuf, String> {
+        Self::db_path_from_env_or_runtime_root(
+            "EXCEL_SKILL_CAPITAL_FLOW_DB",
+            "security_capital_flow.db",
+        )
+    }
+
     pub fn fundamental_history_db_path() -> Result<PathBuf, String> {
         Self::db_path_from_env_or_runtime_root(
             "EXCEL_SKILL_FUNDAMENTAL_HISTORY_DB",
@@ -220,6 +232,7 @@ mod tests {
         let _guard = RuntimeEnvGuard::capture(&[
             "EXCEL_SKILL_STOCK_DB",
             "EXCEL_SKILL_EXTERNAL_PROXY_DB",
+            "EXCEL_SKILL_CAPITAL_FLOW_DB",
             "EXCEL_SKILL_FUNDAMENTAL_HISTORY_DB",
             "EXCEL_SKILL_DISCLOSURE_HISTORY_DB",
             "EXCEL_SKILL_CORPORATE_ACTION_DB",
@@ -234,6 +247,10 @@ mod tests {
             std::env::set_var(
                 "EXCEL_SKILL_EXTERNAL_PROXY_DB",
                 r"E:\tmp\proxy\security_external_proxy.db",
+            );
+            std::env::set_var(
+                "EXCEL_SKILL_CAPITAL_FLOW_DB",
+                r"E:\tmp\capital-flow\security_capital_flow.db",
             );
             std::env::set_var(
                 "EXCEL_SKILL_FUNDAMENTAL_HISTORY_DB",
@@ -268,6 +285,10 @@ mod tests {
             PathBuf::from(r"E:\tmp\proxy\security_external_proxy.db")
         );
         assert_eq!(
+            FormalSecurityRuntimeRegistry::capital_flow_db_path().unwrap(),
+            PathBuf::from(r"E:\tmp\capital-flow\security_capital_flow.db")
+        );
+        assert_eq!(
             FormalSecurityRuntimeRegistry::fundamental_history_db_path().unwrap(),
             PathBuf::from(r"E:\tmp\fundamental\security_fundamental_history.db")
         );
@@ -295,6 +316,7 @@ mod tests {
         let _guard = RuntimeEnvGuard::capture(&[
             "EXCEL_SKILL_STOCK_DB",
             "EXCEL_SKILL_EXTERNAL_PROXY_DB",
+            "EXCEL_SKILL_CAPITAL_FLOW_DB",
             "EXCEL_SKILL_FUNDAMENTAL_HISTORY_DB",
             "EXCEL_SKILL_DISCLOSURE_HISTORY_DB",
             "EXCEL_SKILL_RESONANCE_DB",
@@ -306,6 +328,7 @@ mod tests {
         unsafe {
             std::env::remove_var("EXCEL_SKILL_STOCK_DB");
             std::env::remove_var("EXCEL_SKILL_EXTERNAL_PROXY_DB");
+            std::env::remove_var("EXCEL_SKILL_CAPITAL_FLOW_DB");
             std::env::remove_var("EXCEL_SKILL_FUNDAMENTAL_HISTORY_DB");
             std::env::remove_var("EXCEL_SKILL_DISCLOSURE_HISTORY_DB");
             std::env::remove_var("EXCEL_SKILL_RESONANCE_DB");
@@ -321,6 +344,10 @@ mod tests {
         assert_eq!(
             FormalSecurityRuntimeRegistry::external_proxy_db_path().unwrap(),
             PathBuf::from(r"E:\tmp\family-runtime\security_external_proxy.db")
+        );
+        assert_eq!(
+            FormalSecurityRuntimeRegistry::capital_flow_db_path().unwrap(),
+            PathBuf::from(r"E:\tmp\family-runtime\security_capital_flow.db")
         );
         assert_eq!(
             FormalSecurityRuntimeRegistry::fundamental_history_db_path().unwrap(),

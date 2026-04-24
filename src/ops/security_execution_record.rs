@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::ops::stock::security_decision_package::SecurityDecisionPackageDocument;
 use crate::ops::stock::security_decision_briefing::PositionPlan;
+use crate::ops::stock::security_decision_package::SecurityDecisionPackageDocument;
 use crate::ops::stock::security_execution_journal::{
     SecurityExecutionJournalDocument, SecurityExecutionJournalError,
     SecurityExecutionJournalRequest, SecurityExecutionJournalResult, SecurityExecutionTradeInput,
@@ -14,10 +14,10 @@ use crate::ops::stock::security_execution_journal::{
 };
 use crate::ops::stock::security_execution_record_assembler::SecurityExecutionRecordAssembler;
 use crate::ops::stock::security_forward_outcome::SecurityForwardOutcomeDocument;
-use crate::ops::stock::security_scorecard::SecurityScorecardDocument;
 use crate::ops::stock::security_open_position_corporate_action_summary::OpenPositionCorporateActionSummaryError;
 use crate::ops::stock::security_portfolio_position_plan::SecurityPortfolioPositionPlanDocument;
 use crate::ops::stock::security_position_plan::SecurityPositionPlanResult;
+use crate::ops::stock::security_scorecard::SecurityScorecardDocument;
 use crate::runtime::security_corporate_action_store::SecurityCorporateActionStoreError;
 use crate::runtime::security_execution_store::{
     SecurityExecutionStore, SecurityExecutionStoreError,
@@ -347,8 +347,7 @@ fn adapt_execution_record_request(
     let store = StockHistoryStore::workspace_default()?;
     let trade_anchor_date =
         resolve_lifecycle_trade_anchor(&store, &request.symbol, request.review_horizon_days)?;
-    let actual_entry_price =
-        load_planned_entry_price(&store, &request.symbol, &trade_anchor_date)?;
+    let actual_entry_price = load_planned_entry_price(&store, &request.symbol, &trade_anchor_date)?;
     let actual_position_pct = request.executed_gross_pct.unwrap_or(0.0);
     if actual_position_pct <= 0.0 {
         return Err(SecurityExecutionRecordError::Build(
@@ -493,9 +492,9 @@ fn apply_lifecycle_execution_overlay(
         .map(str::trim)
         .filter(|value| !value.is_empty())
     {
-        execution_record.execution_record_notes.push(format!(
-            "lifecycle execution summary: {summary}"
-        ));
+        execution_record
+            .execution_record_notes
+            .push(format!("lifecycle execution summary: {summary}"));
         execution_record.attribution_summary = summary.to_string();
     }
     if let Some(condition_review_ref) = overlay
@@ -571,13 +570,14 @@ pub(crate) fn load_runtime_package_context(
                 path.display()
             ))
         })?;
-        let package = serde_json::from_slice::<SecurityDecisionPackageDocument>(&payload)
-            .map_err(|error| {
+        let package = serde_json::from_slice::<SecurityDecisionPackageDocument>(&payload).map_err(
+            |error| {
                 SecurityExecutionRecordError::Build(format!(
                     "failed to parse runtime decision package `{}`: {error}",
                     path.display()
                 ))
-            })?;
+            },
+        )?;
         let symbol_matched = package.symbol == symbol;
         let decision_matched = decision_ref
             .map(str::trim)

@@ -6,13 +6,13 @@ use serde_json::{Value, json};
 use thiserror::Error;
 
 use crate::ops::stock::security_decision_evidence_bundle::{
-    ETF_DIFFERENTIATING_FEATURES, build_evidence_bundle_feature_seed, derive_event_density_bucket,
-    derive_flow_status, derive_industry_bucket, derive_instrument_subscope, derive_market_regime,
-    derive_bollinger_position_bucket_20d, derive_mean_reversion_bucket_20d,
-    derive_mean_reversion_deviation_bucket_20d, derive_mean_reversion_normalized_distance_20d,
-    derive_quality_bucket, derive_range_position_bucket_14d, derive_valuation_status,
-    is_etf_symbol, normalize_etf_subscope_alias, required_etf_feature_family,
-    resolve_etf_subscope,
+    ETF_DIFFERENTIATING_FEATURES, build_evidence_bundle_feature_seed,
+    derive_bollinger_position_bucket_20d, derive_event_density_bucket, derive_flow_status,
+    derive_industry_bucket, derive_instrument_subscope, derive_market_regime,
+    derive_mean_reversion_bucket_20d, derive_mean_reversion_deviation_bucket_20d,
+    derive_mean_reversion_normalized_distance_20d, derive_quality_bucket,
+    derive_range_position_bucket_14d, derive_valuation_status, is_etf_symbol,
+    normalize_etf_subscope_alias, required_etf_feature_family, resolve_etf_subscope,
 };
 use crate::ops::stock::security_legacy_committee_compat::LegacySecurityDecisionCommitteeResult as SecurityDecisionCommitteeResult;
 use crate::ops::stock::security_symbol_taxonomy::resolve_effective_security_routing;
@@ -1067,7 +1067,8 @@ mod tests {
     }
 
     #[test]
-    fn etf_cross_section_guard_accepts_treasury_alias_when_sector_profile_normalizes_to_bond_family() {
+    fn etf_cross_section_guard_accepts_treasury_alias_when_sector_profile_normalizes_to_bond_family()
+     {
         // 2026-04-20 CST: Updated because the ETF subscope contract now normalizes
         // legacy treasury labels onto the shared bond ETF family before cross-section checks.
         // Reason: once alias normalization landed, `treasury_etf` vs `bond_etf_peer`

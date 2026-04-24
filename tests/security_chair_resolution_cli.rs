@@ -1,4 +1,4 @@
-﻿mod common;
+mod common;
 
 use chrono::{Duration, NaiveDate};
 use serde_json::{Value, json};
@@ -1059,7 +1059,10 @@ fn security_chair_resolution_downgrades_to_abstain_when_scorecard_model_is_unava
     // object as well as the position-plan object.
     // Purpose: enforce the "position_plan + chair" dual-anchor contract.
     assert_eq!(output["data"]["chair_resolution"]["final_action"], "defer");
-    assert_eq!(output["data"]["chair_resolution"]["final_stance"], "observe");
+    assert_eq!(
+        output["data"]["chair_resolution"]["final_stance"],
+        "observe"
+    );
     assert!(
         output["data"]["chair_resolution"]["chair_reasoning"]
             .as_str()
@@ -1619,16 +1622,18 @@ fn build_etf_direction_artifact_json(
         }),
     ];
 
-    features.extend(feature_bins
-        .into_iter()
-        .map(|(feature_name, bins): (&str, Value)| {
-            json!({
-                "feature_name": feature_name,
-                "group_name": if feature_name.ends_with("_status") { "X" } else { "T" },
-                "bins": bins,
+    features.extend(
+        feature_bins
+            .into_iter()
+            .map(|(feature_name, bins): (&str, Value)| {
+                json!({
+                    "feature_name": feature_name,
+                    "group_name": if feature_name.ends_with("_status") { "X" } else { "T" },
+                    "bins": bins,
+                })
             })
-        })
-        .collect::<Vec<_>>());
+            .collect::<Vec<_>>(),
+    );
 
     json!({
         "model_id": format!("a_share_etf_{}_10d_direction_head", instrument_subscope),
@@ -1670,10 +1675,8 @@ fn build_confirmed_breakout_rows(day_count: usize, start_close: f64) -> Vec<Stri
         // now evaluates resistance/support with wick-derived key levels.
         // Purpose: keep this fixture decisively beyond prior key levels instead of
         // hiding the move under oversized shadows that collapse to `range_wait`.
-        let high = next_close.max(open)
-            + if offset < day_count - 20 { 0.28 } else { 0.14 };
-        let low = next_close.min(open)
-            - if offset < day_count - 20 { 0.24 } else { 0.12 };
+        let high = next_close.max(open) + if offset < day_count - 20 { 0.28 } else { 0.14 };
+        let low = next_close.min(open) - if offset < day_count - 20 { 0.24 } else { 0.12 };
         let adj_close = next_close;
         rows.push(format!(
             "{},{open:.2},{high:.2},{low:.2},{next_close:.2},{adj_close:.2},{volume}",
@@ -1684,7 +1687,3 @@ fn build_confirmed_breakout_rows(day_count: usize, start_close: f64) -> Vec<Stri
 
     rows
 }
-
-
-
-

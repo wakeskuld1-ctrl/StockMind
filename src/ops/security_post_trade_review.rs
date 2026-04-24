@@ -205,7 +205,9 @@ pub fn security_post_trade_review(
         execution_trades: effective_request.execution_trades.clone(),
         execution_journal_notes: effective_request.execution_journal_notes.clone(),
         execution_record_notes: effective_request.execution_record_notes.clone(),
-        portfolio_position_plan_document: effective_request.portfolio_position_plan_document.clone(),
+        portfolio_position_plan_document: effective_request
+            .portfolio_position_plan_document
+            .clone(),
         created_at: effective_request.created_at.clone(),
     })?;
     let outcome_binding = SecurityPostTradeReviewOutcomeBinding {
@@ -307,32 +309,26 @@ fn adapt_post_trade_review_request(
         .and_then(serde_json::Value::as_str)
         .unwrap_or("general")
         .to_string();
-    effective_request.market_profile = effective_request
-        .market_profile
-        .clone()
-        .or_else(|| {
-            scorecard
-                .raw_feature_snapshot
-                .get("market_profile")
-                .and_then(serde_json::Value::as_str)
-                .map(|value| value.to_string())
-        });
+    effective_request.market_profile = effective_request.market_profile.clone().or_else(|| {
+        scorecard
+            .raw_feature_snapshot
+            .get("market_profile")
+            .and_then(serde_json::Value::as_str)
+            .map(|value| value.to_string())
+    });
     // 2026-04-17 CST: Reason=the lifecycle contract reconstructs market inputs from the
     // scorecard first and only then derives the proxy symbol; purpose=avoid resolving the
     // proxy against an empty profile during formal post-trade validation.
     effective_request.market_symbol = effective_request.market_symbol.clone().or_else(|| {
         resolve_market_symbol_from_profile(effective_request.market_profile.as_deref())
     });
-    effective_request.sector_profile = effective_request
-        .sector_profile
-        .clone()
-        .or_else(|| {
-            scorecard
-                .raw_feature_snapshot
-                .get("sector_profile")
-                .and_then(serde_json::Value::as_str)
-                .map(|value| value.to_string())
-        });
+    effective_request.sector_profile = effective_request.sector_profile.clone().or_else(|| {
+        scorecard
+            .raw_feature_snapshot
+            .get("sector_profile")
+            .and_then(serde_json::Value::as_str)
+            .map(|value| value.to_string())
+    });
     // 2026-04-17 CST: Reason=sector proxy resolution depends on the lifecycle-restored
     // sector profile; purpose=ensure the legacy execution review path receives a concrete
     // sector symbol instead of failing with a missing configuration error.
@@ -346,10 +342,7 @@ fn adapt_post_trade_review_request(
     // trade anchor that the persisted execution record already validated against local
     // history; purpose=prevent the legacy forward-outcome builder from re-anchoring on
     // the package analysis date and demanding unavailable future rows.
-    let lifecycle_trade_anchor = execution_record
-        .actual_entry_date
-        .trim()
-        .to_string();
+    let lifecycle_trade_anchor = execution_record.actual_entry_date.trim().to_string();
     effective_request.as_of_date = Some(if lifecycle_trade_anchor.is_empty() {
         execution_record.analysis_date.clone()
     } else {

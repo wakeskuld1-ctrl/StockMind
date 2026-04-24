@@ -304,6 +304,7 @@ pub fn security_master_scorecard(
         market_profile: request.market_profile.clone(),
         sector_profile: request.sector_profile.clone(),
         as_of_date: request.as_of_date.clone(),
+        futures_symbol: None,
         lookback_days: request.lookback_days,
         disclosure_limit: request.disclosure_limit,
         horizons: request.horizons.clone(),

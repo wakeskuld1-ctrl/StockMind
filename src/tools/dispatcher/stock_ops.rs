@@ -30,6 +30,9 @@ use crate::ops::stock::stock_execution_and_position_management::security_portfol
 use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_apply_bridge::{
     SecurityPortfolioExecutionApplyBridgeRequest, security_portfolio_execution_apply_bridge,
 };
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_status_bridge::{
+    SecurityPortfolioExecutionStatusBridgeRequest, security_portfolio_execution_status_bridge,
+};
 use crate::ops::stock::stock_execution_and_position_management::security_position_contract::{
     SecurityPositionContractRequest, build_security_position_contract,
 };
@@ -100,6 +103,27 @@ use crate::ops::stock::stock_data_pipeline::security_disclosure_history_live_bac
 };
 use crate::ops::stock::stock_data_pipeline::security_disclosure_history_backfill::{
     SecurityDisclosureHistoryBackfillRequest, security_disclosure_history_backfill,
+};
+use crate::ops::stock::stock_data_pipeline::security_capital_flow_backfill::{
+    SecurityCapitalFlowBackfillRequest, security_capital_flow_backfill,
+};
+use crate::ops::stock::stock_data_pipeline::security_capital_flow_raw_audit::{
+    SecurityCapitalFlowRawAuditRequest, security_capital_flow_raw_audit,
+};
+use crate::ops::stock::stock_data_pipeline::security_capital_flow_jpx_weekly_import::{
+    SecurityCapitalFlowJpxWeeklyImportRequest, security_capital_flow_jpx_weekly_import,
+};
+use crate::ops::stock::stock_data_pipeline::security_capital_flow_jpx_weekly_live_backfill::{
+    SecurityCapitalFlowJpxWeeklyLiveBackfillRequest, security_capital_flow_jpx_weekly_live_backfill,
+};
+use crate::ops::stock::stock_data_pipeline::security_capital_flow_mof_weekly_import::{
+    SecurityCapitalFlowMofWeeklyImportRequest, security_capital_flow_mof_weekly_import,
+};
+use crate::ops::stock::stock_data_pipeline::security_capital_source_factor_snapshot::{
+    SecurityCapitalSourceFactorSnapshotRequest, security_capital_source_factor_snapshot,
+};
+use crate::ops::stock::stock_data_pipeline::security_capital_source_factor_audit::{
+    SecurityCapitalSourceFactorAuditRequest, security_capital_source_factor_audit,
 };
 use crate::ops::stock::stock_pre_trade::security_etf_resonance_trust_pack::{
     SecurityEtfResonanceTrustPackRequest, security_etf_resonance_trust_pack,
@@ -280,6 +304,113 @@ pub(super) fn dispatch_security_disclosure_history_backfill(args: Value) -> Tool
     };
 
     match security_disclosure_history_backfill(&request) {
+        Ok(result) => ToolResponse::ok(json!(result)),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_capital_flow_backfill(args: Value) -> ToolResponse {
+    // 2026-04-22 CST: Added because the approved Nikkei capital-source Task 1
+    // needs one public dispatcher route for governed JPX/MOF raw-flow batches.
+    // Purpose: keep CLI routing aligned with the new catalog entry and the
+    // formal stock data-pipeline boundary before fetch logic is introduced.
+    let request = match serde_json::from_value::<SecurityCapitalFlowBackfillRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_capital_flow_backfill(&request) {
+        Ok(result) => ToolResponse::ok(json!(result)),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_capital_flow_raw_audit(args: Value) -> ToolResponse {
+    // 2026-04-22 CST: Added because the user explicitly requested direct raw
+    // weekly JPX/MOF inspection before any further ratio or training discussion.
+    // Purpose: expose one pre-training raw-source audit route on the stock tool bus.
+    let request = match serde_json::from_value::<SecurityCapitalFlowRawAuditRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_capital_flow_raw_audit(&request) {
+        Ok(result) => ToolResponse::ok(json!(result)),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_capital_flow_jpx_weekly_import(args: Value) -> ToolResponse {
+    // 2026-04-21 CST: Added because the approved Task 2.1 route now needs one
+    // public dispatcher entry for official JPX weekly workbook ingestion.
+    // Purpose: keep the JPX file import path discoverable and routable from the formal stock tool bus.
+    let request = match serde_json::from_value::<SecurityCapitalFlowJpxWeeklyImportRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_capital_flow_jpx_weekly_import(&request) {
+        Ok(result) => ToolResponse::ok(json!(result)),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_capital_flow_jpx_weekly_live_backfill(args: Value) -> ToolResponse {
+    // 2026-04-22 CST: Added because the newly approved source-supplement step needs
+    // one public dispatcher entry for multi-week official JPX archive backfill.
+    // Purpose: keep JPX live history thickening discoverable and routable from the stock tool bus.
+    let request =
+        match serde_json::from_value::<SecurityCapitalFlowJpxWeeklyLiveBackfillRequest>(args) {
+            Ok(request) => request,
+            Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+        };
+
+    match security_capital_flow_jpx_weekly_live_backfill(&request) {
+        Ok(result) => ToolResponse::ok(json!(result)),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_capital_flow_mof_weekly_import(args: Value) -> ToolResponse {
+    // 2026-04-21 CST: Added because the approved Task 2.2 route now needs one
+    // public dispatcher entry for official MOF weekly CSV ingestion.
+    // Purpose: keep the MOF file import path discoverable and routable from the formal stock tool bus.
+    let request = match serde_json::from_value::<SecurityCapitalFlowMofWeeklyImportRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_capital_flow_mof_weekly_import(&request) {
+        Ok(result) => ToolResponse::ok(json!(result)),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_capital_source_factor_snapshot(args: Value) -> ToolResponse {
+    // 2026-04-22 CST: Added because scheme A now needs one public factor-snapshot
+    // route between governed JPX/MOF raw flows and standalone audit.
+    // Purpose: expose explainable capital-source factor generation without entering main training.
+    let request = match serde_json::from_value::<SecurityCapitalSourceFactorSnapshotRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_capital_source_factor_snapshot(&request) {
+        Ok(result) => ToolResponse::ok(json!(result)),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_capital_source_factor_audit(args: Value) -> ToolResponse {
+    // 2026-04-22 CST: Added because scheme A now needs one public standalone
+    // factor-audit route after factor snapshot and before any model merge decision.
+    // Purpose: expose holdout and walk-forward style factor review without invoking the trainer.
+    let request = match serde_json::from_value::<SecurityCapitalSourceFactorAuditRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_capital_source_factor_audit(&request) {
         Ok(result) => ToolResponse::ok(json!(result)),
         Err(error) => ToolResponse::error(error.to_string()),
     }
@@ -818,6 +949,23 @@ pub(super) fn dispatch_security_portfolio_execution_apply_bridge(args: Value) ->
     };
 
     match security_portfolio_execution_apply_bridge(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-22 CST: Added because P16 now exposes one pure execution-status
+// bridge downstream of the governed P15 apply document.
+// Reason: the approved route must remain callable through the official stock bus.
+// Purpose: route portfolio execution status-freeze requests through the official dispatcher.
+pub(super) fn dispatch_security_portfolio_execution_status_bridge(args: Value) -> ToolResponse {
+    let request =
+        match serde_json::from_value::<SecurityPortfolioExecutionStatusBridgeRequest>(args) {
+            Ok(request) => request,
+            Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+        };
+
+    match security_portfolio_execution_status_bridge(&request) {
         Ok(result) => ToolResponse::ok_serialized(&result),
         Err(error) => ToolResponse::error(error.to_string()),
     }

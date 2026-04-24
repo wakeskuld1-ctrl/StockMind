@@ -7,14 +7,17 @@ use thiserror::Error;
 
 use crate::ops::stock::security_decision_evidence_bundle::{
     SecurityDecisionEvidenceBundleError, SecurityDecisionEvidenceBundleRequest,
-    SecurityExternalProxyInputs, build_evidence_bundle_feature_seed, derive_event_density_bucket,
-    derive_flow_status, derive_industry_bucket, derive_instrument_subscope, derive_market_regime,
-    derive_bollinger_position_bucket_20d, derive_mean_reversion_bucket_20d,
-    derive_mean_reversion_deviation_bucket_20d, derive_mean_reversion_normalized_distance_20d,
-    derive_quality_bucket, derive_range_position_bucket_14d, derive_valuation_status,
-    security_decision_evidence_bundle,
+    SecurityExternalProxyInputs, build_evidence_bundle_feature_seed,
+    derive_bollinger_position_bucket_20d, derive_event_density_bucket, derive_flow_status,
+    derive_industry_bucket, derive_instrument_subscope, derive_market_regime,
+    derive_mean_reversion_bucket_20d, derive_mean_reversion_deviation_bucket_20d,
+    derive_mean_reversion_normalized_distance_20d, derive_quality_bucket,
+    derive_range_position_bucket_14d, derive_valuation_status, security_decision_evidence_bundle,
 };
 use crate::ops::stock::security_symbol_taxonomy::resolve_effective_security_routing;
+use crate::runtime::stock_history_store::{
+    StockHistoryRow, StockHistoryStore, StockHistoryStoreError,
+};
 
 // 2026-04-09 CST: 这里新增特征快照请求合同，原因是 Task 2 要把“分析时点可见特征冻结”独立成正式 Tool，
 // 目的：让后续训练 / 回算 / 主席线都能从统一入口拿到稳定快照，而不是每次临时拼字段。
@@ -35,6 +38,12 @@ pub struct SecurityFeatureSnapshotRequest {
     pub underlying_symbol: Option<String>,
     #[serde(default)]
     pub fx_symbol: Option<String>,
+    // 2026-04-21 CST: Added because the approved Nikkei route must carry one explicit
+    // futures proxy identity without overloading market/sector routing semantics.
+    // Reason: the user approved spot/futures factors, not a repurposing of proxy context fields.
+    // Purpose: freeze one dedicated request contract for daily futures enrichment.
+    #[serde(default)]
+    pub futures_symbol: Option<String>,
     #[serde(default = "default_lookback_days")]
     pub lookback_days: usize,
     #[serde(default = "default_disclosure_limit")]
@@ -70,6 +79,8 @@ pub struct SecurityFeatureSnapshot {
 pub enum SecurityFeatureSnapshotError {
     #[error("security feature snapshot evidence preparation failed: {0}")]
     Evidence(#[from] SecurityDecisionEvidenceBundleError),
+    #[error("security feature snapshot history loading failed: {0}")]
+    History(#[from] StockHistoryStoreError),
     #[error("security feature snapshot build failed: {0}")]
     Build(String),
 }
@@ -99,6 +110,7 @@ pub fn security_feature_snapshot(
     };
     let evidence_bundle = security_decision_evidence_bundle(&evidence_request)?;
     let raw_features_json = enrich_raw_features_json(
+        request,
         &evidence_bundle,
         &effective_routing,
         build_evidence_bundle_feature_seed(&evidence_bundle),
@@ -291,6 +303,7 @@ fn build_data_quality_flags(
 }
 
 fn enrich_raw_features_json(
+    request: &SecurityFeatureSnapshotRequest,
     evidence_bundle: &crate::ops::stock::security_decision_evidence_bundle::SecurityDecisionEvidenceBundleResult,
     effective_routing: &crate::ops::stock::security_symbol_taxonomy::EffectiveSecurityRouting,
     mut raw_features_json: BTreeMap<String, Value>,
@@ -504,7 +517,213 @@ fn enrich_raw_features_json(
         "quality_bucket".to_string(),
         Value::String(quality_bucket.to_string()),
     );
+    if let Some(futures_symbol) = request
+        .futures_symbol
+        .as_deref()
+        .map(str::trim)
+        .filter(|symbol| !symbol.is_empty())
+    {
+        // 2026-04-21 CST: Added because the approved Nikkei retraining route needs
+        // spot/futures spread and lead-lag factors at the canonical snapshot layer.
+        // Reason: computing them downstream would create training-only semantics that replay cannot audit.
+        // Purpose: emit one stable daily futures proxy family directly into raw snapshot features.
+        let futures_proxy_features = build_futures_proxy_features(
+            &evidence_bundle.symbol,
+            futures_symbol,
+            &evidence_bundle.analysis_date,
+        );
+        raw_features_json.insert(
+            "futures_proxy_status".to_string(),
+            Value::String(futures_proxy_features.status),
+        );
+        raw_features_json.insert(
+            "futures_symbol".to_string(),
+            Value::String(futures_symbol.to_string()),
+        );
+        raw_features_json.insert(
+            "futures_return_1d".to_string(),
+            optional_numeric_json(futures_proxy_features.futures_return_1d),
+        );
+        raw_features_json.insert(
+            "futures_return_3d".to_string(),
+            optional_numeric_json(futures_proxy_features.futures_return_3d),
+        );
+        raw_features_json.insert(
+            "spot_return_3d".to_string(),
+            optional_numeric_json(futures_proxy_features.spot_return_3d),
+        );
+        raw_features_json.insert(
+            "futures_spot_basis_pct".to_string(),
+            optional_numeric_json(futures_proxy_features.futures_spot_basis_pct),
+        );
+        raw_features_json.insert(
+            "futures_relative_strength_3d".to_string(),
+            optional_numeric_json(futures_proxy_features.futures_relative_strength_3d),
+        );
+        raw_features_json.insert(
+            "futures_roll_window_flag".to_string(),
+            Value::Bool(futures_proxy_features.futures_roll_window_flag),
+        );
+        raw_features_json.insert(
+            "futures_abnormal_move_flag".to_string(),
+            Value::Bool(futures_proxy_features.futures_abnormal_move_flag),
+        );
+    }
     raw_features_json
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct FuturesProxyFeatures {
+    status: String,
+    futures_return_1d: Option<f64>,
+    futures_return_3d: Option<f64>,
+    spot_return_3d: Option<f64>,
+    futures_spot_basis_pct: Option<f64>,
+    futures_relative_strength_3d: Option<f64>,
+    futures_roll_window_flag: bool,
+    futures_abnormal_move_flag: bool,
+}
+
+fn build_futures_proxy_features(
+    spot_symbol: &str,
+    futures_symbol: &str,
+    as_of_date: &str,
+) -> FuturesProxyFeatures {
+    let store = match StockHistoryStore::workspace_default() {
+        Ok(store) => store,
+        Err(_) => return missing_futures_proxy_features(),
+    };
+    let spot_rows = match store.load_recent_rows(spot_symbol, Some(as_of_date), 4) {
+        Ok(rows) => rows,
+        Err(_) => return missing_futures_proxy_features(),
+    };
+    let futures_rows = match store.load_recent_rows(futures_symbol, Some(as_of_date), 4) {
+        Ok(rows) => rows,
+        Err(_) => return missing_futures_proxy_features(),
+    };
+    let Some(spot_row) = latest_row_for_date(&spot_rows, as_of_date) else {
+        return missing_futures_proxy_features();
+    };
+    let Some(futures_row) = latest_row_for_date(&futures_rows, as_of_date) else {
+        return missing_futures_proxy_features();
+    };
+    let Some(futures_spot_basis_pct) = compute_basis_pct(spot_row, futures_row) else {
+        return missing_futures_proxy_features();
+    };
+
+    let futures_return_1d = compute_period_return(&futures_rows, as_of_date, 1);
+    let futures_return_3d = compute_period_return(&futures_rows, as_of_date, 3);
+    let spot_return_1d = compute_period_return(&spot_rows, as_of_date, 1);
+    let spot_return_3d = compute_period_return(&spot_rows, as_of_date, 3);
+    // 2026-04-22 CST: Added because the user explicitly rejected the older mixed
+    // lead-strength delta as too opaque for Nikkei index review.
+    // Reason: one subtraction was blending "futures direction" and "relative outperformance" into a single term.
+    // Purpose: keep 3d futures direction, 3d spot direction, and relative strength as separate atomic fields.
+    let futures_relative_strength_3d = compute_relative_strength(futures_return_3d, spot_return_3d);
+
+    let previous_basis_pct = match (
+        previous_row_for_date(&spot_rows, as_of_date),
+        previous_row_for_date(&futures_rows, as_of_date),
+    ) {
+        (Some(previous_spot_row), Some(previous_futures_row)) => {
+            compute_basis_pct(previous_spot_row, previous_futures_row)
+        }
+        _ => None,
+    };
+    let futures_abnormal_move_flag = match (futures_return_1d, spot_return_1d) {
+        (Some(futures_return), Some(spot_return)) => {
+            let return_divergence = (futures_return - spot_return).abs();
+            let basis_jump = previous_basis_pct
+                .map(|previous_basis| (futures_spot_basis_pct - previous_basis).abs())
+                .unwrap_or(0.0);
+            return_divergence >= 0.01 || basis_jump >= 0.015
+        }
+        _ => false,
+    };
+
+    FuturesProxyFeatures {
+        status: "available".to_string(),
+        futures_return_1d,
+        futures_return_3d,
+        spot_return_3d,
+        futures_spot_basis_pct: Some(futures_spot_basis_pct),
+        futures_relative_strength_3d,
+        // 2026-04-21 CST: Added because the approved route explicitly called out
+        // futures roll risk, but this round does not yet own a month-chain data source.
+        // Reason: returning false makes the current limitation explicit instead of faking roll detection.
+        // Purpose: preserve a stable boolean field until strict front-month roll logic is separately approved.
+        futures_roll_window_flag: false,
+        futures_abnormal_move_flag,
+    }
+}
+
+fn missing_futures_proxy_features() -> FuturesProxyFeatures {
+    FuturesProxyFeatures {
+        status: "missing".to_string(),
+        futures_return_1d: None,
+        futures_return_3d: None,
+        spot_return_3d: None,
+        futures_spot_basis_pct: None,
+        futures_relative_strength_3d: None,
+        futures_roll_window_flag: false,
+        futures_abnormal_move_flag: false,
+    }
+}
+
+fn latest_row_for_date<'a>(
+    rows: &'a [StockHistoryRow],
+    as_of_date: &str,
+) -> Option<&'a StockHistoryRow> {
+    rows.last().filter(|row| row.trade_date == as_of_date)
+}
+
+fn previous_row_for_date<'a>(
+    rows: &'a [StockHistoryRow],
+    as_of_date: &str,
+) -> Option<&'a StockHistoryRow> {
+    let latest_index = rows.iter().rposition(|row| row.trade_date == as_of_date)?;
+    latest_index
+        .checked_sub(1)
+        .and_then(|index| rows.get(index))
+}
+
+fn compute_period_return(
+    rows: &[StockHistoryRow],
+    as_of_date: &str,
+    lookback_period: usize,
+) -> Option<f64> {
+    let latest_index = rows.iter().rposition(|row| row.trade_date == as_of_date)?;
+    let latest_row = rows.get(latest_index)?;
+    let start_index = latest_index.checked_sub(lookback_period)?;
+    let start_row = rows.get(start_index)?;
+    if latest_row.adj_close <= 0.0 || start_row.adj_close <= 0.0 {
+        return None;
+    }
+    Some(latest_row.adj_close / start_row.adj_close - 1.0)
+}
+
+fn compute_basis_pct(spot_row: &StockHistoryRow, futures_row: &StockHistoryRow) -> Option<f64> {
+    if spot_row.trade_date != futures_row.trade_date
+        || spot_row.adj_close <= 0.0
+        || futures_row.adj_close <= 0.0
+    {
+        return None;
+    }
+    Some(futures_row.adj_close / spot_row.adj_close - 1.0)
+}
+
+fn compute_relative_strength(futures_return: Option<f64>, spot_return: Option<f64>) -> Option<f64> {
+    let futures_return = futures_return?;
+    let spot_return = spot_return?;
+    let denominator = 1.0 + spot_return;
+    if denominator <= 0.0 {
+        return None;
+    }
+    Some((1.0 + futures_return) / denominator - 1.0)
+}
+
+fn optional_numeric_json(value: Option<f64>) -> Value {
+    value.map_or(Value::Null, |number| json!(number))
 }
 
 fn build_snapshot_hash(

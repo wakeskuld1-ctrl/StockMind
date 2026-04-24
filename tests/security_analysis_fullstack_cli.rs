@@ -609,8 +609,7 @@ fn security_analysis_fullstack_synthesizes_etf_information_from_governed_proxy_h
         "fullstack output: {output}"
     );
     assert_eq!(
-        output["data"]["etf_context"]["source"],
-        "governed_etf_proxy_information",
+        output["data"]["etf_context"]["source"], "governed_etf_proxy_information",
         "fullstack output: {output}"
     );
     assert_eq!(

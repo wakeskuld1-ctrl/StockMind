@@ -297,21 +297,21 @@ pub fn security_analysis_fullstack(
     let etf_proxy_subscope = derive_etf_proxy_subscope(request, &etf_context);
     let has_complete_governed_etf_proxy = governed_etf_proxy
         .as_ref()
-        .map(|snapshot| governed_etf_proxy_family_is_complete(&snapshot.inputs, &etf_proxy_subscope))
+        .map(|snapshot| {
+            governed_etf_proxy_family_is_complete(&snapshot.inputs, &etf_proxy_subscope)
+        })
         .unwrap_or(false);
     // 2026-04-17 CST: Reason=once governed history exists, validation and replay should
     // read that frozen evidence before touching live providers again. Purpose=restore the
     // governed-history precedence contract for both fundamentals and disclosures.
-    let mut fundamental_context = match load_historical_fundamental_context(
-        &request.symbol,
-        request.as_of_date.as_deref(),
-    ) {
-        Ok(Some(context)) => context,
-        Ok(None) | Err(_) => match fetch_fundamental_context(&request.symbol) {
-            Ok(context) => context,
-            Err(error) => build_unavailable_fundamental_context(error.to_string()),
-        },
-    };
+    let mut fundamental_context =
+        match load_historical_fundamental_context(&request.symbol, request.as_of_date.as_deref()) {
+            Ok(Some(context)) => context,
+            Ok(None) | Err(_) => match fetch_fundamental_context(&request.symbol) {
+                Ok(context) => context,
+                Err(error) => build_unavailable_fundamental_context(error.to_string()),
+            },
+        };
     let mut disclosure_context = match load_historical_disclosure_context(
         &request.symbol,
         request.as_of_date.as_deref(),
@@ -351,7 +351,8 @@ pub fn security_analysis_fullstack(
             );
         }
         if etf_context.status != "available" {
-            etf_context = build_governed_etf_proxy_etf_context(&request.symbol, &etf_proxy_subscope);
+            etf_context =
+                build_governed_etf_proxy_etf_context(&request.symbol, &etf_proxy_subscope);
         }
     }
     let cross_border_context =
@@ -2769,7 +2770,13 @@ pub(crate) fn disclosure_has_reduction_notice(notices: &[DisclosureAnnouncement]
 pub(crate) fn disclosure_has_refinancing_notice(notices: &[DisclosureAnnouncement]) -> bool {
     disclosure_notice_exists(
         notices,
-        &["定增", "非公开发行", "向特定对象发行", "配股", "募集配套资金"],
+        &[
+            "定增",
+            "非公开发行",
+            "向特定对象发行",
+            "配股",
+            "募集配套资金",
+        ],
     )
 }
 

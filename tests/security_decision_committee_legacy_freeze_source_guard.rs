@@ -55,7 +55,8 @@ fn security_decision_committee_stays_frozen_as_legacy_compatibility_zone() {
         // drift in `src/ops/security_decision_committee.rs`.
         // Purpose: keep the freeze gate anchored to the actual checked-in
         // legacy committee snapshot so later accidental edits still fail fast.
-        fingerprint, 8888982554422962386,
+        fingerprint,
+        8888982554422962386,
         "Legacy governance drift detected in {LEGACY_FILE}: file content changed. Review {LEGACY_COMMITTEE_PLAN_DOC} and {HANDOFF_DOC}, then update this freeze gate only as part of an approved migration."
     );
 }

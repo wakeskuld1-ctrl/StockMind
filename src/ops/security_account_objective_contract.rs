@@ -13,8 +13,7 @@ use crate::ops::stock::security_position_contract::SecurityPositionContract;
 
 const SECURITY_ACCOUNT_OBJECTIVE_CONTRACT_DOCUMENT_TYPE: &str =
     "security_account_objective_contract";
-const SECURITY_ACCOUNT_OBJECTIVE_CONTRACT_VERSION: &str =
-    "security_account_objective_contract.v1";
+const SECURITY_ACCOUNT_OBJECTIVE_CONTRACT_VERSION: &str = "security_account_objective_contract.v1";
 const SECURITY_PORTFOLIO_CANDIDATE_SET_DOCUMENT_TYPE: &str = "security_portfolio_candidate_set";
 const SECURITY_PORTFOLIO_CANDIDATE_SET_VERSION: &str = "security_portfolio_candidate_set.v1";
 const APPROVED_CANDIDATE_ONLY_BOUNDARY: &str = "approved-candidate-only";
@@ -225,10 +224,7 @@ pub enum SecurityAccountObjectiveContractError {
 // Purpose: expose the deterministic account objective normalization entry.
 pub fn build_security_account_objective_contract(
     request: &SecurityAccountObjectiveContractRequest,
-) -> Result<
-    SecurityAccountObjectiveContractResult,
-    SecurityAccountObjectiveContractError,
-> {
+) -> Result<SecurityAccountObjectiveContractResult, SecurityAccountObjectiveContractError> {
     validate_request_accounts(request)?;
     validate_objective_constraints(request)?;
 
@@ -268,7 +264,10 @@ pub fn build_security_account_objective_contract(
     };
 
     let portfolio_candidate_set = SecurityPortfolioCandidateSet {
-        portfolio_candidate_set_id: format!("portfolio-candidate-set:{}:{}", account_id, generated_at),
+        portfolio_candidate_set_id: format!(
+            "portfolio-candidate-set:{}:{}",
+            account_id, generated_at
+        ),
         contract_version: SECURITY_PORTFOLIO_CANDIDATE_SET_VERSION.to_string(),
         document_type: SECURITY_PORTFOLIO_CANDIDATE_SET_DOCUMENT_TYPE.to_string(),
         generated_at,
@@ -307,10 +306,7 @@ pub fn build_security_account_objective_contract(
 // Purpose: keep one stable tool-facing entry for account objective normalization.
 pub fn security_account_objective_contract(
     request: &SecurityAccountObjectiveContractRequest,
-) -> Result<
-    SecurityAccountObjectiveContractResult,
-    SecurityAccountObjectiveContractError,
-> {
+) -> Result<SecurityAccountObjectiveContractResult, SecurityAccountObjectiveContractError> {
     build_security_account_objective_contract(request)
 }
 
@@ -361,29 +357,39 @@ fn validate_objective_constraints(
     request: &SecurityAccountObjectiveContractRequest,
 ) -> Result<(), SecurityAccountObjectiveContractError> {
     if request.target_return_objective <= 0.0 {
-        return Err(SecurityAccountObjectiveContractError::InvalidObjectiveConstraint(
-            "target_return_objective".to_string(),
-        ));
+        return Err(
+            SecurityAccountObjectiveContractError::InvalidObjectiveConstraint(
+                "target_return_objective".to_string(),
+            ),
+        );
     }
     if request.max_drawdown_limit <= 0.0 {
-        return Err(SecurityAccountObjectiveContractError::InvalidObjectiveConstraint(
-            "max_drawdown_limit".to_string(),
-        ));
+        return Err(
+            SecurityAccountObjectiveContractError::InvalidObjectiveConstraint(
+                "max_drawdown_limit".to_string(),
+            ),
+        );
     }
     if request.risk_budget_limit <= 0.0 {
-        return Err(SecurityAccountObjectiveContractError::InvalidObjectiveConstraint(
-            "risk_budget_limit".to_string(),
-        ));
+        return Err(
+            SecurityAccountObjectiveContractError::InvalidObjectiveConstraint(
+                "risk_budget_limit".to_string(),
+            ),
+        );
     }
     if request.turnover_limit < 0.0 {
-        return Err(SecurityAccountObjectiveContractError::InvalidObjectiveConstraint(
-            "turnover_limit".to_string(),
-        ));
+        return Err(
+            SecurityAccountObjectiveContractError::InvalidObjectiveConstraint(
+                "turnover_limit".to_string(),
+            ),
+        );
     }
     if request.position_count_limit == 0 {
-        return Err(SecurityAccountObjectiveContractError::InvalidObjectiveConstraint(
-            "position_count_limit".to_string(),
-        ));
+        return Err(
+            SecurityAccountObjectiveContractError::InvalidObjectiveConstraint(
+                "position_count_limit".to_string(),
+            ),
+        );
     }
 
     Ok(())
@@ -411,12 +417,10 @@ fn build_live_positions(
     let mut live_positions = active_positions
         .iter()
         .map(|active_position| {
-            let matching_contract = position_contracts
-                .iter()
-                .find(|position_contract| {
-                    normalize_symbol(&position_contract.symbol)
-                        == normalize_symbol(&active_position.symbol)
-                });
+            let matching_contract = position_contracts.iter().find(|position_contract| {
+                normalize_symbol(&position_contract.symbol)
+                    == normalize_symbol(&active_position.symbol)
+            });
             let matching_summary = active_position_summaries.iter().find(|summary| {
                 normalize_symbol(&summary.symbol) == normalize_symbol(&active_position.symbol)
             });
@@ -514,14 +518,18 @@ fn validate_duplicate_symbols(
     for active_position in active_positions {
         let symbol = normalize_symbol(&active_position.symbol);
         if !seen_symbols.insert(symbol.clone()) {
-            return Err(SecurityAccountObjectiveContractError::DuplicateSymbol(symbol));
+            return Err(SecurityAccountObjectiveContractError::DuplicateSymbol(
+                symbol,
+            ));
         }
     }
 
     for approved_candidate in approved_candidates {
         let symbol = normalize_symbol(&approved_candidate.symbol);
         if !seen_symbols.insert(symbol.clone()) {
-            return Err(SecurityAccountObjectiveContractError::DuplicateSymbol(symbol));
+            return Err(SecurityAccountObjectiveContractError::DuplicateSymbol(
+                symbol,
+            ));
         }
     }
 

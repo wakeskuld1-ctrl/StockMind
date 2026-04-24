@@ -67,7 +67,8 @@ fn portfolio_core_request_shells_only_consume_formal_upstream_documents() {
         "pub struct SecurityPortfolioReplacementPlanRequest {",
     );
     assert!(
-        p11_request.contains("pub account_objective_contract: SecurityAccountObjectiveContractDocument,"),
+        p11_request
+            .contains("pub account_objective_contract: SecurityAccountObjectiveContractDocument,"),
         "Portfolio-core chain drift detected in {P11_SOURCE}: P11 must still consume the formal account objective contract."
     );
     assert!(
@@ -86,7 +87,8 @@ fn portfolio_core_request_shells_only_consume_formal_upstream_documents() {
         "pub struct SecurityPortfolioAllocationDecisionRequest {",
     );
     assert!(
-        p12_request.contains("pub account_objective_contract: SecurityAccountObjectiveContractDocument,"),
+        p12_request
+            .contains("pub account_objective_contract: SecurityAccountObjectiveContractDocument,"),
         "Portfolio-core chain drift detected in {P12_SOURCE}: P12 must still consume the formal account objective contract."
     );
     assert!(
@@ -94,7 +96,8 @@ fn portfolio_core_request_shells_only_consume_formal_upstream_documents() {
         "Portfolio-core chain drift detected in {P12_SOURCE}: P12 must still consume the governed portfolio candidate set."
     );
     assert!(
-        p12_request.contains("pub portfolio_replacement_plan: SecurityPortfolioReplacementPlanDocument,"),
+        p12_request
+            .contains("pub portfolio_replacement_plan: SecurityPortfolioReplacementPlanDocument,"),
         "Portfolio-core chain drift detected in {P12_SOURCE}: P12 must still consume the formal P11 replacement plan."
     );
     assert!(

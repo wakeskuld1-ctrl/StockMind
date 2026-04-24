@@ -1049,9 +1049,11 @@ fn execution_record_count(runtime_db_path: &Path) -> usize {
     let connection =
         Connection::open(&execution_db_path).expect("execution db should open for verification");
     connection
-        .query_row("SELECT COUNT(*) FROM security_execution_records", [], |row| {
-            row.get::<_, usize>(0)
-        })
+        .query_row(
+            "SELECT COUNT(*) FROM security_execution_records",
+            [],
+            |row| row.get::<_, usize>(0),
+        )
         .expect("execution record count should load")
 }
 

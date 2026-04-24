@@ -209,8 +209,7 @@ pub fn resolve_effective_external_proxy_inputs(
     let historical_proxy_inputs = if let Some(effective_as_of_date) = as_of_date {
         load_historical_external_proxy_inputs(symbol, effective_as_of_date)?
     } else {
-        load_latest_external_proxy_snapshot(symbol)?
-            .map(|(_, inputs)| inputs)
+        load_latest_external_proxy_snapshot(symbol)?.map(|(_, inputs)| inputs)
     };
     Ok(merge_external_proxy_inputs(
         historical_proxy_inputs,
@@ -226,12 +225,13 @@ pub fn resolve_effective_external_proxy_inputs(
 fn parse_proxy_snapshot_row(
     row: SecurityExternalProxyRecordRow,
 ) -> Result<(String, SecurityExternalProxyInputs), SecurityExternalProxyBackfillError> {
-    let inputs = serde_json::from_str::<SecurityExternalProxyInputs>(&row.external_proxy_inputs_json)
-        .map_err(|error| {
-            SecurityExternalProxyBackfillError::Build(format!(
-                "failed to parse historical external proxy inputs: {error}"
-            ))
-        })?;
+    let inputs =
+        serde_json::from_str::<SecurityExternalProxyInputs>(&row.external_proxy_inputs_json)
+            .map_err(|error| {
+                SecurityExternalProxyBackfillError::Build(format!(
+                    "failed to parse historical external proxy inputs: {error}"
+                ))
+            })?;
     Ok((row.as_of_date, inputs))
 }
 

@@ -126,6 +126,26 @@ fn stock_root_keeps_only_the_frozen_module_manifest() {
         "security_approved_open_position_packet",
         "security_account_objective_contract",
         "security_portfolio_replacement_plan",
+        // 2026-04-22 CST: Updated because the current approved stock boundary
+        // now also contains the governed capital-flow ingestion and standalone
+        // capital-source evaluation modules already present in this branch.
+        // Reason: the manifest freeze must reflect the checked-in public surface
+        // instead of reporting those already-landed modules as accidental drift.
+        // Purpose: align the frozen public stock manifest with the current branch truth.
+        "security_capital_flow_backfill",
+        "security_capital_flow_jpx_weekly_import",
+        "security_capital_flow_jpx_weekly_live_backfill",
+        "security_capital_flow_mof_weekly_import",
+        // 2026-04-22 CST: Updated because the governed capital-flow evidence
+        // layer now also exposes one raw-audit module on the formal stock boundary.
+        // Reason: the checked-in public surface already includes source-native
+        // JPX/MOF weekly raw audit output, so the manifest freeze must stop
+        // reporting that approved module as drift.
+        // Purpose: align the frozen public stock manifest with the current
+        // governed capital-flow evidence surface.
+        "security_capital_flow_raw_audit",
+        "security_capital_source_factor_snapshot",
+        "security_capital_source_factor_audit",
         // 2026-04-20 CST: Updated because the approved P12 portfolio-core slice
         // now lands the final governed allocation decision on the formal stock boundary.
         // Reason: the current branch truth no longer stops at P11, so the manifest freeze
@@ -156,6 +176,12 @@ fn stock_root_keeps_only_the_frozen_module_manifest() {
         // approved public module on the formal stock boundary.
         // Purpose: align the frozen public stock manifest with the checked-in P15 boundary.
         "security_portfolio_execution_apply_bridge",
+        // 2026-04-22 CST: Updated because P16 now lands the first pure
+        // execution-status freeze layer after the governed P15 apply bridge.
+        // Reason: the current branch truth now includes status freezing as an
+        // approved public module before any later reconciliation stage.
+        // Purpose: align the frozen public stock manifest with the checked-in P16 boundary.
+        "security_portfolio_execution_status_bridge",
         "security_position_contract",
         "security_per_position_evaluation",
         "security_monitoring_evidence_package",

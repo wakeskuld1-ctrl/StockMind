@@ -8,6 +8,35 @@
 pub use super::import_stock_price_history;
 pub use super::security_disclosure_history_backfill;
 pub use super::security_disclosure_history_live_backfill;
+// 2026-04-22 CST: Added because Task 1 introduces governed capital-flow intake
+// as part of the approved Nikkei data-preparation stage before factor build.
+// Purpose: keep the new raw-flow backfill discoverable through the same grouped
+// stock data-pipeline surface as other history-preparation tools.
+pub use super::security_capital_flow_backfill;
+// 2026-04-22 CST: Added because the approved next step now needs one direct
+// raw weekly audit surface above governed JPX/MOF storage and below factors.
+// Purpose: keep pre-training raw-source inspection on the grouped data-pipeline surface.
+pub use super::security_capital_flow_raw_audit;
+// 2026-04-21 CST: Added because Task 2.1 needs the JPX weekly workbook import
+// bridge to live on the same grouped data-pipeline surface as other governed imports.
+// Purpose: keep official-file ingestion inside the formal stock data-preparation boundary.
+pub use super::security_capital_flow_jpx_weekly_import;
+// 2026-04-22 CST: Added because the next approved step is to supplement official
+// JPX raw history before any more factor or training work resumes.
+// Purpose: keep JPX archive crawling on the same grouped governed data-pipeline surface.
+pub use super::security_capital_flow_jpx_weekly_live_backfill;
+// 2026-04-21 CST: Added because Task 2.2 needs the MOF weekly CSV import bridge
+// to live on the same grouped data-pipeline surface as other governed imports.
+// Purpose: keep official-file ingestion inside the formal stock data-preparation boundary.
+pub use super::security_capital_flow_mof_weekly_import;
+// 2026-04-22 CST: Added because scheme A inserts one explainable factor layer
+// after raw JPX/MOF flow persistence and before independent audit.
+// Purpose: keep standalone capital-source factor generation on the grouped data-pipeline surface.
+pub use super::security_capital_source_factor_snapshot;
+// 2026-04-22 CST: Added because scheme A pairs explainable factor generation
+// with an equally standalone audit/backtest step in the same bounded flow.
+// Purpose: keep factor-level audit discoverable on the grouped data-pipeline surface.
+pub use super::security_capital_source_factor_audit;
 pub use super::security_external_proxy_backfill;
 // 2026-04-17 CST: Added because StockMind phase-1 boundary closeout promotes the
 // governed file import bridge onto the same public data-pipeline surface as other

@@ -12,8 +12,7 @@ use crate::ops::stock::security_capital_rebase::SecurityAccountRebaseSnapshot;
 
 const SECURITY_PORTFOLIO_REPLACEMENT_PLAN_DOCUMENT_TYPE: &str =
     "security_portfolio_replacement_plan";
-const SECURITY_PORTFOLIO_REPLACEMENT_PLAN_VERSION: &str =
-    "security_portfolio_replacement_plan.v1";
+const SECURITY_PORTFOLIO_REPLACEMENT_PLAN_VERSION: &str = "security_portfolio_replacement_plan.v1";
 const APPROVED_CANDIDATE_ONLY_BOUNDARY: &str = "approved-candidate-only";
 
 // 2026-04-19 CST: Added because Task 3 needs one explicit P11 request shell
@@ -177,23 +176,21 @@ pub enum SecurityPortfolioReplacementPlanError {
 // Purpose: expose the first P11 solver on the formal stock tool surface.
 pub fn security_portfolio_replacement_plan(
     request: &SecurityPortfolioReplacementPlanRequest,
-) -> Result<
-    SecurityPortfolioReplacementPlanResult,
-    SecurityPortfolioReplacementPlanError,
-> {
+) -> Result<SecurityPortfolioReplacementPlanResult, SecurityPortfolioReplacementPlanError> {
     build_security_portfolio_replacement_plan(request)
 }
 
 pub fn build_security_portfolio_replacement_plan(
     request: &SecurityPortfolioReplacementPlanRequest,
-) -> Result<
-    SecurityPortfolioReplacementPlanResult,
-    SecurityPortfolioReplacementPlanError,
-> {
+) -> Result<SecurityPortfolioReplacementPlanResult, SecurityPortfolioReplacementPlanError> {
     validate_request(request)?;
 
     let generated_at = normalize_created_at(&request.created_at);
-    let account_id = request.account_objective_contract.account_id.trim().to_string();
+    let account_id = request
+        .account_objective_contract
+        .account_id
+        .trim()
+        .to_string();
 
     let current_weights = build_current_weights(&request.portfolio_candidate_set.live_positions)?;
     let target_weights = build_target_weights(
@@ -203,14 +200,17 @@ pub fn build_security_portfolio_replacement_plan(
     let current_weight_map = build_weight_map(&current_weights);
     let target_weight_map = build_weight_map(&target_weights);
 
-    let total_current_weight_pct = round_pct(current_weights.iter().map(|row| row.weight_pct).sum());
+    let total_current_weight_pct =
+        round_pct(current_weights.iter().map(|row| row.weight_pct).sum());
     let total_target_weight_pct = round_pct(target_weights.iter().map(|row| row.weight_pct).sum());
 
     validate_weight_conservation("current_weights", total_current_weight_pct)?;
     validate_weight_conservation("target_weights", total_target_weight_pct)?;
 
-    let gross_turnover_weight_pct =
-        round_pct(compute_gross_turnover_weight_pct(&current_weight_map, &target_weight_map));
+    let gross_turnover_weight_pct = round_pct(compute_gross_turnover_weight_pct(
+        &current_weight_map,
+        &target_weight_map,
+    ));
     let total_target_risk_budget_pct = round_pct(compute_total_target_risk_budget_pct(
         &request.portfolio_candidate_set.live_positions,
         &request.portfolio_candidate_set.approved_candidate_entries,
@@ -236,7 +236,8 @@ pub fn build_security_portfolio_replacement_plan(
         ));
     }
 
-    let entry_actions = build_entry_actions(&request.portfolio_candidate_set.approved_candidate_entries);
+    let entry_actions =
+        build_entry_actions(&request.portfolio_candidate_set.approved_candidate_entries);
     let trim_actions = build_trim_actions(&request.portfolio_candidate_set.live_positions);
     let exit_actions = build_exit_actions(&request.portfolio_candidate_set.live_positions);
     let replacement_pairs = build_replacement_pairs(&trim_actions, &entry_actions);
@@ -300,13 +301,23 @@ pub fn build_security_portfolio_replacement_plan(
 fn validate_request(
     request: &SecurityPortfolioReplacementPlanRequest,
 ) -> Result<(), SecurityPortfolioReplacementPlanError> {
-    let request_account = request.account_objective_contract.account_id.trim().to_string();
-    let candidate_set_account = request.portfolio_candidate_set.account_id.trim().to_string();
+    let request_account = request
+        .account_objective_contract
+        .account_id
+        .trim()
+        .to_string();
+    let candidate_set_account = request
+        .portfolio_candidate_set
+        .account_id
+        .trim()
+        .to_string();
     if candidate_set_account != request_account {
-        return Err(SecurityPortfolioReplacementPlanError::CandidateSetAccountMismatch(
-            request.portfolio_candidate_set.account_id.clone(),
-            request_account,
-        ));
+        return Err(
+            SecurityPortfolioReplacementPlanError::CandidateSetAccountMismatch(
+                request.portfolio_candidate_set.account_id.clone(),
+                request_account,
+            ),
+        );
     }
 
     if (request.portfolio_candidate_set.capital_base_amount
@@ -321,9 +332,14 @@ fn validate_request(
     }
 
     if request.portfolio_candidate_set.selection_boundary_ref != APPROVED_CANDIDATE_ONLY_BOUNDARY {
-        return Err(SecurityPortfolioReplacementPlanError::InvalidSelectionBoundary(
-            request.portfolio_candidate_set.selection_boundary_ref.clone(),
-        ));
+        return Err(
+            SecurityPortfolioReplacementPlanError::InvalidSelectionBoundary(
+                request
+                    .portfolio_candidate_set
+                    .selection_boundary_ref
+                    .clone(),
+            ),
+        );
     }
 
     for live_position in &request.portfolio_candidate_set.live_positions {
@@ -331,9 +347,11 @@ fn validate_request(
             || live_position.candidate_status != "live_position"
             || live_position.selection_boundary_ref != APPROVED_CANDIDATE_ONLY_BOUNDARY
         {
-            return Err(SecurityPortfolioReplacementPlanError::LivePositionBoundaryDrift(
-                live_position.symbol.clone(),
-            ));
+            return Err(
+                SecurityPortfolioReplacementPlanError::LivePositionBoundaryDrift(
+                    live_position.symbol.clone(),
+                ),
+            );
         }
     }
 
@@ -376,7 +394,8 @@ fn build_current_weights(
         .collect::<Vec<_>>();
     current_weights.sort_by(|left, right| left.symbol.cmp(&right.symbol));
 
-    let total_current_weight_pct = round_pct(current_weights.iter().map(|row| row.weight_pct).sum());
+    let total_current_weight_pct =
+        round_pct(current_weights.iter().map(|row| row.weight_pct).sum());
     validate_weight_conservation("current_weights", total_current_weight_pct)?;
     Ok(current_weights)
 }
@@ -385,21 +404,24 @@ fn build_target_weights(
     live_positions: &[SecurityPortfolioLivePositionEntry],
     approved_candidate_entries: &[SecurityPortfolioApprovedCandidateEntry],
 ) -> Result<Vec<SecurityPortfolioWeightSnapshot>, SecurityPortfolioReplacementPlanError> {
-    let mut target_weights = live_positions
-        .iter()
-        .map(|live_position| SecurityPortfolioWeightSnapshot {
-            symbol: live_position.symbol.clone(),
-            weight_pct: round_pct(
-                live_position
-                    .target_weight_pct
-                    .unwrap_or(live_position.current_weight_pct),
-            ),
-        })
-        .chain(approved_candidate_entries.iter().map(|candidate| SecurityPortfolioWeightSnapshot {
-            symbol: candidate.symbol.clone(),
-            weight_pct: round_pct(candidate.target_weight_pct),
-        }))
-        .collect::<Vec<_>>();
+    let mut target_weights =
+        live_positions
+            .iter()
+            .map(|live_position| SecurityPortfolioWeightSnapshot {
+                symbol: live_position.symbol.clone(),
+                weight_pct: round_pct(
+                    live_position
+                        .target_weight_pct
+                        .unwrap_or(live_position.current_weight_pct),
+                ),
+            })
+            .chain(approved_candidate_entries.iter().map(|candidate| {
+                SecurityPortfolioWeightSnapshot {
+                    symbol: candidate.symbol.clone(),
+                    weight_pct: round_pct(candidate.target_weight_pct),
+                }
+            }))
+            .collect::<Vec<_>>();
     target_weights.sort_by(|left, right| left.symbol.cmp(&right.symbol));
 
     let total_target_weight_pct = round_pct(target_weights.iter().map(|row| row.weight_pct).sum());
@@ -432,15 +454,16 @@ fn build_trim_actions(
         .iter()
         .filter_map(|live_position| {
             let target_weight_pct = live_position.target_weight_pct?;
-            (target_weight_pct > 0.0 && target_weight_pct + 1e-9 < live_position.current_weight_pct).then_some(
-                SecurityPortfolioReplacementAction {
+            (target_weight_pct > 0.0 && target_weight_pct + 1e-9 < live_position.current_weight_pct)
+                .then_some(SecurityPortfolioReplacementAction {
                     symbol: live_position.symbol.clone(),
                     before_weight_pct: round_pct(live_position.current_weight_pct),
                     after_weight_pct: round_pct(target_weight_pct),
-                    weight_delta_pct: round_pct(target_weight_pct - live_position.current_weight_pct),
+                    weight_delta_pct: round_pct(
+                        target_weight_pct - live_position.current_weight_pct,
+                    ),
                     action_reason: "target_weight_below_current".to_string(),
-                },
-            )
+                })
         })
         .collect::<Vec<_>>();
     trim_actions.sort_by(|left, right| left.symbol.cmp(&right.symbol));
@@ -453,7 +476,9 @@ fn build_exit_actions(
     let mut exit_actions = live_positions
         .iter()
         .filter_map(|live_position| {
-            let target_weight_pct = live_position.target_weight_pct.unwrap_or(live_position.current_weight_pct);
+            let target_weight_pct = live_position
+                .target_weight_pct
+                .unwrap_or(live_position.current_weight_pct);
             (target_weight_pct <= 0.0).then_some(SecurityPortfolioReplacementAction {
                 symbol: live_position.symbol.clone(),
                 before_weight_pct: round_pct(live_position.current_weight_pct),
@@ -474,13 +499,18 @@ fn build_replacement_pairs(
     let mut replacement_pairs = trim_actions
         .iter()
         .zip(entry_actions.iter())
-        .map(|(trim_action, entry_action)| SecurityPortfolioReplacementPair {
-            from_symbol: trim_action.symbol.clone(),
-            to_symbol: entry_action.symbol.clone(),
-            migrated_weight_pct: round_pct(
-                trim_action.weight_delta_pct.abs().min(entry_action.after_weight_pct),
-            ),
-        })
+        .map(
+            |(trim_action, entry_action)| SecurityPortfolioReplacementPair {
+                from_symbol: trim_action.symbol.clone(),
+                to_symbol: entry_action.symbol.clone(),
+                migrated_weight_pct: round_pct(
+                    trim_action
+                        .weight_delta_pct
+                        .abs()
+                        .min(entry_action.after_weight_pct),
+                ),
+            },
+        )
         .collect::<Vec<_>>();
     replacement_pairs.sort_by(|left, right| {
         left.from_symbol
@@ -538,9 +568,9 @@ fn validate_weight_conservation(
     total_weight_pct: f64,
 ) -> Result<(), SecurityPortfolioReplacementPlanError> {
     if total_weight_pct < -1e-9 || total_weight_pct > 1.0 + 1e-9 {
-        return Err(SecurityPortfolioReplacementPlanError::WeightNonConservation(
-            section_name.to_string(),
-        ));
+        return Err(
+            SecurityPortfolioReplacementPlanError::WeightNonConservation(section_name.to_string()),
+        );
     }
 
     Ok(())
