@@ -8,13 +8,15 @@ Use it for unresolved gaps, not for finished work history.
 
 ## Current Blocking Issues
 
-- none in the latest verified branch state
-- historical note: older `security_scorecard_training_nikkei_futures_*` artifacts still exist under runtime outputs and may still reflect the pre-futures 19-feature contract, but they do not describe the latest working-tree truth
+- none confirmed by fresh verification on 2026-04-24
+- latest full regression evidence: `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_full_regression_20260424_c'; cargo test -- --nocapture`
+- result: repository-wide `cargo test` completed green in this worktree after restoring the missing `docs/plans/design/` boundary docs and the `Stock/Foundation Decoupling Baseline` handoff marker
 
 ## Current Active Gaps
 
-- `P15` apply-bridge delivery is now green at both the focused-test layer and the latest repository-wide `cargo test --no-fail-fast` rerun for this exact working tree
-- `P15` remains intentionally bounded to governed runtime execution recording through `security_execution_record`; it is not broker execution and does not introduce cross-symbol rollback
+- the worktree remains intentionally dirty with unrelated runtime artifacts, generated fixtures, and parallel edits, so any Git delivery must keep staging narrowly scoped
+- the `docs/plans/` to `docs/plans/design/` migration is still easy to drift; future guard additions must backfill the new-path design docs and handoff markers in the same change
+- the current P15 direct adapter is intentionally bounded to governed runtime execution recording through `security_execution_record`; it is not broker execution, broker-fill replay, order-ledger exactness, or cross-symbol rollback
 
 ## Optional Enhancements
 
