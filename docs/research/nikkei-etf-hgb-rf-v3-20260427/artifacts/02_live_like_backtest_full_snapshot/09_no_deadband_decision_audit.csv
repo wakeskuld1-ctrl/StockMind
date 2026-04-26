@@ -1,0 +1,4 @@
+﻿check,passed,value
+execution_after_signal_date,True,0
+buy_chooses_lower_premium_proxy,True,0
+ledger_non_empty,True,226

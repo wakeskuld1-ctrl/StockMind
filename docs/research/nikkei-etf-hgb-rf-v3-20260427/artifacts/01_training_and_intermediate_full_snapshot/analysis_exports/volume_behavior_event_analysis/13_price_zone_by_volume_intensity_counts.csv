@@ -1,0 +1,5 @@
+﻿price_zone,shrink,normal,mild_volume,extreme_volume,total
+low,2,3,5,7,17
+mid_low,2,18,7,4,31
+mid_high,24,43,26,15,108
+high,12,41,44,36,133

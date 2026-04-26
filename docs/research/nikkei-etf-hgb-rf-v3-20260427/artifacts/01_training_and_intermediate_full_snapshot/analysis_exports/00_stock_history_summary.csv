@@ -1,0 +1,4 @@
+﻿symbol,row_count,start_date,end_date,zero_volume_rows,nonzero_volume_rows,min_volume,max_volume
+NK225.IDX,1362,2020-10-01,2026-04-24,1362,0,0,0
+NK225_VOL.YFINANCE,2443,2016-04-25,2026-04-24,11,2432,0,285600000
+NK225_VOL.PROXY,365,2024-10-01,2026-04-01,1,364,0,266700000

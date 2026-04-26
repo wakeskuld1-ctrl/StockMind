@@ -1,0 +1,2 @@
+﻿variant,initial_jpy,final_jpy,profit_jpy,total_return,cagr,max_drawdown,avg_position,median_position,position_ge_50_days,full_position_days,execution_count,log_count,start_date,end_date,buy_hold_final_jpy,buy_hold_profit_jpy,buy_hold_total_return,buy_hold_cagr,buy_hold_max_drawdown
+nikkei_etf_anchor_v5,10000000.00000000,20996533.95159171,10996533.95159171,1.09965340,0.07703049,-0.29738576,0.58812757,0.74748052,1456,848,40,175,2016-04-25,2026-04-24,33903525.37102151,23903525.37102151,2.39035254,0.12991629,-0.31798897

@@ -3065,3 +3065,142 @@
 - 已验证量能 RED：`cargo test --test security_nikkei_etf_position_signal_cli security_nikkei_etf_position_signal_confirms_volume_backed_breakout -- --nocapture` 初始失败，原因是输出缺少 `volume_signal`。
 - 已验证 HGB RED：`cargo test --test security_nikkei_etf_position_signal_cli security_nikkei_etf_position_signal_applies_hgb_adjustment_artifact -- --nocapture` 初始失败，原因是 `hgb_adjustment` 仍为 `0.0`。
 - Focused Tool 测试通过：`cargo test --test security_nikkei_etf_position_signal_cli -- --nocapture`，`8 passed; 0 failed`。
+## 2026-04-26
+### 修改内容
+- 新增研究脚本 `D:\.stockmind_runtime\a_share_dynamic_hs300_backtest_20260426\practical_strategy_A_backtest.py`，实现沪深300动态成分“方案A：实盘约束版”20D突破、3D试仓、5D加仓、10D加满、跌回阻力止损、市场状态仓位上限、单日最多10只和交易成本回测。
+- 新增测试 `D:\.stockmind_runtime\a_share_dynamic_hs300_backtest_20260426\test_practical_strategy_A.py`，覆盖印花税切换、市场状态、分层加仓止损、单日买入上限。
+- 导出实盘约束研究产物：组合曲线、交易账本、批次汇总、年度汇总、与裸3D策略对比表和运行 meta。
+### 修改原因
+- 用户批准方案A，要求把已识别的实盘缺口补入沪深300回测，而不是继续使用无试仓/无止损/无市场仓位上限/无交易成本的裸策略。
+- 当前任务明确为研究回测产物，不新增正式 Rust Tool。
+### 方案还差什么
+- [ ] 尚未建模涨跌停、停牌、真实撮合、ETF申赎/溢价和盘中成交可得性。
+- [ ] 市场状态暂用 510300 ETF 的 MA50/MA200/MA200斜率近似，不等同于正式沪深300指数全量状态引擎。
+- [ ] 该脚本位于 runtime 研究目录，尚未纳入正式 Tool 或稳定 CLI 契约。
+### 潜在问题
+- [ ] 同收盘价止损是假设条件，可能高估极端行情下可执行性。
+- [ ] 方案A显著增加交易次数，成本和假突破损耗对结果影响较大，需要继续拆解交易频率和重复信号过滤。
+### 关闭项
+- RED 已验证：`python -m pytest D:\.stockmind_runtime\a_share_dynamic_hs300_backtest_20260426\test_practical_strategy_A.py -q` 初始失败，原因为 `ModuleNotFoundError: No module named 'practical_strategy_A_backtest'`。
+- 规则测试已通过：同一测试命令最终 `4 passed`。
+- 完整回测已执行：`python D:\.stockmind_runtime\a_share_dynamic_hs300_backtest_20260426\practical_strategy_A_backtest.py`，期末权益 `1276157.9825888462`。
+## 2026-04-26
+### 修改内容
+- 新增 `D:\SM\docs\plans\2026-04-26-nikkei-etf-live-like-backtest-plan.md`，记录日经ETF实盘化研究回测的临时契约、口径和验收条件。
+- 导出研究回测产物到 `D:\.stockmind_runtime\nikkei_etf_live_like_backtest_20260426`，包含T-1信号、T日开盘执行、交易成本、溢价过滤和调仓死区的对比结果。
+
+### 修改原因
+- 用户要求先按方案B做研究回测，观察实盘化口径对159866和513520收益、Sharpe、回撤、交易频率的影响，然后再决定是否升级正式Tool。
+- 当前正式Tool仍未改动，避免把临时研究参数直接固化为生产契约。
+
+### 方案还差什么
+- [ ] 尚未把T-1信号/T日开盘执行、溢价过滤、调仓死区纳入正式 `security_nikkei_etf_position_signal` Tool。
+- [ ] 尚未用真实盘中IOPV验证开盘溢价；当前研究使用 `开盘价 / 当日收盘后NAV - 1` 作为代理口径。
+- [ ] 尚未针对过滤阈值做参数扫描，例如0.5%、1%、1.5%、2%溢价阈值和5%、10%、15%调仓死区。
+
+### 潜在问题
+- [ ] 同一ETF执行日的多个HGB信号在研究中合并为最新信号，更符合实盘，但与旧回测逐条执行口径不同。
+- [ ] 过滤版收益下降可能来自错过高溢价后的继续上涨，不能直接等同于模型失效。
+- [ ] ETF开盘成交可得性、滑点、实时溢价估算仍需实盘接口或券商成交数据验证。
+
+### 关闭项
+- 已生成 `01_live_like_operation_ledger.csv`、`02_live_like_equity_curve.csv`、`03_live_like_summary.csv`、`04_signal_execution_schedule_after_consolidation.csv`、`05_live_like_rule_audit.csv`。
+- 审计通过：所有执行日均晚于信号日；过滤版未在开盘溢价代理值超过2%时买入；过滤版未执行低于10%仓位差的交易。
+## 2026-04-26
+### 修改内容
+- 在 `D:\.stockmind_runtime\nikkei_etf_live_like_backtest_20260426` 新增无调仓死区研究结果：`06_dual_low_premium_no_deadband_ledger.csv`、`07_dual_low_premium_no_deadband_curve.csv`、`08_no_deadband_decision_summary.csv`、`09_no_deadband_decision_audit.csv`。
+- 新增“双ETF买入时选择开盘溢价代理值更低的一只、卖出按持仓比例减仓、无调仓死区、无高溢价硬阻断、3bp成本”的研究口径。
+
+### 修改原因
+- 用户认可高溢价不应一刀切过滤，并要求去掉调仓死区后重新计算收益、年化、Sharpe、回撤等决策指标。
+
+### 方案还差什么
+- [ ] 尚未扫描极端溢价阈值；本轮组合版完全不阻断买入，只在159866和513520之间选择相对低溢价。
+- [ ] 尚未纳入真实盘中IOPV，仍使用 `开盘价 / 当日NAV - 1` 的代理溢价。
+- [ ] 尚未把组合择优逻辑纳入正式Tool。
+
+### 潜在问题
+- [ ] 双ETF组合策略可能造成持仓分散，后续正式化时需要定义是否允许长期同时持有两只ETF。
+- [ ] 如果两只ETF未来跟踪误差、流动性、费用结构变化，简单低溢价择优可能需要增加流动性约束。
+
+### 关闭项
+- 审计通过：组合版所有执行日均晚于信号日；买入时均选择开盘溢价代理值更低的一只；流水非空。
+## 2026-04-26
+### 修改内容
+- 扩展 `D:\SM\src\ops\security_nikkei_etf_position_signal.rs`，在原有日经ETF目标仓位信号之外新增可选 `NikkeiEtfLiveExecutionPlan` 输出。
+- 新增 live execution 输入字段：`planned_execution_date`、`current_cash_cny`、`current_positions`、`execution_quotes`、`commission_rate`、`extreme_premium_block_pct`。
+- 固化方案A实盘规则：T-1信号/T日next-open计划、买入选择开盘溢价代理值更低的ETF、卖出优先卖高溢价ETF、无调仓死区、默认3bp成本、仅当全部候选ETF超过极端溢价阈值时阻断买入。
+- 扩展 `D:\SM\tests\security_nikkei_etf_position_signal_cli.rs`，新增低溢价买入、极端溢价阻断、高溢价优先卖出三个CLI集成测试。
+- 更新 `D:\SM\docs\governance\contract_registry.md`，同步 `security_nikkei_etf_position_signal` 的可选实盘执行计划合同。
+
+### 修改原因
+- 用户确认从研究方案B升级到正式方案A，希望以后直接通过Tool输出日经ETF实盘买卖计划，而不是继续手工临时计算。
+
+### 方案还差什么
+- [ ] 尚未接入真实盘中IOPV；当前执行计划中的溢价仍明确为 `open_price / nav - 1` 代理口径。
+- [ ] 尚未实现自动生成每日 `nikkei_v3_hgb_adjustment.v1` artifact；`v3_hgb` 仍要求外部显式传入已治理artifact。
+- [ ] 尚未增加每日自动化运行入口或定时任务。
+
+### 潜在问题
+- [ ] 如果券商实际成交价偏离开盘价，执行计划仍需用成交后复盘修正。
+- [ ] 双ETF择优依赖调用方同时提供两个ETF的有效 `execution_quotes`，否则只能在已提供候选里择优。
+- [ ] 极端溢价阈值默认5%，后续可能需要基于真实盘中IOPV重新校准。
+
+### 关闭项
+- RED已验证：新增live execution字段在旧合同下被拒绝，`cargo test --test security_nikkei_etf_position_signal_cli -- --nocapture` 初始出现3个失败用例。
+- Focused Tool测试通过：`cargo test --test security_nikkei_etf_position_signal_cli -- --nocapture`，11 passed。
+- Catalog guard通过：`cargo test --test stock_catalog_grouping_source_guard -- --nocapture`，2 passed。
+- Dispatcher guard通过：`cargo test --test stock_dispatcher_grouping_source_guard -- --nocapture`，1 passed。
+- 编译检查通过：`cargo check`。
+## 2026-04-27
+### 修改内容
+- 修正研究脚本 `D:\.stockmind_runtime\nikkei_etf_daily_model_scoring_20260427\daily_hgb_rf_v3_scoring.py` 的每日 adjustment JSON 命名，将 `train_policy` 写入文件名。
+- 重新运行 `live_pre_year` 和 `known_labels_asof` 两套研究口径，生成 HGB 增强V3 与 RF 增强V3 的每日评分、验证指标、全局重要度、本地解释和最新 adjustment artifact。
+### 修改原因
+- 用户要求先按方案A查看 HGB 可解释性，并补充 RF 增强V3 训练结果。
+- 原 JSON 文件名未包含训练口径，连续运行实盘口径和诊断口径时会互相覆盖，导致文件名显示 live 但内容实际为 `known_labels_asof`。
+### 方案还差什么
+- [ ] 该研究脚本仍未接入正式 Rust Tool，每日自动化入口和正式 artifact 治理还未固化。
+- [ ] 尚未清理旧的无口径 JSON 文件，后续读取时应优先使用带 `live_pre_year` 或 `known_labels_asof` 的新文件名。
+### 潜在问题
+- [ ] `known_labels_asof` 包含已完成未来标签的诊断信息，不应作为实盘信号依据。
+- [ ] `live_pre_year` 的验证平衡准确率不高，模型建议应继续结合 HGB/RF 分歧和突破站稳规则做风控解释。
+### 关闭项
+- 已稳定复现旧 artifact 覆盖问题：`hgb_l2_leaf20_live_2026-04-24_adjustment.json` 文件名显示 live，但内部 `train_policy=known_labels_asof`。
+- 已修复 JSON 命名冲突，并重新运行两套口径。
+- 已验证新产物包含独立文件：`hgb_l2_leaf20_live_live_pre_year_2026-04-24_adjustment.json`、`rf_depth4_leaf20_live_live_pre_year_2026-04-24_adjustment.json`、`hgb_l2_leaf20_live_known_labels_asof_2026-04-24_adjustment.json`、`rf_depth4_leaf20_live_known_labels_asof_2026-04-24_adjustment.json`。
+## 2026-04-27
+### 修改内容
+- 新增研究包 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427`，纳入日经ETF HGB/RF V3 研究链路的训练/中间过程、实盘化回测、每日评分产物和哈希清单。
+- 新增 `README.md`、`ALGORITHM_HANDOFF_MANUAL.md`、`UPLOAD_NOTES.md`，说明模型研究思路、算法交接、验证证据、可用口径和禁止误用项。
+- 更新 `D:\SM\docs\handoff\CURRENT_STATUS.md` 与 `D:\SM\docs\handoff\AI_HANDOFF.md`，把研究包作为后续日经ETF模型工作的恢复入口。
+### 修改原因
+- 用户要求按方案B把研究模型、中间过程、测试、相关模型打包上传到 GitHub，并把 AI 的研究过程和研究思路写成算法交接手册。
+- 当前工作区存在大量无关生成物和历史 fixture，必须用窄范围研究包保留日经ETF主线全量证据，同时避免把无关大目录污染仓库。
+### 方案还差什么
+- [ ] 尚未把每日 HGB/RF 评分脚本改成默认使用仓库内相对路径；当前脚本仍保留原 runtime 绝对路径默认值。
+- [ ] 尚未把每日 HGB/RF artifact 生成纳入正式 Rust Tool 或自动化任务。
+### 潜在问题
+- [ ] `known_labels_asof` 只能用于诊断，不能作为实盘信号。
+- [ ] 旧的无 `train_policy` JSON 被保留用于追溯，但后续读取必须优先使用带口径的新文件名。
+- [ ] A股/沪深300旁路实验目录约 577.64MB，未纳入本次日经ETF研究包，若后续重启A股模型需单独打包。
+### 关闭项
+- 已生成 `artifact_manifest.csv`，覆盖 210 个研究产物文件，总计约 15.84MB。
+- 已确认日经ETF相关三段 runtime 快照分别为：每日HGB/RF评分 17 文件、实盘化回测 12 文件、训练/中间过程 181 文件。
+- 已把算法交接手册和研究包入口写入 handoff 文档。
+## 2026-04-27
+### 修改内容
+- 补充研究包上传前验证记录，覆盖仓库内快照复算、研究产物哈希校验、日经ETF Tool focused 测试、catalog/dispatcher guard 和 `cargo check`。
+### 修改原因
+- 上传到 GitHub 前必须留下可追溯验证证据，避免只上传数据而无法判断包是否可恢复、Tool 是否仍可编译。
+### 方案还差什么
+- [ ] 尚未执行全仓库 `cargo test -- --nocapture`，本轮仅做日经ETF相关 focused 验证和边界 guard。
+### 潜在问题
+- [ ] 当前工作区仍存在大量无关脏文件和生成目录，提交时必须窄范围 stage。
+### 关闭项
+- 仓库内快照复算通过：`daily_hgb_rf_v3_scoring.py --analysis-root docs\research\...\01_training_and_intermediate_full_snapshot\analysis_exports --output-root D:\.stockmind_runtime\nikkei_package_verify_20260427 --train-policy live_pre_year`。
+- 研究包哈希校验通过：`artifact manifest hash check passed: 210/210`。
+- Focused Tool 测试通过：`cargo test --test security_nikkei_etf_position_signal_cli -- --nocapture`，`11 passed; 0 failed`。
+- Catalog guard 通过：`cargo test --test stock_catalog_grouping_source_guard -- --nocapture`，`2 passed; 0 failed`。
+- Dispatcher guard 通过：`cargo test --test stock_dispatcher_grouping_source_guard -- --nocapture`，`1 passed; 0 failed`。
+- 编译检查通过：`cargo check`。

@@ -1,0 +1,13 @@
+{
+  "contract_version": "nikkei_v3_hgb_adjustment.v1",
+  "model_set_version": "research_daily_hgb_rf_v3_20260427",
+  "model_id": "rf_depth4_leaf20_live",
+  "train_policy": "known_labels_asof",
+  "as_of_date": "2026-04-24",
+  "adjustment": -1,
+  "base_position_v3": 0.37242327,
+  "target_position_proxy": 0.12242326999999997,
+  "prob_down": 0.3921412298929322,
+  "prob_neutral": 0.36823984409392413,
+  "prob_up": 0.23961892601314363
+}

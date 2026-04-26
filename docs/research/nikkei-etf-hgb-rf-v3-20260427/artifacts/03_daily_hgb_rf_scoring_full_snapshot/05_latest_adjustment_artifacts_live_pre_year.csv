@@ -1,0 +1,3 @@
+﻿contract_version,model_set_version,model_id,train_policy,as_of_date,adjustment,base_position_v3,target_position_proxy,prob_down,prob_neutral,prob_up
+nikkei_v3_hgb_adjustment.v1,research_daily_hgb_rf_v3_20260427,hgb_l2_leaf20_live,live_pre_year,2026-04-24,-1,0.37242327,0.12242326999999997,0.6587006153874051,0.32325164941652323,0.01804773519607152
+nikkei_v3_hgb_adjustment.v1,research_daily_hgb_rf_v3_20260427,rf_depth4_leaf20_live,live_pre_year,2026-04-24,0,0.37242327,0.37242327,0.39567742696725644,0.4134697868024672,0.19085278623027618

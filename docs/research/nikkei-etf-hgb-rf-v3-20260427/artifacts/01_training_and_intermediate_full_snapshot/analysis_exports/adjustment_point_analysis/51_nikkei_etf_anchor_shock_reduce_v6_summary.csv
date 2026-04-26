@@ -1,0 +1,2 @@
+﻿variant,initial_jpy,final_jpy,profit_jpy,total_return,cagr,max_drawdown,avg_position,median_position,position_ge_50_days,full_position_days,execution_count,log_count,start_date,end_date,buy_hold_final_jpy,buy_hold_profit_jpy,buy_hold_total_return,buy_hold_cagr,buy_hold_max_drawdown
+nikkei_etf_anchor_shock_reduce_v6,10000000.00000000,19105935.77403568,9105935.77403568,0.91059358,0.06691147,-0.19141544,0.39836752,0.10536764,879,685,69,231,2016-04-25,2026-04-24,33903525.37102151,23903525.37102151,2.39035254,0.12991629,-0.31798897

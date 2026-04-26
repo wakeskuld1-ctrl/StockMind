@@ -1,0 +1,4 @@
+﻿"category","feature_count","total_information_value","avg_information_value","max_information_value","total_abs_coefficient","top_iv_feature"
+"price_behavior","11","0.277418739641462","0.0252198854219511","0.0498329864978318","9.38523602622372","weekly_spot_return_p10"
+"volume_behavior","6","0.322632067483641","0.0537720112472735","0.0955277573910891","4.34052080049934","weekly_volume_ratio_4w"
+"volume_price_behavior","5","0.308271859849954","0.0616543719699907","0.0973799881677106","1.9597908989917","weekly_volume_price_confirmation"

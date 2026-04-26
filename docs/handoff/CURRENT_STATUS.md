@@ -10,6 +10,8 @@
 ## Working Tree
 
 - this local `D:\SM` worktree continues the same dirty delivery line and now carries the P19D controlled replay commit-writer slice on top of the P19C replay commit-preflight state
+- 2026-04-27 update: the Nikkei ETF HGB/RF V3 research chain has been packaged under `docs/research/nikkei-etf-hgb-rf-v3-20260427/`, including full Nikkei training/intermediate artifacts, ETF live-like backtest outputs, daily HGB/RF scoring outputs, an artifact manifest, upload notes, and an algorithm handoff manual.
+- For future Nikkei ETF model work, start with `docs/research/nikkei-etf-hgb-rf-v3-20260427/ALGORITHM_HANDOFF_MANUAL.md`; use `live_pre_year` outputs for live-like interpretation and treat `known_labels_asof` as diagnostic only.
 - historical `E:\SM` verification entries below are preserved as background evidence only; current branch-health claims for this continuation must be made from fresh `D:\SM` commands
 - the working tree still contains many uncommitted local edits and generated runtime artifacts, including `P16` governance-sync work, capital-source raw-flow/snapshot/audit work, earlier portfolio-core/post-P12 edits, user-local Nikkei training changes, and large runtime fixture/output directories
 - the latest branch-truth imported from the docfix line records a fresh 2026-04-24 repository-wide green verification in a separate reconciliation worktree after the missing `docs/plans/design/` backfill and the `Stock/Foundation Decoupling Baseline` handoff marker were restored

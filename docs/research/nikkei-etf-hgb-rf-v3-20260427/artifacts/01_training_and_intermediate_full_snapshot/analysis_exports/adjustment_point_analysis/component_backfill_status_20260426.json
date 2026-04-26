@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-04-26T12:14:30",
+  "task": "nikkei_top30_component_history_backfill",
+  "target": "top30 Nikkei 225 weighted components, 2016-04-25..2026-04-24, daily OHLCV",
+  "official_weights_file": "D:\\.stockmind_runtime\\nikkei_current_rerun_20260426_direction_head_yfinance_10y_long_volume_behavior\\analysis_exports\\adjustment_point_analysis\\15_nikkei_top30_official_weights.csv",
+  "requirements_file": "D:\\.stockmind_runtime\\nikkei_current_rerun_20260426_direction_head_yfinance_10y_long_volume_behavior\\analysis_exports\\adjustment_point_analysis\\16_nikkei_component_breadth_data_requirements.csv",
+  "yahoo_yfinance_status": "blocked_now: YFRateLimitError Too Many Requests",
+  "yahoo_browser_status": "blocked_now: Yahoo region page says products/services unavailable from mainland China since 2021-11-01",
+  "stooq_status": "blocked_for_automation: JP historical CSV requires API key/captcha",
+  "akshare_status": "no usable Japan stock OHLCV history function found locally",
+  "local_cache_status": "component_yfinance_raw_top30 contains only 43-byte empty CSV headers from failed batch run",
+  "next_action": "retry Yahoo/yfinance later with single-ticker low-frequency downloader; skip existing valid CSVs; then generate component breadth tables 17-19"
+}

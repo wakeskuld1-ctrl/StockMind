@@ -1,0 +1,17 @@
+﻿price_zone,volume_intensity_52w,up,down,flat,total
+low,shrink,1,1,0,2
+low,normal,2,1,0,3
+low,mild_volume,1,4,0,5
+low,extreme_volume,3,4,0,7
+mid_low,shrink,1,1,0,2
+mid_low,normal,9,9,0,18
+mid_low,mild_volume,6,1,0,7
+mid_low,extreme_volume,2,2,0,4
+mid_high,shrink,12,12,0,24
+mid_high,normal,23,20,0,43
+mid_high,mild_volume,14,12,0,26
+mid_high,extreme_volume,7,8,0,15
+high,shrink,8,4,0,12
+high,normal,29,12,0,41
+high,mild_volume,29,15,0,44
+high,extreme_volume,22,14,0,36

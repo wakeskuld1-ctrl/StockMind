@@ -1,0 +1,6 @@
+﻿check,passed,value
+ledger_non_empty,True,1356
+curve_non_empty,True,6246
+execution_after_signal_date,True,1356
+filtered_never_buys_above_hard_premium,True,0
+filtered_no_trade_below_min_delta,True,0

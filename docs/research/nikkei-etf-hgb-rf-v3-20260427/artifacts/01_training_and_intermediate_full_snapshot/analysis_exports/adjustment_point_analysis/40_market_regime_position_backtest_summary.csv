@@ -1,0 +1,2 @@
+﻿variant,initial_jpy,final_jpy,profit_jpy,total_return,cagr,max_drawdown,avg_position,median_position,position_ge_50_days,full_position_days,execution_count,log_count,start_date,end_date,buy_hold_final_jpy,buy_hold_profit_jpy,buy_hold_total_return,buy_hold_cagr,buy_hold_max_drawdown
+market_regime_v3,10000000.00000000,20834010.71225704,10834010.71225704,1.08340107,0.07619355,-0.15975986,0.49010264,0.35125366,1135,481,94,292,2016-04-25,2026-04-24,33903525.37102151,23903525.37102151,2.39035254,0.12991629,-0.31798897

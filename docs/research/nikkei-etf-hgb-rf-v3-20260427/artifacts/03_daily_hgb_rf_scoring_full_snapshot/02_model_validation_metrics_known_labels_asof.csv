@@ -1,0 +1,3 @@
+﻿model,validation_basis,train_start,train_end,train_rows,validation_start,validation_end,validation_rows,validation_accuracy,validation_balanced_accuracy,validation_pred_counts
+hgb_l2_leaf20_live,in_sample_diagnostic_only,2017-03-21,2026-02-26,2183,2025-02-14,2026-02-26,252,1.0,1.0,"{""0"": 111, ""1"": 88, ""-1"": 53}"
+rf_depth4_leaf20_live,in_sample_diagnostic_only,2017-03-21,2026-02-26,2183,2025-02-14,2026-02-26,252,0.6666666666666666,0.6470975692673806,"{""1"": 125, ""0"": 81, ""-1"": 46}"

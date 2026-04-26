@@ -406,6 +406,224 @@ fn security_nikkei_etf_position_signal_confirms_volume_backed_breakout() {
     );
 }
 
+// 2026-04-26 CST: Added because the approved live Nikkei ETF execution layer
+// must buy the lower-premium ETF instead of treating premium as a broad block.
+// Purpose: lock the Scheme A live-open plan before implementing the Tool fields.
+#[test]
+fn security_nikkei_etf_position_signal_live_plan_buys_lower_premium_etf() {
+    let runtime_db_path =
+        create_test_runtime_db("security_nikkei_etf_position_signal_live_buy_low_premium");
+    let runtime_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have a parent directory");
+    let store = StockHistoryStore::new(runtime_root.join("stock_history.db"));
+    store
+        .import_rows(
+            "NK225.IDX",
+            "nikkei_index_fixture",
+            &build_trending_rows(240),
+        )
+        .expect("index rows should import");
+
+    let request = json!({
+        "tool": "security_nikkei_etf_position_signal",
+        "args": {
+            "as_of_date": "2026-04-24",
+            "instrument_symbol": "NK225.IDX",
+            "etf_symbol": "159866.SZ",
+            "model_mode": "rule_only",
+            "minimum_index_history_days": 220,
+            "planned_execution_date": "2026-04-27",
+            "current_cash_cny": 1_000_000.0,
+            "current_positions": [],
+            "execution_quotes": [
+                {
+                    "etf_symbol": "159866.SZ",
+                    "execution_date": "2026-04-27",
+                    "open_price": 1.50,
+                    "nav": 1.50
+                },
+                {
+                    "etf_symbol": "513520.SS",
+                    "execution_date": "2026-04-27",
+                    "open_price": 2.10,
+                    "nav": 2.00
+                }
+            ],
+            "commission_rate": 0.0003,
+            "extreme_premium_block_pct": 5.0
+        }
+    });
+
+    let output = run_cli_with_json_and_runtime(&request.to_string(), &runtime_db_path);
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    assert_eq!(output["data"]["execution_plan"]["action"], "buy_to_target");
+    assert_eq!(
+        output["data"]["execution_plan"]["selected_buy_etf_symbol"],
+        "159866.SZ"
+    );
+    assert_eq!(
+        output["data"]["execution_plan"]["execution_price_basis"],
+        "next_open"
+    );
+    assert_eq!(
+        output["data"]["execution_plan"]["minimum_rebalance_delta"],
+        0.0
+    );
+    assert!(
+        output["data"]["execution_plan"]["trade_gross_value"]
+            .as_f64()
+            .expect("trade gross should be numeric")
+            > 999_000.0
+    );
+}
+
+// 2026-04-26 CST: Added because ordinary premium should choose the cheaper ETF,
+// while extreme premium on every ETF remains a live execution risk block.
+// Purpose: prevent the live Tool from chasing both ETF wrappers when both are too expensive.
+#[test]
+fn security_nikkei_etf_position_signal_live_plan_blocks_extreme_premium_buy() {
+    let runtime_db_path =
+        create_test_runtime_db("security_nikkei_etf_position_signal_live_block_extreme");
+    let runtime_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have a parent directory");
+    let store = StockHistoryStore::new(runtime_root.join("stock_history.db"));
+    store
+        .import_rows(
+            "NK225.IDX",
+            "nikkei_index_fixture",
+            &build_trending_rows(240),
+        )
+        .expect("index rows should import");
+
+    let request = json!({
+        "tool": "security_nikkei_etf_position_signal",
+        "args": {
+            "as_of_date": "2026-04-24",
+            "instrument_symbol": "NK225.IDX",
+            "etf_symbol": "159866.SZ",
+            "model_mode": "rule_only",
+            "minimum_index_history_days": 220,
+            "planned_execution_date": "2026-04-27",
+            "current_cash_cny": 1_000_000.0,
+            "current_positions": [],
+            "execution_quotes": [
+                {
+                    "etf_symbol": "159866.SZ",
+                    "execution_date": "2026-04-27",
+                    "open_price": 1.60,
+                    "nav": 1.50
+                },
+                {
+                    "etf_symbol": "513520.SS",
+                    "execution_date": "2026-04-27",
+                    "open_price": 2.12,
+                    "nav": 2.00
+                }
+            ],
+            "commission_rate": 0.0003,
+            "extreme_premium_block_pct": 5.0
+        }
+    });
+
+    let output = run_cli_with_json_and_runtime(&request.to_string(), &runtime_db_path);
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    assert_eq!(
+        output["data"]["execution_plan"]["action"],
+        "delay_buy_extreme_premium"
+    );
+    assert_eq!(output["data"]["execution_plan"]["trade_gross_value"], 0.0);
+    assert!(
+        output["data"]["execution_plan"]["risk_flags"]
+            .as_array()
+            .expect("execution risk flags should be an array")
+            .contains(&json!("all_etf_open_premium_above_extreme_block"))
+    );
+}
+
+// 2026-04-26 CST: Added because the approved live rule sells high-premium ETF
+// wrappers first when reducing exposure, preserving cheaper wrapper exposure.
+// Purpose: lock sell-side premium harvesting before implementation.
+#[test]
+fn security_nikkei_etf_position_signal_live_plan_sells_high_premium_etf_first() {
+    let runtime_db_path =
+        create_test_runtime_db("security_nikkei_etf_position_signal_live_sell_high_premium");
+    let runtime_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have a parent directory");
+    let store = StockHistoryStore::new(runtime_root.join("stock_history.db"));
+    store
+        .import_rows(
+            "NK225.IDX",
+            "nikkei_index_fixture",
+            &build_trending_rows(240),
+        )
+        .expect("index rows should import");
+    let artifact_path = create_hgb_adjustment_artifact(
+        "security_nikkei_etf_position_signal_live_sell_high_premium",
+        "2026-04-24",
+        -1,
+    );
+
+    let request = json!({
+        "tool": "security_nikkei_etf_position_signal",
+        "args": {
+            "as_of_date": "2026-04-24",
+            "instrument_symbol": "NK225.IDX",
+            "etf_symbol": "159866.SZ",
+            "model_mode": "v3_hgb",
+            "model_artifact_path": artifact_path.to_string_lossy(),
+            "minimum_index_history_days": 220,
+            "planned_execution_date": "2026-04-27",
+            "current_cash_cny": 100_000.0,
+            "current_positions": [
+                {
+                    "etf_symbol": "159866.SZ",
+                    "shares": 300_000.0
+                },
+                {
+                    "etf_symbol": "513520.SS",
+                    "shares": 300_000.0
+                }
+            ],
+            "execution_quotes": [
+                {
+                    "etf_symbol": "159866.SZ",
+                    "execution_date": "2026-04-27",
+                    "open_price": 1.50,
+                    "nav": 1.50
+                },
+                {
+                    "etf_symbol": "513520.SS",
+                    "execution_date": "2026-04-27",
+                    "open_price": 2.10,
+                    "nav": 2.00
+                }
+            ],
+            "commission_rate": 0.0003,
+            "extreme_premium_block_pct": 5.0
+        }
+    });
+
+    let output = run_cli_with_json_and_runtime(&request.to_string(), &runtime_db_path);
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    assert_eq!(output["data"]["execution_plan"]["action"], "sell_to_target");
+    assert_eq!(
+        output["data"]["execution_plan"]["trade_legs"][0]["etf_symbol"],
+        "513520.SS"
+    );
+    assert!(
+        output["data"]["execution_plan"]["trade_legs"][0]["gross_value"]
+            .as_f64()
+            .expect("first sell leg gross should be numeric")
+            > 0.0
+    );
+}
+
 fn build_trending_rows(row_count: usize) -> Vec<StockHistoryRow> {
     let start_date = NaiveDate::from_ymd_opt(2025, 8, 28).expect("fixture date should be valid");
 

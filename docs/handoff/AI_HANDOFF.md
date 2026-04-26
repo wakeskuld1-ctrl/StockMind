@@ -18,6 +18,25 @@ Use these sources in this order:
 
 If any historical note in this file conflicts with the current branch output, the current branch output wins.
 
+## Nikkei ETF HGB/RF V3 Research Package
+
+The current Nikkei ETF research package is stored at:
+
+`docs/research/nikkei-etf-hgb-rf-v3-20260427/`
+
+Start with:
+
+- `README.md`
+- `ALGORITHM_HANDOFF_MANUAL.md`
+- `UPLOAD_NOTES.md`
+- `artifact_manifest.csv`
+
+Operational warning:
+
+- Use `live_pre_year` for live-like model interpretation.
+- Treat `known_labels_asof` as diagnostic only because it can include completed forward-label information.
+- Ignore old non-policy JSON artifact filenames unless debugging historical overwrite behavior; use policy-qualified JSON files instead.
+
 ## 1. Current Mainline
 
 - Date: 2026-04-17

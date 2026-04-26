@@ -1,0 +1,812 @@
+{
+  "model_id": "global_index_nikkei_index_1w_direction_head",
+  "model_version": "candidate_2026_04_26T00_30_00_08_00",
+  "label_definition": "current_code_contract",
+  "target_head": "direction_head",
+  "target_label_definition": "positive_return_1w",
+  "prediction_mode": "direction_probability",
+  "prediction_baseline": null,
+  "training_window": "2020-10-01..2025-09-30",
+  "oot_window": "2026-01-01..2026-04-17",
+  "positive_label_definition": "positive_return_1w",
+  "instrument_subscope": "nikkei_index",
+  "binning_version": "woe_binning.v1",
+  "coefficient_version": "woe_logistic.v1",
+  "model_sha256": null,
+  "intercept": 0.3248958700237617,
+  "base_score": 600.0,
+  "features": [
+    {
+      "feature_name": "weekly_spot_return_min",
+      "group_name": "W",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": -0.01355404172574659,
+          "woe": 0.19984390748615705,
+          "logit_contribution": -0.3727160583894331,
+          "points": -37.27160583894331,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": -0.01355404172574659,
+          "max_exclusive": -0.005686545146802446,
+          "woe": -0.08362052902142034,
+          "logit_contribution": 0.15595528715060714,
+          "points": 15.595528715060713,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": -0.005686545146802446,
+          "max_exclusive": null,
+          "woe": -0.11392587851674935,
+          "logit_contribution": 0.21247585139545724,
+          "points": 21.247585139545723,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_spot_return_p10",
+      "group_name": "W",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": -0.010408456122191401,
+          "woe": 0.318368845077993,
+          "logit_contribution": 0.6630995106268659,
+          "points": 66.3099510626866,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": -0.010408456122191401,
+          "max_exclusive": -0.0038970604724203987,
+          "woe": -0.19398349654179747,
+          "logit_contribution": -0.40402936284498175,
+          "points": -40.402936284498175,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": -0.0038970604724203987,
+          "max_exclusive": null,
+          "woe": -0.11392587851674935,
+          "logit_contribution": -0.2372851347112362,
+          "points": -23.72851347112362,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_spot_return_p25",
+      "group_name": "W",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": -0.0066384963731930535,
+          "woe": 0.19984390748615705,
+          "logit_contribution": 0.1003731734021051,
+          "points": 10.03731734021051,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": -0.0066384963731930535,
+          "max_exclusive": -0.0014058119444991524,
+          "woe": -0.30368241379822203,
+          "logit_contribution": -0.15252687941687787,
+          "points": -15.252687941687787,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": -0.0014058119444991524,
+          "max_exclusive": null,
+          "woe": 0.10741651202819849,
+          "logit_contribution": 0.05395078751050998,
+          "points": 5.395078751050998,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_spot_return_p50",
+      "group_name": "W",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": -0.0019818880543167605,
+          "woe": 0.08468826095064214,
+          "logit_contribution": -0.009871205805377762,
+          "points": -0.9871205805377762,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": -0.0019818880543167605,
+          "max_exclusive": 0.0027878100342000334,
+          "woe": -0.08362052902142034,
+          "logit_contribution": 0.009746751701585689,
+          "points": 0.9746751701585689,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 0.0027878100342000334,
+          "max_exclusive": null,
+          "woe": -0.0041658836994381615,
+          "logit_contribution": 0.00048557255630021014,
+          "points": 0.048557255630021015,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_spot_return_p75",
+      "group_name": "W",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.002989815478634833,
+          "woe": -0.027976532393156728,
+          "logit_contribution": -0.0016557938107746987,
+          "points": -0.16557938107746986,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.002989815478634833,
+          "max_exclusive": 0.007618705370434464,
+          "woe": -0.19398349654179747,
+          "logit_contribution": -0.011480932248948429,
+          "points": -1.1480932248948428,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 0.007618705370434464,
+          "max_exclusive": null,
+          "woe": 0.221583894122563,
+          "logit_contribution": 0.013114464483998802,
+          "points": 1.3114464483998802,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_spot_return_p90",
+      "group_name": "W",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.00605251199396604,
+          "woe": 0.08468826095064214,
+          "logit_contribution": 0.11341759009512395,
+          "points": 11.341759009512394,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.00605251199396604,
+          "max_exclusive": 0.011510787818257495,
+          "woe": -0.19398349654179747,
+          "logit_contribution": -0.25978973294562213,
+          "points": -25.978973294562213,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 0.011510787818257495,
+          "max_exclusive": null,
+          "woe": 0.10741651202819849,
+          "logit_contribution": 0.14385608812728598,
+          "points": 14.385608812728599,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_spot_return_max",
+      "group_name": "W",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.00720304347903844,
+          "woe": -0.08362052902142034,
+          "logit_contribution": -0.1347038979210097,
+          "points": -13.47038979210097,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.00720304347903844,
+          "max_exclusive": 0.014112782405465207,
+          "woe": 0.08468826095064214,
+          "logit_contribution": 0.13642390202148666,
+          "points": 13.642390202148666,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 0.014112782405465207,
+          "max_exclusive": null,
+          "woe": -0.0041658836994381615,
+          "logit_contribution": -0.006710801512104386,
+          "points": -0.6710801512104386,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_spot_close_position",
+      "group_name": "W",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.37939172749391503,
+          "woe": -0.18449389653310372,
+          "logit_contribution": -0.07058685259898166,
+          "points": -7.058685259898166,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.37939172749391503,
+          "max_exclusive": 0.6657210116496772,
+          "woe": 0.16168083589101132,
+          "logit_contribution": 0.06185863893373409,
+          "points": 6.185863893373409,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 0.6657210116496772,
+          "max_exclusive": null,
+          "woe": 0.09765897712608035,
+          "logit_contribution": 0.03736405351560812,
+          "points": 3.736405351560812,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_spot_drawdown",
+      "group_name": "W",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.01670562086509575,
+          "woe": -0.19398349654179747,
+          "logit_contribution": -0.06793813838660374,
+          "points": -6.793813838660374,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.01670562086509575,
+          "max_exclusive": 0.025690138926465322,
+          "woe": 0.258625165802912,
+          "logit_contribution": 0.09057735641336205,
+          "points": 9.057735641336205,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 0.025690138926465322,
+          "max_exclusive": null,
+          "woe": -0.05922907589726138,
+          "logit_contribution": -0.02074358502941909,
+          "points": -2.074358502941909,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_spot_rebound",
+      "group_name": "W",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.37939172749391503,
+          "woe": -0.18449389653310372,
+          "logit_contribution": -0.07058685259898166,
+          "points": -7.058685259898166,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.37939172749391503,
+          "max_exclusive": 0.6657210116496772,
+          "woe": 0.16168083589101132,
+          "logit_contribution": 0.06185863893373409,
+          "points": 6.185863893373409,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 0.6657210116496772,
+          "max_exclusive": null,
+          "woe": 0.09765897712608035,
+          "logit_contribution": 0.03736405351560812,
+          "points": 3.736405351560812,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_volume_ratio_4w",
+      "group_name": "V",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.9171361824927855,
+          "woe": -0.35849065029321703,
+          "logit_contribution": -0.12109970811994558,
+          "points": -12.109970811994557,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.9171361824927855,
+          "max_exclusive": 1.0840941854877464,
+          "woe": -0.027976532393156728,
+          "logit_contribution": -0.009450594887895701,
+          "points": -0.9450594887895701,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 1.0840941854877464,
+          "max_exclusive": null,
+          "woe": 0.3996171382257412,
+          "logit_contribution": 0.13499241544872406,
+          "points": 13.499241544872406,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_volume_ratio_13w",
+      "group_name": "V",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.9285714285714285,
+          "woe": -0.08362052902142034,
+          "logit_contribution": 0.05550158383478952,
+          "points": 5.550158383478952,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.9285714285714285,
+          "max_exclusive": 1.097586112497786,
+          "woe": -0.19398349654179747,
+          "logit_contribution": 0.128752967983762,
+          "points": 12.875296798376201,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 1.097586112497786,
+          "max_exclusive": null,
+          "woe": 0.2799025642501969,
+          "logit_contribution": -0.18578016447761755,
+          "points": -18.578016447761755,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_volume_ratio_26w",
+      "group_name": "V",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.952750777246642,
+          "woe": -0.19398349654179747,
+          "logit_contribution": 0.06903892402806727,
+          "points": 6.9038924028067274,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.952750777246642,
+          "max_exclusive": 1.1081232675158716,
+          "woe": -0.1389271807221667,
+          "logit_contribution": 0.049444325142600935,
+          "points": 4.944432514260093,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 1.1081232675158716,
+          "max_exclusive": null,
+          "woe": 0.33920293198083507,
+          "logit_contribution": -0.12072266903425281,
+          "points": -12.072266903425282,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_volume_ratio_52w",
+      "group_name": "V",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.96969764921329,
+          "woe": -0.19398349654179747,
+          "logit_contribution": -0.08604198317128971,
+          "points": -8.60419831712897,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.96969764921329,
+          "max_exclusive": 1.1666647603143194,
+          "woe": -0.1389271807221667,
+          "logit_contribution": -0.06162158306676241,
+          "points": -6.162158306676241,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 1.1666647603143194,
+          "max_exclusive": null,
+          "woe": 0.33920293198083507,
+          "logit_contribution": 0.1504545153863567,
+          "points": 15.045451538635671,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_price_position_52w",
+      "group_name": "V",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.5294426212791661,
+          "woe": 0.1641258248840778,
+          "logit_contribution": 0.1138775450972054,
+          "points": 11.387754509720539,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.5294426212791661,
+          "max_exclusive": 0.7746619663641244,
+          "woe": 0.05495139462584353,
+          "logit_contribution": 0.03812763728120585,
+          "points": 3.812763728120585,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 0.7746619663641244,
+          "max_exclusive": null,
+          "woe": -0.18449389653310372,
+          "logit_contribution": -0.1280097878408035,
+          "points": -12.80097878408035,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_volume_accumulation_26w",
+      "group_name": "V",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.016997147892103534,
+          "woe": -0.18191054158060574,
+          "logit_contribution": 0.008977739554486799,
+          "points": 0.8977739554486799,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.016997147892103534,
+          "max_exclusive": 0.07410725541668688,
+          "woe": 0.3275893630436359,
+          "logit_contribution": -0.01616735323127387,
+          "points": -1.616735323127387,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 0.07410725541668688,
+          "max_exclusive": null,
+          "woe": 0.4526436683832549,
+          "logit_contribution": -0.02233909552697194,
+          "points": -2.2339095526971944,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_volume_accumulation_52w",
+      "group_name": "V",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.02355603293345854,
+          "woe": -0.20359895524123955,
+          "logit_contribution": -0.15715053909020268,
+          "points": -15.715053909020268,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.02355603293345854,
+          "max_exclusive": 0.08351613182973266,
+          "woe": 0.3707726337495706,
+          "logit_contribution": 0.2861857478816626,
+          "points": 28.618574788166264,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 0.08351613182973266,
+          "max_exclusive": null,
+          "woe": 0.3707726337495706,
+          "logit_contribution": 0.2861857478816626,
+          "points": 28.618574788166264,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_high_volume_low_price_signal",
+      "group_name": "V",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.0,
+          "woe": -0.30368241379822214,
+          "logit_contribution": -0.1350512846115352,
+          "points": -13.50512846115352,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.0,
+          "max_exclusive": 1.0,
+          "woe": -0.07266037491193252,
+          "logit_contribution": -0.032312957637159356,
+          "points": -3.2312957637159356,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 1.0,
+          "max_exclusive": null,
+          "woe": 0.8663888388520326,
+          "logit_contribution": 0.38529371588111483,
+          "points": 38.52937158811148,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_high_volume_breakout_signal",
+      "group_name": "V",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.0,
+          "woe": -0.30368241379822214,
+          "logit_contribution": -0.019886998047078018,
+          "points": -1.9886998047078017,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.0,
+          "max_exclusive": 1.0,
+          "woe": -0.011110356052249455,
+          "logit_contribution": -0.0007275746604814423,
+          "points": -0.07275746604814423,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 1.0,
+          "max_exclusive": null,
+          "woe": 0.04995762644535635,
+          "logit_contribution": 0.003271533596988523,
+          "points": 0.3271533596988523,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_up_day_volume_share",
+      "group_name": "V",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.3638297872340426,
+          "woe": -0.22672137266209358,
+          "logit_contribution": 0.10708257309224835,
+          "points": 10.708257309224836,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.3638297872340426,
+          "max_exclusive": 0.5352013517319065,
+          "woe": 0.07210692616382568,
+          "logit_contribution": -0.03405675918742436,
+          "points": -3.405675918742436,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 0.5352013517319065,
+          "max_exclusive": null,
+          "woe": 0.1776207707014468,
+          "logit_contribution": -0.08389191075376372,
+          "points": -8.389191075376372,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_down_day_volume_share",
+      "group_name": "V",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.35022650056625143,
+          "woe": 0.0969400698341543,
+          "logit_contribution": 0.2003966083576131,
+          "points": 20.03966083576131,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.35022650056625143,
+          "max_exclusive": 0.47254430102822137,
+          "woe": 0.18333256127405023,
+          "logit_contribution": 0.3789890346034168,
+          "points": 37.898903460341685,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 0.47254430102822137,
+          "max_exclusive": null,
+          "woe": -0.30368241379822214,
+          "logit_contribution": -0.6277788518940758,
+          "points": -62.77788518940758,
+          "predicted_value": null
+        }
+      ]
+    },
+    {
+      "feature_name": "weekly_volume_price_confirmation",
+      "group_name": "V",
+      "bins": [
+        {
+          "bin_label": "bin_1",
+          "match_values": [],
+          "min_inclusive": null,
+          "max_exclusive": 0.0,
+          "woe": 0.2208420543259306,
+          "logit_contribution": 0.13877202516547651,
+          "points": 13.877202516547651,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_2",
+          "match_values": [],
+          "min_inclusive": 0.0,
+          "max_exclusive": 1.0,
+          "woe": -0.24259472181838387,
+          "logit_contribution": -0.15244089692947424,
+          "points": -15.244089692947425,
+          "predicted_value": null
+        },
+        {
+          "bin_label": "bin_3",
+          "match_values": [],
+          "min_inclusive": 1.0,
+          "max_exclusive": null,
+          "woe": 0.49643688631389116,
+          "logit_contribution": 0.31194942598635783,
+          "points": 31.194942598635784,
+          "predicted_value": null
+        }
+      ]
+    }
+  ]
+}

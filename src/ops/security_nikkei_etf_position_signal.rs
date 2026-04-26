@@ -15,6 +15,10 @@ const DOCUMENT_TYPE: &str = "security_nikkei_etf_position_signal";
 const DEFAULT_MINIMUM_INDEX_HISTORY_DAYS: usize = 220;
 const DEFAULT_MODEL_MODE: &str = "rule_only";
 const HGB_ADJUSTMENT_CONTRACT_VERSION: &str = "nikkei_v3_hgb_adjustment.v1";
+const DEFAULT_COMMISSION_RATE: f64 = 0.0003;
+const DEFAULT_EXTREME_PREMIUM_BLOCK_PCT: f64 = 5.0;
+const LIVE_EXECUTION_PRICE_BASIS: &str = "next_open";
+const LIVE_PREMIUM_BASIS: &str = "open_price_div_nav_proxy_not_intraday_iopv";
 
 // 2026-04-26 CST: Added because the approved Nikkei ETF daily Tool needs one
 // stable input contract before it can be run by operators every day.
@@ -37,6 +41,18 @@ pub struct SecurityNikkeiEtfPositionSignalRequest {
     pub component_weights_path: Option<String>,
     #[serde(default)]
     pub component_history_dir: Option<String>,
+    #[serde(default)]
+    pub planned_execution_date: Option<String>,
+    #[serde(default)]
+    pub current_cash_cny: Option<f64>,
+    #[serde(default)]
+    pub current_positions: Option<Vec<NikkeiEtfExecutionPosition>>,
+    #[serde(default)]
+    pub execution_quotes: Option<Vec<NikkeiEtfExecutionQuote>>,
+    #[serde(default)]
+    pub commission_rate: Option<f64>,
+    #[serde(default)]
+    pub extreme_premium_block_pct: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -61,6 +77,67 @@ pub struct SecurityNikkeiEtfPositionSignalResult {
     pub risk_flags: Vec<String>,
     pub data_coverage: NikkeiEtfPositionDataCoverage,
     pub decision_trace: NikkeiEtfPositionDecisionTrace,
+    pub execution_plan: Option<NikkeiEtfLiveExecutionPlan>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct NikkeiEtfExecutionPosition {
+    pub etf_symbol: String,
+    pub shares: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct NikkeiEtfExecutionQuote {
+    pub etf_symbol: String,
+    pub execution_date: String,
+    pub open_price: f64,
+    pub nav: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct NikkeiEtfLiveExecutionPlan {
+    pub planned_execution_date: String,
+    pub execution_price_basis: String,
+    pub premium_basis: String,
+    pub current_cash_cny: f64,
+    pub current_position_value: f64,
+    pub current_equity: f64,
+    pub current_position_ratio: f64,
+    pub target_position: f64,
+    pub action: String,
+    pub selected_buy_etf_symbol: Option<String>,
+    pub trade_gross_value: f64,
+    pub estimated_fee: f64,
+    pub estimated_cash_required: f64,
+    pub estimated_cash_after: f64,
+    pub minimum_rebalance_delta: f64,
+    pub commission_rate: f64,
+    pub extreme_premium_block_pct: f64,
+    pub quote_assessments: Vec<NikkeiEtfQuoteAssessment>,
+    pub trade_legs: Vec<NikkeiEtfExecutionTradeLeg>,
+    pub reason_codes: Vec<String>,
+    pub risk_flags: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct NikkeiEtfQuoteAssessment {
+    pub etf_symbol: String,
+    pub execution_date: String,
+    pub open_price: f64,
+    pub nav: f64,
+    pub premium_open_proxy_pct: f64,
+    pub current_shares: f64,
+    pub current_value: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct NikkeiEtfExecutionTradeLeg {
+    pub etf_symbol: String,
+    pub side: String,
+    pub shares: f64,
+    pub gross_value: f64,
+    pub estimated_fee: f64,
+    pub premium_open_proxy_pct: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -220,6 +297,7 @@ pub fn security_nikkei_etf_position_signal(
                 metrics.ma200_slope
             ),
         },
+        execution_plan: build_live_execution_plan(request, target_position)?,
     })
 }
 
@@ -274,7 +352,285 @@ fn validate_request(
             "etf_symbol cannot be empty".to_string(),
         ));
     }
+    validate_live_execution_request(request)?;
     Ok(())
+}
+
+fn validate_live_execution_request(
+    request: &SecurityNikkeiEtfPositionSignalRequest,
+) -> Result<(), SecurityNikkeiEtfPositionSignalError> {
+    let has_live_field = request.planned_execution_date.is_some()
+        || request.current_cash_cny.is_some()
+        || request.current_positions.is_some()
+        || request.execution_quotes.is_some()
+        || request.commission_rate.is_some()
+        || request.extreme_premium_block_pct.is_some();
+    if !has_live_field {
+        return Ok(());
+    }
+
+    let execution_date = request
+        .planned_execution_date
+        .as_deref()
+        .map(str::trim)
+        .filter(|date| !date.is_empty())
+        .ok_or_else(|| {
+            SecurityNikkeiEtfPositionSignalError::Build(
+                "planned_execution_date is required for live execution planning".to_string(),
+            )
+        })?;
+    let as_of_date =
+        NaiveDate::parse_from_str(request.as_of_date.trim(), "%Y-%m-%d").map_err(|error| {
+            SecurityNikkeiEtfPositionSignalError::Build(format!(
+                "as_of_date must use YYYY-MM-DD: {error}"
+            ))
+        })?;
+    let planned_date = NaiveDate::parse_from_str(execution_date, "%Y-%m-%d").map_err(|error| {
+        SecurityNikkeiEtfPositionSignalError::Build(format!(
+            "planned_execution_date must use YYYY-MM-DD: {error}"
+        ))
+    })?;
+    if planned_date <= as_of_date {
+        return Err(SecurityNikkeiEtfPositionSignalError::Build(
+            "planned_execution_date must be after as_of_date for T-1 signal / T open execution"
+                .to_string(),
+        ));
+    }
+
+    if request.current_cash_cny.unwrap_or(-1.0) < 0.0 {
+        return Err(SecurityNikkeiEtfPositionSignalError::Build(
+            "current_cash_cny must be supplied and non-negative for live execution planning"
+                .to_string(),
+        ));
+    }
+    let Some(positions) = &request.current_positions else {
+        return Err(SecurityNikkeiEtfPositionSignalError::Build(
+            "current_positions is required for live execution planning".to_string(),
+        ));
+    };
+    for position in positions {
+        if position.etf_symbol.trim().is_empty() || position.shares < 0.0 {
+            return Err(SecurityNikkeiEtfPositionSignalError::Build(
+                "current_positions require non-empty etf_symbol and non-negative shares"
+                    .to_string(),
+            ));
+        }
+    }
+
+    let Some(quotes) = &request.execution_quotes else {
+        return Err(SecurityNikkeiEtfPositionSignalError::Build(
+            "execution_quotes is required for live execution planning".to_string(),
+        ));
+    };
+    if quotes.is_empty() {
+        return Err(SecurityNikkeiEtfPositionSignalError::Build(
+            "execution_quotes cannot be empty for live execution planning".to_string(),
+        ));
+    }
+    for quote in quotes {
+        if quote.etf_symbol.trim().is_empty()
+            || quote.open_price <= 0.0
+            || quote.nav <= 0.0
+            || quote.execution_date.trim() != execution_date
+        {
+            return Err(SecurityNikkeiEtfPositionSignalError::Build(
+                "execution_quotes require matching execution_date, non-empty etf_symbol, positive open_price, and positive nav".to_string(),
+            ));
+        }
+    }
+    if request.commission_rate.unwrap_or(DEFAULT_COMMISSION_RATE) < 0.0 {
+        return Err(SecurityNikkeiEtfPositionSignalError::Build(
+            "commission_rate cannot be negative".to_string(),
+        ));
+    }
+    if request
+        .extreme_premium_block_pct
+        .unwrap_or(DEFAULT_EXTREME_PREMIUM_BLOCK_PCT)
+        <= 0.0
+    {
+        return Err(SecurityNikkeiEtfPositionSignalError::Build(
+            "extreme_premium_block_pct must be positive".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+// 2026-04-26 CST: Added because the Nikkei ETF daily Tool must move from a
+// research signal into an auditable live-open execution plan without changing
+// the signal model itself. Purpose: codify T-1 signal / T open execution, lower
+// premium buy selection, high-premium-first selling, and extreme-premium buy block.
+fn build_live_execution_plan(
+    request: &SecurityNikkeiEtfPositionSignalRequest,
+    target_position: f64,
+) -> Result<Option<NikkeiEtfLiveExecutionPlan>, SecurityNikkeiEtfPositionSignalError> {
+    let Some(planned_execution_date) = request.planned_execution_date.as_deref().map(str::trim)
+    else {
+        return Ok(None);
+    };
+    let current_cash_cny = request.current_cash_cny.ok_or_else(|| {
+        SecurityNikkeiEtfPositionSignalError::Build(
+            "current_cash_cny is required for live execution planning".to_string(),
+        )
+    })?;
+    let positions = request.current_positions.as_deref().ok_or_else(|| {
+        SecurityNikkeiEtfPositionSignalError::Build(
+            "current_positions is required for live execution planning".to_string(),
+        )
+    })?;
+    let quotes = request.execution_quotes.as_deref().ok_or_else(|| {
+        SecurityNikkeiEtfPositionSignalError::Build(
+            "execution_quotes is required for live execution planning".to_string(),
+        )
+    })?;
+    let commission_rate = request.commission_rate.unwrap_or(DEFAULT_COMMISSION_RATE);
+    let extreme_premium_block_pct = request
+        .extreme_premium_block_pct
+        .unwrap_or(DEFAULT_EXTREME_PREMIUM_BLOCK_PCT);
+
+    let mut quote_assessments = quotes
+        .iter()
+        .map(|quote| {
+            let current_shares = shares_for_symbol(positions, &quote.etf_symbol);
+            let current_value = current_shares * quote.open_price;
+            NikkeiEtfQuoteAssessment {
+                etf_symbol: quote.etf_symbol.trim().to_string(),
+                execution_date: quote.execution_date.trim().to_string(),
+                open_price: quote.open_price,
+                nav: quote.nav,
+                premium_open_proxy_pct: (quote.open_price / quote.nav - 1.0) * 100.0,
+                current_shares,
+                current_value,
+            }
+        })
+        .collect::<Vec<_>>();
+    quote_assessments.sort_by(|left, right| left.etf_symbol.cmp(&right.etf_symbol));
+
+    let current_position_value = quote_assessments
+        .iter()
+        .map(|assessment| assessment.current_value)
+        .sum::<f64>();
+    let current_equity = current_cash_cny + current_position_value;
+    if current_equity <= 0.0 {
+        return Err(SecurityNikkeiEtfPositionSignalError::Build(
+            "current equity must be positive for live execution planning".to_string(),
+        ));
+    }
+    let current_position_ratio = current_position_value / current_equity;
+    let delta_position = target_position - current_position_ratio;
+    let mut action = "hold".to_string();
+    let mut selected_buy_etf_symbol = None;
+    let mut trade_gross_value = 0.0;
+    let mut estimated_fee = 0.0;
+    let mut estimated_cash_required = 0.0;
+    let mut estimated_cash_after = current_cash_cny;
+    let mut trade_legs = Vec::new();
+    let mut reason_codes = Vec::new();
+    let mut risk_flags = Vec::new();
+
+    if delta_position > f64::EPSILON {
+        let Some(best_quote) = quote_assessments.iter().min_by(|left, right| {
+            left.premium_open_proxy_pct
+                .partial_cmp(&right.premium_open_proxy_pct)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        }) else {
+            return Err(SecurityNikkeiEtfPositionSignalError::Build(
+                "execution_quotes cannot be empty for live execution planning".to_string(),
+            ));
+        };
+        if best_quote.premium_open_proxy_pct > extreme_premium_block_pct {
+            action = "delay_buy_extreme_premium".to_string();
+            selected_buy_etf_symbol = Some(best_quote.etf_symbol.clone());
+            reason_codes.push("all_etf_open_premium_above_extreme_block".to_string());
+            risk_flags.push("all_etf_open_premium_above_extreme_block".to_string());
+        } else {
+            action = "buy_to_target".to_string();
+            selected_buy_etf_symbol = Some(best_quote.etf_symbol.clone());
+            let desired_gross = delta_position * current_equity;
+            trade_gross_value = desired_gross.min(current_cash_cny / (1.0 + commission_rate));
+            estimated_fee = trade_gross_value * commission_rate;
+            estimated_cash_required = trade_gross_value + estimated_fee;
+            estimated_cash_after = current_cash_cny - estimated_cash_required;
+            trade_legs.push(NikkeiEtfExecutionTradeLeg {
+                etf_symbol: best_quote.etf_symbol.clone(),
+                side: "buy".to_string(),
+                shares: trade_gross_value / best_quote.open_price,
+                gross_value: trade_gross_value,
+                estimated_fee,
+                premium_open_proxy_pct: best_quote.premium_open_proxy_pct,
+            });
+            reason_codes.push("buy_lower_open_premium_etf".to_string());
+        }
+    } else if delta_position < -f64::EPSILON {
+        action = "sell_to_target".to_string();
+        let mut remaining_gross = (-delta_position) * current_equity;
+        let mut sell_candidates = quote_assessments
+            .iter()
+            .filter(|assessment| assessment.current_value > 0.0)
+            .collect::<Vec<_>>();
+        sell_candidates.sort_by(|left, right| {
+            right
+                .premium_open_proxy_pct
+                .partial_cmp(&left.premium_open_proxy_pct)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        for assessment in sell_candidates {
+            if remaining_gross <= f64::EPSILON {
+                break;
+            }
+            let leg_gross = remaining_gross.min(assessment.current_value);
+            let leg_fee = leg_gross * commission_rate;
+            trade_gross_value += leg_gross;
+            estimated_fee += leg_fee;
+            trade_legs.push(NikkeiEtfExecutionTradeLeg {
+                etf_symbol: assessment.etf_symbol.clone(),
+                side: "sell".to_string(),
+                shares: leg_gross / assessment.open_price,
+                gross_value: leg_gross,
+                estimated_fee: leg_fee,
+                premium_open_proxy_pct: assessment.premium_open_proxy_pct,
+            });
+            remaining_gross -= leg_gross;
+        }
+        estimated_cash_after = current_cash_cny + trade_gross_value - estimated_fee;
+        reason_codes.push("sell_high_open_premium_etf_first".to_string());
+        if remaining_gross > f64::EPSILON {
+            risk_flags.push("insufficient_quoted_position_value_to_reach_target".to_string());
+        }
+    } else {
+        reason_codes.push("already_at_target_position".to_string());
+    }
+
+    Ok(Some(NikkeiEtfLiveExecutionPlan {
+        planned_execution_date: planned_execution_date.to_string(),
+        execution_price_basis: LIVE_EXECUTION_PRICE_BASIS.to_string(),
+        premium_basis: LIVE_PREMIUM_BASIS.to_string(),
+        current_cash_cny,
+        current_position_value,
+        current_equity,
+        current_position_ratio,
+        target_position,
+        action,
+        selected_buy_etf_symbol,
+        trade_gross_value,
+        estimated_fee,
+        estimated_cash_required,
+        estimated_cash_after,
+        minimum_rebalance_delta: 0.0,
+        commission_rate,
+        extreme_premium_block_pct,
+        quote_assessments,
+        trade_legs,
+        reason_codes,
+        risk_flags,
+    }))
+}
+
+fn shares_for_symbol(positions: &[NikkeiEtfExecutionPosition], etf_symbol: &str) -> f64 {
+    positions
+        .iter()
+        .filter(|position| position.etf_symbol.trim() == etf_symbol.trim())
+        .map(|position| position.shares)
+        .sum()
 }
 
 fn normalized_model_mode(request: &SecurityNikkeiEtfPositionSignalRequest) -> String {

@@ -1,0 +1,18 @@
+{
+  "refit_run_id": "refit-GLOBAL-INDEX-2026_04_26T00_30_00_08_00",
+  "contract_version": "security_scorecard_refit_run.v1",
+  "document_type": "security_scorecard_refit_run",
+  "market_scope": "GLOBAL",
+  "instrument_scope": "INDEX",
+  "feature_set_version": "nikkei_current_rerun_20260426_yfinance_10y_long_volume_behavior",
+  "label_definition_version": "current_code_contract",
+  "train_range": "2020-10-01..2025-09-30",
+  "valid_range": "2025-10-01..2025-12-31",
+  "test_range": "2026-01-01..2026-04-17",
+  "candidate_artifact_path": "D:\\.stockmind_runtime\\nikkei_current_rerun_20260426_direction_head_yfinance_10y_long_volume_behavior\\scorecard_artifacts\\global_index_nikkei_index_1w_direction_head__candidate_2026_04_26T00_30_00_08_00.json",
+  "candidate_registry_ref": "registry-global_index_nikkei_index_1w_direction_head-candidate_2026_04_26T00_30_00_08_00-10d-direction_head",
+  "comparison_to_champion_json": null,
+  "promotion_decision": "candidate_only",
+  "model_grade": "candidate",
+  "created_at": "2026-04-26T00:30:00+08:00"
+}
