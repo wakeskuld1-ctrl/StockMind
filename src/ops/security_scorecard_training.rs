@@ -67,6 +67,11 @@ pub struct SecurityScorecardTrainingRequest {
     // Purpose: freeze one optional futures identity on the governed training request.
     #[serde(default)]
     pub futures_symbol: Option<String>,
+    // 2026-04-25 CST: Added because Nikkei FRED spot history has no traded volume.
+    // Reason: weekly training needs a separate volume-only proxy without treating it as a futures price factor.
+    // Purpose: keep price source and volume source explicit so volume features can vary without contaminating spot labels.
+    #[serde(default)]
+    pub volume_proxy_symbol: Option<String>,
     // 2026-04-22 CST: Added because scheme C freezes one explicit training-contract switch
     // before preview A/B retraining compares baseline against JPX/MOF-enhanced Nikkei runs.
     // Reason: the user approved capital-source features as an isolated delta instead of another mixed retrain.
@@ -911,6 +916,49 @@ fn training_feature_configs(
                 group_name: "V",
                 kind: TrainingFeatureKind::Numeric,
             },
+            // 2026-04-26 CST: Added because Nikkei index accumulation can be a
+            // half-year or yearly behavior instead of a 4-week volume burst.
+            // Purpose: let weekly training inspect slow institutional positioning.
+            TrainingFeatureConfig {
+                feature_name: "weekly_volume_ratio_13w",
+                group_name: "V",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_volume_ratio_26w",
+                group_name: "V",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_volume_ratio_52w",
+                group_name: "V",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_price_position_52w",
+                group_name: "V",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_volume_accumulation_26w",
+                group_name: "V",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_volume_accumulation_52w",
+                group_name: "V",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_high_volume_low_price_signal",
+                group_name: "V",
+                kind: TrainingFeatureKind::Numeric,
+            },
+            TrainingFeatureConfig {
+                feature_name: "weekly_high_volume_breakout_signal",
+                group_name: "V",
+                kind: TrainingFeatureKind::Numeric,
+            },
             TrainingFeatureConfig {
                 feature_name: "weekly_up_day_volume_share",
                 group_name: "V",
@@ -1144,6 +1192,14 @@ fn uses_nikkei_futures_feature_contract(request: &SecurityScorecardTrainingReque
             .as_deref()
             .map(str::trim)
             .is_some_and(|symbol| !symbol.is_empty())
+}
+
+fn normalized_volume_proxy_symbol(request: &SecurityScorecardTrainingRequest) -> Option<&str> {
+    request
+        .volume_proxy_symbol
+        .as_deref()
+        .map(str::trim)
+        .filter(|symbol| !symbol.is_empty())
 }
 
 fn normalized_capital_source_feature_mode(
@@ -1392,9 +1448,23 @@ fn collect_weekly_samples(
         } else {
             None
         };
+        let volume_proxy_rows =
+            if let Some(volume_proxy_symbol) = normalized_volume_proxy_symbol(request) {
+                Some(load_rows_for_weekly_training(
+                    &store,
+                    volume_proxy_symbol,
+                    &window_start,
+                    &window_end,
+                )?)
+            } else {
+                None
+            };
 
-        let weekly_feature_rows =
-            build_weekly_price_feature_rows(&spot_rows, futures_rows.as_deref())?;
+        let weekly_feature_rows = build_weekly_price_feature_rows(
+            &spot_rows,
+            futures_rows.as_deref(),
+            volume_proxy_rows.as_deref(),
+        )?;
         let weekly_feature_map = weekly_feature_rows
             .into_iter()
             .map(|row| {
@@ -1545,9 +1615,23 @@ fn build_weekly_training_context(
         } else {
             None
         };
+        let volume_proxy_rows =
+            if let Some(volume_proxy_symbol) = normalized_volume_proxy_symbol(request) {
+                Some(load_rows_for_weekly_training(
+                    &store,
+                    volume_proxy_symbol,
+                    &window_start,
+                    &window_end,
+                )?)
+            } else {
+                None
+            };
 
-        let weekly_feature_rows =
-            build_weekly_price_feature_rows(&spot_rows, futures_rows.as_deref())?;
+        let weekly_feature_rows = build_weekly_price_feature_rows(
+            &spot_rows,
+            futures_rows.as_deref(),
+            volume_proxy_rows.as_deref(),
+        )?;
         let weekly_feature_map = weekly_feature_rows
             .into_iter()
             .map(|row| {
@@ -3656,7 +3740,7 @@ pub fn debug_build_weekly_price_feature_rows(
     spot_rows: &[StockHistoryRow],
     futures_rows: Option<&[StockHistoryRow]>,
 ) -> Result<Vec<WeeklyPriceFeatureRow>, SecurityScorecardTrainingError> {
-    build_weekly_price_feature_rows(spot_rows, futures_rows)
+    build_weekly_price_feature_rows(spot_rows, futures_rows, None)
 }
 
 pub fn debug_load_governed_weekly_observation_dates(
@@ -3689,6 +3773,7 @@ pub fn debug_build_weekly_rolling_split_plan(
 fn build_weekly_price_feature_rows(
     spot_rows: &[StockHistoryRow],
     futures_rows: Option<&[StockHistoryRow]>,
+    volume_proxy_rows: Option<&[StockHistoryRow]>,
 ) -> Result<Vec<WeeklyPriceFeatureRow>, SecurityScorecardTrainingError> {
     let weekly_spot_rows = build_weekly_price_buckets(spot_rows)?;
     let weekly_futures_rows = futures_rows
@@ -3696,6 +3781,14 @@ fn build_weekly_price_feature_rows(
         .transpose()?
         .unwrap_or_default();
     let futures_by_week = weekly_futures_rows
+        .into_iter()
+        .map(|bucket| (bucket.week_start, bucket))
+        .collect::<BTreeMap<_, _>>();
+    let weekly_volume_proxy_rows = volume_proxy_rows
+        .map(build_weekly_price_buckets)
+        .transpose()?
+        .unwrap_or_default();
+    let volume_proxy_by_week = weekly_volume_proxy_rows
         .into_iter()
         .map(|bucket| (bucket.week_start, bucket))
         .collect::<BTreeMap<_, _>>();
@@ -3714,35 +3807,23 @@ fn build_weekly_price_feature_rows(
         );
         feature_values.insert("weekly_spot_drawdown".to_string(), spot_bucket.drawdown);
         feature_values.insert("weekly_spot_rebound".to_string(), spot_bucket.rebound);
-        let volume_source_bucket = futures_by_week
+        let volume_source_bucket = volume_proxy_by_week
             .get(&spot_bucket.week_start)
             .filter(|bucket| bucket.total_volume > f64::EPSILON)
-            .unwrap_or(spot_bucket);
-        let prior_window = if index >= 4 {
-            &weekly_spot_rows[index - 4..index]
-        } else {
-            &weekly_spot_rows[..index]
-        };
-        let prior_volume_buckets = prior_window
-            .iter()
-            .map(|bucket| {
+            .or_else(|| {
                 futures_by_week
-                    .get(&bucket.week_start)
-                    .filter(|futures_bucket| futures_bucket.total_volume > f64::EPSILON)
-                    .unwrap_or(bucket)
+                    .get(&spot_bucket.week_start)
+                    .filter(|bucket| bucket.total_volume > f64::EPSILON)
             })
-            .collect::<Vec<_>>();
-        let prior_volume_mean = if prior_window.is_empty() {
-            None
-        } else {
-            Some(
-                prior_volume_buckets
-                    .iter()
-                    .map(|bucket| bucket.total_volume)
-                    .sum::<f64>()
-                    / prior_volume_buckets.len() as f64,
-            )
-        };
+            .unwrap_or(spot_bucket);
+        let prior_volume_buckets_4w = prior_volume_buckets_for_window(
+            &weekly_spot_rows,
+            &futures_by_week,
+            &volume_proxy_by_week,
+            index,
+            4,
+        );
+        let prior_volume_mean = mean_weekly_volume(&prior_volume_buckets_4w);
         feature_values.insert(
             "weekly_volume_ratio_4w".to_string(),
             prior_volume_mean
@@ -3754,6 +3835,80 @@ fn build_weekly_price_feature_rows(
                     }
                 })
                 .unwrap_or(1.0),
+        );
+        // 2026-04-26 CST: Added because current-week volume must be judged
+        // against quarterly, half-year, and yearly baselines for index-scale
+        // accumulation behavior. Purpose: avoid treating slow positioning as
+        // short-term volume noise.
+        let weekly_volume_ratio_13w = weekly_volume_ratio_for_window(
+            volume_source_bucket,
+            &weekly_spot_rows,
+            &futures_by_week,
+            &volume_proxy_by_week,
+            index,
+            13,
+        );
+        let weekly_volume_ratio_26w = weekly_volume_ratio_for_window(
+            volume_source_bucket,
+            &weekly_spot_rows,
+            &futures_by_week,
+            &volume_proxy_by_week,
+            index,
+            26,
+        );
+        let weekly_volume_ratio_52w = weekly_volume_ratio_for_window(
+            volume_source_bucket,
+            &weekly_spot_rows,
+            &futures_by_week,
+            &volume_proxy_by_week,
+            index,
+            52,
+        );
+        let weekly_price_position_52w =
+            price_position_in_prior_weeks(spot_bucket, &weekly_spot_rows, index, 52);
+        let weekly_volume_accumulation_26w =
+            (weekly_volume_ratio_26w - 1.0).max(0.0) * (1.0 - weekly_price_position_52w);
+        let weekly_volume_accumulation_52w =
+            (weekly_volume_ratio_52w - 1.0).max(0.0) * (1.0 - weekly_price_position_52w);
+        feature_values.insert(
+            "weekly_volume_ratio_13w".to_string(),
+            weekly_volume_ratio_13w,
+        );
+        feature_values.insert(
+            "weekly_volume_ratio_26w".to_string(),
+            weekly_volume_ratio_26w,
+        );
+        feature_values.insert(
+            "weekly_volume_ratio_52w".to_string(),
+            weekly_volume_ratio_52w,
+        );
+        feature_values.insert(
+            "weekly_price_position_52w".to_string(),
+            weekly_price_position_52w,
+        );
+        feature_values.insert(
+            "weekly_volume_accumulation_26w".to_string(),
+            weekly_volume_accumulation_26w,
+        );
+        feature_values.insert(
+            "weekly_volume_accumulation_52w".to_string(),
+            weekly_volume_accumulation_52w,
+        );
+        feature_values.insert(
+            "weekly_high_volume_low_price_signal".to_string(),
+            if weekly_volume_ratio_52w >= 1.10 && weekly_price_position_52w <= 0.40 {
+                1.0
+            } else {
+                0.0
+            },
+        );
+        feature_values.insert(
+            "weekly_high_volume_breakout_signal".to_string(),
+            if weekly_volume_ratio_52w >= 1.10 && weekly_price_position_52w >= 0.80 {
+                1.0
+            } else {
+                0.0
+            },
         );
         feature_values.insert(
             "weekly_up_day_volume_share".to_string(),
@@ -3810,6 +3965,115 @@ fn build_weekly_price_feature_rows(
     }
 
     Ok(feature_rows)
+}
+
+fn weekly_volume_ratio_for_window(
+    current_bucket: &WeeklyPriceBucket,
+    weekly_spot_rows: &[WeeklyPriceBucket],
+    futures_by_week: &BTreeMap<NaiveDate, WeeklyPriceBucket>,
+    volume_proxy_by_week: &BTreeMap<NaiveDate, WeeklyPriceBucket>,
+    index: usize,
+    prior_week_count: usize,
+) -> f64 {
+    let prior_volume_buckets = prior_volume_buckets_for_window(
+        weekly_spot_rows,
+        futures_by_week,
+        volume_proxy_by_week,
+        index,
+        prior_week_count,
+    );
+    let Some(prior_mean) = mean_weekly_volume(&prior_volume_buckets) else {
+        return 1.0;
+    };
+    if prior_mean <= f64::EPSILON {
+        1.0
+    } else {
+        current_bucket.total_volume / prior_mean
+    }
+}
+
+fn prior_volume_buckets_for_window<'a>(
+    weekly_spot_rows: &'a [WeeklyPriceBucket],
+    futures_by_week: &'a BTreeMap<NaiveDate, WeeklyPriceBucket>,
+    volume_proxy_by_week: &'a BTreeMap<NaiveDate, WeeklyPriceBucket>,
+    index: usize,
+    prior_week_count: usize,
+) -> Vec<&'a WeeklyPriceBucket> {
+    if index == 0 {
+        return Vec::new();
+    }
+    let start_index = index.saturating_sub(prior_week_count);
+    weekly_spot_rows[start_index..index]
+        .iter()
+        .map(|bucket| weekly_volume_source_bucket(bucket, futures_by_week, volume_proxy_by_week))
+        .collect()
+}
+
+fn weekly_volume_source_bucket<'a>(
+    spot_bucket: &'a WeeklyPriceBucket,
+    futures_by_week: &'a BTreeMap<NaiveDate, WeeklyPriceBucket>,
+    volume_proxy_by_week: &'a BTreeMap<NaiveDate, WeeklyPriceBucket>,
+) -> &'a WeeklyPriceBucket {
+    volume_proxy_by_week
+        .get(&spot_bucket.week_start)
+        .filter(|bucket| bucket.total_volume > f64::EPSILON)
+        .or_else(|| {
+            futures_by_week
+                .get(&spot_bucket.week_start)
+                .filter(|bucket| bucket.total_volume > f64::EPSILON)
+        })
+        .unwrap_or(spot_bucket)
+}
+
+fn mean_weekly_volume(prior_volume_buckets: &[&WeeklyPriceBucket]) -> Option<f64> {
+    if prior_volume_buckets.is_empty() {
+        return None;
+    }
+    Some(
+        prior_volume_buckets
+            .iter()
+            .map(|bucket| bucket.total_volume)
+            .sum::<f64>()
+            / prior_volume_buckets.len() as f64,
+    )
+}
+
+fn price_position_in_prior_weeks(
+    current_bucket: &WeeklyPriceBucket,
+    weekly_spot_rows: &[WeeklyPriceBucket],
+    index: usize,
+    prior_week_count: usize,
+) -> f64 {
+    if index == 0 {
+        return 0.5;
+    }
+    let start_index = index.saturating_sub(prior_week_count);
+    let prior_buckets = &weekly_spot_rows[start_index..index];
+    if prior_buckets.is_empty() || prior_buckets.len() < prior_week_count {
+        return 0.5;
+    }
+    let prior_closes = prior_buckets
+        .iter()
+        .filter_map(weekly_bucket_last_close)
+        .collect::<Vec<_>>();
+    if prior_closes.is_empty() {
+        return 0.5;
+    }
+    let prior_low = prior_closes.iter().copied().fold(f64::INFINITY, f64::min);
+    let prior_high = prior_closes
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max);
+    let range = prior_high - prior_low;
+    if range.abs() <= f64::EPSILON {
+        return 0.5;
+    }
+    let current_close = weekly_bucket_last_close(current_bucket).unwrap_or(prior_low);
+    ((current_close - prior_low) / range).clamp(0.0, 1.0)
+}
+
+fn weekly_bucket_last_close(bucket: &WeeklyPriceBucket) -> Option<f64> {
+    bucket.rows.last().map(|row| row.close)
 }
 
 fn load_governed_weekly_observation_dates(
@@ -4185,6 +4449,7 @@ mod tests {
             market_symbol: Some("NK225.IDX".to_string()),
             sector_symbol: Some("NK225.IDX".to_string()),
             futures_symbol: None,
+            volume_proxy_symbol: None,
             capital_source_feature_mode: None,
             capital_flow_runtime_root: None,
             market_profile: None,

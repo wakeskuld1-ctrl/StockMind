@@ -33,6 +33,40 @@ use crate::ops::stock::stock_execution_and_position_management::security_portfol
 use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_status_bridge::{
     SecurityPortfolioExecutionStatusBridgeRequest, security_portfolio_execution_status_bridge,
 };
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_reconciliation_bridge::{
+    SecurityPortfolioExecutionReconciliationBridgeRequest,
+    security_portfolio_execution_reconciliation_bridge,
+};
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_repair_package::{
+    SecurityPortfolioExecutionRepairPackageRequest, security_portfolio_execution_repair_package,
+};
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_replay_request_package::{
+    SecurityPortfolioExecutionReplayRequestPackageRequest,
+    security_portfolio_execution_replay_request_package,
+};
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_replay_executor::{
+    SecurityPortfolioExecutionReplayExecutorRequest, security_portfolio_execution_replay_executor,
+};
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_replay_commit_preflight::{
+    SecurityPortfolioExecutionReplayCommitPreflightRequest,
+    security_portfolio_execution_replay_commit_preflight,
+};
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_replay_commit_writer::{
+    SecurityPortfolioExecutionReplayCommitWriterRequest,
+    security_portfolio_execution_replay_commit_writer,
+};
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_replay_commit_audit::{
+    SecurityPortfolioExecutionReplayCommitAuditRequest,
+    security_portfolio_execution_replay_commit_audit,
+};
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_lifecycle_closeout_readiness::{
+    SecurityPortfolioExecutionLifecycleCloseoutReadinessRequest,
+    security_portfolio_execution_lifecycle_closeout_readiness,
+};
+use crate::ops::stock::stock_execution_and_position_management::security_portfolio_execution_lifecycle_closeout_evidence_package::{
+    SecurityPortfolioExecutionLifecycleCloseoutEvidencePackageRequest,
+    security_portfolio_execution_lifecycle_closeout_evidence_package,
+};
 use crate::ops::stock::stock_execution_and_position_management::security_position_contract::{
     SecurityPositionContractRequest, build_security_position_contract,
 };
@@ -110,6 +144,12 @@ use crate::ops::stock::stock_data_pipeline::security_capital_flow_backfill::{
 use crate::ops::stock::stock_data_pipeline::security_capital_flow_raw_audit::{
     SecurityCapitalFlowRawAuditRequest, security_capital_flow_raw_audit,
 };
+use crate::ops::stock::stock_data_pipeline::security_volume_source_manifest::{
+    SecurityVolumeSourceManifestRequest, security_volume_source_manifest,
+};
+use crate::ops::stock::stock_data_pipeline::security_nikkei_turnover_import::{
+    SecurityNikkeiTurnoverImportRequest, security_nikkei_turnover_import,
+};
 use crate::ops::stock::stock_data_pipeline::security_capital_flow_jpx_weekly_import::{
     SecurityCapitalFlowJpxWeeklyImportRequest, security_capital_flow_jpx_weekly_import,
 };
@@ -160,6 +200,9 @@ use crate::ops::stock::stock_pre_trade::security_independent_advice::{
 };
 use crate::ops::stock::stock_governance_and_positioning::security_portfolio_position_plan::{
     SecurityPortfolioPositionPlanRequest, security_portfolio_position_plan,
+};
+use crate::ops::stock::stock_governance_and_positioning::security_nikkei_etf_position_signal::{
+    SecurityNikkeiEtfPositionSignalRequest, security_nikkei_etf_position_signal,
 };
 use crate::ops::stock::stock_governance_and_positioning::security_position_plan::{
     SecurityPositionPlanRequest, security_position_plan,
@@ -426,6 +469,36 @@ pub(super) fn dispatch_stock_training_data_backfill(args: Value) -> ToolResponse
     };
 
     match stock_training_data_backfill(&request) {
+        Ok(result) => ToolResponse::ok(json!(result)),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_volume_source_manifest(args: Value) -> ToolResponse {
+    // 2026-04-25 CST: Added because Nikkei volume proxies now need one public
+    // data-pipeline manifest before downstream training interprets them.
+    // Purpose: expose volume-source inventory through the governed stock dispatcher.
+    let request = match serde_json::from_value::<SecurityVolumeSourceManifestRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_volume_source_manifest(&request) {
+        Ok(result) => ToolResponse::ok(json!(result)),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+pub(super) fn dispatch_security_nikkei_turnover_import(args: Value) -> ToolResponse {
+    // 2026-04-25 CST: Added because Cloudflare blocks automated Nikkei downloads,
+    // so the public tool bus needs a manual official-export receiver.
+    // Purpose: parse Total Trading Value files into a governed turnover proxy.
+    let request = match serde_json::from_value::<SecurityNikkeiTurnoverImportRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_nikkei_turnover_import(&request) {
         Ok(result) => ToolResponse::ok(json!(result)),
         Err(error) => ToolResponse::error(error.to_string()),
     }
@@ -817,6 +890,21 @@ pub(super) fn dispatch_security_portfolio_position_plan(args: Value) -> ToolResp
     }
 }
 
+pub(super) fn dispatch_security_nikkei_etf_position_signal(args: Value) -> ToolResponse {
+    // 2026-04-26 CST: Added because the approved Nikkei ETF workflow needs a
+    // daily governed position signal on the public stock Tool bus.
+    // Purpose: route the side-effect-free index-anchored ETF position contract.
+    let request = match serde_json::from_value::<SecurityNikkeiEtfPositionSignalRequest>(args) {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_nikkei_etf_position_signal(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
 pub(super) fn dispatch_security_account_open_position_snapshot(args: Value) -> ToolResponse {
     // 2026-04-10 CST: 这里接入 security_account_open_position_snapshot 的 stock dispatcher 分支，原因是方案B要把 runtime 自动回接上一轮 open 持仓做成正式 Tool；
     // 目的：让 CLI / Skill 直接消费账户 open snapshot 对象，再由账户计划显式承接，而不是继续手工传裸数组。
@@ -966,6 +1054,173 @@ pub(super) fn dispatch_security_portfolio_execution_status_bridge(args: Value) -
         };
 
     match security_portfolio_execution_status_bridge(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-25 CST: Added because P17 recovery exposes the formal reconciliation
+// bridge after P16 on the public stock dispatcher.
+// Reason: the RED test should only turn green once the stock bus routes this contract explicitly.
+// Purpose: route portfolio execution reconciliation requests through the official dispatcher.
+pub(super) fn dispatch_security_portfolio_execution_reconciliation_bridge(
+    args: Value,
+) -> ToolResponse {
+    let request =
+        match serde_json::from_value::<SecurityPortfolioExecutionReconciliationBridgeRequest>(args)
+        {
+            Ok(request) => request,
+            Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+        };
+
+    match security_portfolio_execution_reconciliation_bridge(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-25 CST: Added because P18 recovery exposes the formal repair-intent
+// package after P17 on the public stock dispatcher.
+// Reason: the RED test should only turn green once the stock bus routes this contract explicitly.
+// Purpose: route portfolio execution repair-package requests through the official dispatcher.
+pub(super) fn dispatch_security_portfolio_execution_repair_package(args: Value) -> ToolResponse {
+    let request =
+        match serde_json::from_value::<SecurityPortfolioExecutionRepairPackageRequest>(args) {
+            Ok(request) => request,
+            Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+        };
+
+    match security_portfolio_execution_repair_package(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-25 CST: Added because P19A must be available through the same public
+// stock bus as the P18 repair-intent package.
+// Reason: the RED test should only turn green once replay request packaging is routed explicitly.
+// Purpose: route portfolio execution replay-request package requests through the official dispatcher.
+pub(super) fn dispatch_security_portfolio_execution_replay_request_package(
+    args: Value,
+) -> ToolResponse {
+    let request =
+        match serde_json::from_value::<SecurityPortfolioExecutionReplayRequestPackageRequest>(args)
+        {
+            Ok(request) => request,
+            Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+        };
+
+    match security_portfolio_execution_replay_request_package(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-25 CST: Added because P19B dry-run executor must be available through
+// the official stock bus after P19A request packaging.
+// Reason: executor validation should be routed through one formal public boundary.
+// Purpose: route portfolio execution replay-executor requests through the dispatcher.
+pub(super) fn dispatch_security_portfolio_execution_replay_executor(args: Value) -> ToolResponse {
+    let request =
+        match serde_json::from_value::<SecurityPortfolioExecutionReplayExecutorRequest>(args) {
+            Ok(request) => request,
+            Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+        };
+
+    match security_portfolio_execution_replay_executor(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-26 CST: Added because P19C must expose replay commit preflight through
+// the public stock bus without granting runtime commit authority.
+// Reason: future P19D runtime writes need a governed preflight document first.
+// Purpose: route replay commit-preflight requests through the official dispatcher.
+pub(super) fn dispatch_security_portfolio_execution_replay_commit_preflight(
+    args: Value,
+) -> ToolResponse {
+    let request = match serde_json::from_value::<
+        SecurityPortfolioExecutionReplayCommitPreflightRequest,
+    >(args)
+    {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_portfolio_execution_replay_commit_preflight(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-26 CST: Added because P19D is the separately approved runtime replay writer.
+// Purpose: keep commit routing explicit after P19C instead of extending P19B or P19C.
+pub(super) fn dispatch_security_portfolio_execution_replay_commit_writer(
+    args: Value,
+) -> ToolResponse {
+    let request =
+        match serde_json::from_value::<SecurityPortfolioExecutionReplayCommitWriterRequest>(args) {
+            Ok(request) => request,
+            Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+        };
+
+    match security_portfolio_execution_replay_commit_writer(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-26 CST: Added because P19E is the approved read-only verification layer after P19D.
+// Purpose: route replay commit audits without extending replay commit writer authority.
+pub(super) fn dispatch_security_portfolio_execution_replay_commit_audit(
+    args: Value,
+) -> ToolResponse {
+    let request =
+        match serde_json::from_value::<SecurityPortfolioExecutionReplayCommitAuditRequest>(args) {
+            Ok(request) => request,
+            Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+        };
+
+    match security_portfolio_execution_replay_commit_audit(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-26 CST: Added because P20A must be reachable through the stock dispatcher.
+// Purpose: route side-effect-free closeout preflight readiness without adding write authority.
+pub(super) fn dispatch_security_portfolio_execution_lifecycle_closeout_readiness(
+    args: Value,
+) -> ToolResponse {
+    let request = match serde_json::from_value::<
+        SecurityPortfolioExecutionLifecycleCloseoutReadinessRequest,
+    >(args)
+    {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_portfolio_execution_lifecycle_closeout_readiness(&request) {
+        Ok(result) => ToolResponse::ok_serialized(&result),
+        Err(error) => ToolResponse::error(error.to_string()),
+    }
+}
+
+// 2026-04-26 CST: Added because P20B must be reachable through the stock dispatcher.
+// Purpose: route read-only closeout evidence packaging without adding archive or write authority.
+pub(super) fn dispatch_security_portfolio_execution_lifecycle_closeout_evidence_package(
+    args: Value,
+) -> ToolResponse {
+    let request = match serde_json::from_value::<
+        SecurityPortfolioExecutionLifecycleCloseoutEvidencePackageRequest,
+    >(args)
+    {
+        Ok(request) => request,
+        Err(error) => return ToolResponse::error(format!("request parsing failed: {error}")),
+    };
+
+    match security_portfolio_execution_lifecycle_closeout_evidence_package(&request) {
         Ok(result) => ToolResponse::ok_serialized(&result),
         Err(error) => ToolResponse::error(error.to_string()),
     }

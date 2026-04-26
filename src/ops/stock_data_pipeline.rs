@@ -17,6 +17,14 @@ pub use super::security_capital_flow_backfill;
 // raw weekly audit surface above governed JPX/MOF storage and below factors.
 // Purpose: keep pre-training raw-source inspection on the grouped data-pipeline surface.
 pub use super::security_capital_flow_raw_audit;
+// 2026-04-25 CST: Added because volume-source readiness is a data-pipeline
+// inventory concern, not a model-layer side effect.
+// Purpose: group the Nikkei volume manifest beside other governed data audits.
+pub use super::security_volume_source_manifest;
+// 2026-04-25 CST: Added because official Nikkei turnover files are a governed
+// data-preparation input, not a trainer-side parser.
+// Purpose: expose the manual official-turnover receiver under the data pipeline.
+pub use super::security_nikkei_turnover_import;
 // 2026-04-21 CST: Added because Task 2.1 needs the JPX weekly workbook import
 // bridge to live on the same grouped data-pipeline surface as other governed imports.
 // Purpose: keep official-file ingestion inside the formal stock data-preparation boundary.

@@ -1,6 +1,7 @@
 mod common;
 
 use chrono::{Duration, NaiveDate};
+use rusqlite::Connection;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs;
@@ -118,6 +119,23 @@ fn import_history_csv(runtime_db_path: &Path, csv_path: &Path, symbol: &str) {
         &runtime_db_path.to_path_buf(),
     );
     assert_eq!(output["status"], "ok");
+}
+
+fn persisted_execution_record_json(runtime_db_path: &Path, execution_record_id: &str) -> Value {
+    let execution_db_path = runtime_db_path
+        .parent()
+        .map(|parent| parent.join("security_execution.db"))
+        .filter(|path| path.exists())
+        .unwrap_or_else(|| runtime_db_path.to_path_buf());
+    let connection = Connection::open(execution_db_path).expect("runtime db should open");
+    let payload: String = connection
+        .query_row(
+            "SELECT payload_json FROM security_execution_records WHERE execution_record_id = ?1",
+            [execution_record_id],
+            |row| row.get(0),
+        )
+        .expect("persisted execution record should load");
+    serde_json::from_str(&payload).expect("persisted execution record payload should parse")
 }
 
 // 2026-04-09 CST: 这里沿用“先震荡再上行”的稳定样本，原因是 Task 10 要验证真实执行收益归因而不是行情识别本身；
@@ -270,6 +288,121 @@ fn security_execution_record_outputs_formal_record_with_return_attribution() {
             .expect("execution quality should be present")
             .len()
             > 0
+    );
+}
+
+#[test]
+fn security_execution_record_replay_control_forces_id_and_machine_metadata() {
+    let runtime_db_path = create_test_runtime_db("security_execution_record_replay_control");
+    let server =
+        prepare_security_environment(&runtime_db_path, "security_execution_record_replay_control");
+    let mut request = execution_request();
+    request["args"]["replay_commit_control"] = json!({
+        "target_execution_record_ref": "execution-record-replay:test-stable-target",
+        "commit_idempotency_key": "p19d-idempotency:test-stable-target",
+        "canonical_commit_payload_hash": "sha256:test-stable-payload",
+        "source_p19c_ref": "security_portfolio_execution_replay_commit_preflight:test-source"
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(
+        &request.to_string(),
+        &runtime_db_path,
+        &security_envs(&server),
+    );
+
+    // 2026-04-26 CST: Reason=P19D needs deterministic replay writes through this existing tool.
+    // Purpose=lock replay-control identity and machine-readable evidence before adding P19D.
+    assert_eq!(output["status"], "ok", "output={output}");
+    let record = &output["data"]["execution_record"];
+    assert_eq!(
+        record["execution_record_id"],
+        json!("execution-record-replay:test-stable-target")
+    );
+    assert_eq!(
+        record["replay_commit_idempotency_key"],
+        json!("p19d-idempotency:test-stable-target")
+    );
+    assert_eq!(
+        record["replay_commit_payload_hash"],
+        json!("sha256:test-stable-payload")
+    );
+    assert_eq!(
+        record["replay_commit_source_p19c_ref"],
+        json!("security_portfolio_execution_replay_commit_preflight:test-source")
+    );
+
+    let persisted = persisted_execution_record_json(
+        &runtime_db_path,
+        "execution-record-replay:test-stable-target",
+    );
+    assert_eq!(
+        persisted["replay_commit_idempotency_key"],
+        json!("p19d-idempotency:test-stable-target")
+    );
+    assert_eq!(
+        persisted["replay_commit_payload_hash"],
+        json!("sha256:test-stable-payload")
+    );
+}
+
+#[test]
+fn security_execution_record_replay_control_rejects_conflicting_target_without_overwrite() {
+    let runtime_db_path = create_test_runtime_db("security_execution_record_replay_conflict");
+    let server = prepare_security_environment(
+        &runtime_db_path,
+        "security_execution_record_replay_conflict",
+    );
+    let target_ref = "execution-record-replay:test-conflict-target";
+
+    let mut first_request = execution_request();
+    first_request["args"]["replay_commit_control"] = json!({
+        "target_execution_record_ref": target_ref,
+        "commit_idempotency_key": "p19d-idempotency:first",
+        "canonical_commit_payload_hash": "sha256:first-payload",
+        "source_p19c_ref": "security_portfolio_execution_replay_commit_preflight:first"
+    });
+    let first_output = run_cli_with_json_runtime_and_envs(
+        &first_request.to_string(),
+        &runtime_db_path,
+        &security_envs(&server),
+    );
+    assert_eq!(first_output["status"], "ok", "first output={first_output}");
+
+    let mut conflicting_request = execution_request();
+    conflicting_request["args"]["replay_commit_control"] = json!({
+        "target_execution_record_ref": target_ref,
+        "commit_idempotency_key": "p19d-idempotency:second",
+        "canonical_commit_payload_hash": "sha256:second-payload",
+        "source_p19c_ref": "security_portfolio_execution_replay_commit_preflight:second"
+    });
+    let conflicting_output = run_cli_with_json_runtime_and_envs(
+        &conflicting_request.to_string(),
+        &runtime_db_path,
+        &security_envs(&server),
+    );
+
+    // 2026-04-26 CST: Reason=the repository upsert updates on conflict by default.
+    // Purpose=prove replay-control detects conflicting evidence inside the write path first.
+    assert_eq!(
+        conflicting_output["status"], "error",
+        "conflicting output={conflicting_output}"
+    );
+    assert!(
+        conflicting_output["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("replay commit conflict"),
+        "conflicting output should explain replay conflict, output={conflicting_output}"
+    );
+
+    let persisted = persisted_execution_record_json(&runtime_db_path, target_ref);
+    assert_eq!(
+        persisted["replay_commit_idempotency_key"],
+        json!("p19d-idempotency:first")
+    );
+    assert_eq!(
+        persisted["replay_commit_payload_hash"],
+        json!("sha256:first-payload")
     );
 }
 

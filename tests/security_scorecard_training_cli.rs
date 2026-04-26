@@ -1365,6 +1365,93 @@ fn security_scorecard_training_nikkei_weekly_route_emits_weekly_artifact_feature
 }
 
 #[test]
+fn security_scorecard_training_nikkei_weekly_uses_volume_proxy_without_futures_features() {
+    let runtime_db_path =
+        create_test_runtime_db("security_scorecard_training_nikkei_weekly_volume_proxy");
+    let runtime_root = runtime_db_path
+        .parent()
+        .expect("runtime db should have parent")
+        .join("scorecard_training_runtime");
+    let fixture_dir =
+        create_training_fixture_dir("security_scorecard_training_nikkei_weekly_volume_proxy");
+    let nikkei_csv = fixture_dir.join("nikkei_zero_volume_weekly_route.csv");
+    let volume_proxy_csv = fixture_dir.join("nikkei_volume_proxy_weekly_route.csv");
+
+    fs::write(
+        &nikkei_csv,
+        build_nikkei_zero_volume_rows(420, 16800.0).join("\n"),
+    )
+    .expect("nikkei zero-volume weekly route csv should be written");
+    fs::write(
+        &volume_proxy_csv,
+        build_nikkei_volume_proxy_rows(420, 16840.0).join("\n"),
+    )
+    .expect("nikkei volume proxy weekly route csv should be written");
+    import_history_csv(&runtime_db_path, &nikkei_csv, "NK225.IDX");
+    import_history_csv(&runtime_db_path, &volume_proxy_csv, "NK225_VOL.PROXY");
+
+    let request = json!({
+        "tool": "security_scorecard_training",
+        "args": {
+            "created_at": "2026-04-25T18:00:00+08:00",
+            "artifact_runtime_root": runtime_root.to_string_lossy(),
+            "market_scope": "GLOBAL",
+            "instrument_scope": "INDEX",
+            "instrument_subscope": "nikkei_index",
+            "symbol_list": ["NK225.IDX"],
+            "market_symbol": "NK225.IDX",
+            "sector_symbol": "NK225.IDX",
+            "volume_proxy_symbol": "NK225_VOL.PROXY",
+            "horizon_days": 10,
+            "target_head": "direction_head",
+            "train_range": "2016-03-01..2016-08-31",
+            "valid_range": "2016-09-01..2016-09-14",
+            "test_range": "2016-09-15..2016-09-30",
+            "feature_set_version": "security_feature_snapshot.v1",
+            "label_definition_version": "security_forward_outcome.v1"
+        }
+    });
+
+    let output = run_cli_with_json_runtime_and_envs(&request.to_string(), &runtime_db_path, &[]);
+
+    assert_eq!(output["status"], "ok", "output={output}");
+    let feature_names = output["data"]["artifact"]["features"]
+        .as_array()
+        .expect("artifact features should be an array")
+        .iter()
+        .filter_map(|feature| feature["feature_name"].as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        feature_names
+            .iter()
+            .any(|feature_name| *feature_name == "weekly_volume_ratio_4w"),
+        "volume proxy should still emit governed weekly volume features"
+    );
+    assert!(
+        !feature_names
+            .iter()
+            .any(|feature_name| *feature_name == "weekly_futures_return_p50"),
+        "volume proxy must not opt into futures price features"
+    );
+
+    let feature_summaries = output["data"]["metrics_summary_json"]["diagnostics"]
+        ["feature_coverage_summary"]["features"]
+        .as_array()
+        .expect("feature coverage summary should list features");
+    let volume_ratio_summary = feature_summaries
+        .iter()
+        .find(|feature| feature["feature_name"] == "weekly_volume_ratio_4w")
+        .expect("weekly volume ratio summary should exist");
+    assert!(
+        volume_ratio_summary["distinct_observed_values"]
+            .as_u64()
+            .expect("distinct observed values should be numeric")
+            > 1,
+        "volume proxy should prevent weekly_volume_ratio_4w from collapsing to a constant"
+    );
+}
+
+#[test]
 fn security_scorecard_training_keeps_capital_source_metrics_as_observation_only_in_nikkei_run() {
     // 2026-04-24 CST: Updated because the approved route now keeps capital-source
     // metrics as observation-only output instead of training features.
@@ -2198,6 +2285,42 @@ fn build_nikkei_decade_rows(day_count: usize, start_close: f64) -> Vec<String> {
     rows
 }
 
+fn build_nikkei_zero_volume_rows(day_count: usize, start_close: f64) -> Vec<String> {
+    build_nikkei_decade_rows(day_count, start_close)
+        .into_iter()
+        .enumerate()
+        .map(|(index, line)| {
+            if index == 0 {
+                return line;
+            }
+            let mut columns = line.split(',').collect::<Vec<_>>();
+            if let Some(volume) = columns.last_mut() {
+                *volume = "0";
+            }
+            columns.join(",")
+        })
+        .collect()
+}
+
+fn build_nikkei_volume_proxy_rows(day_count: usize, start_close: f64) -> Vec<String> {
+    let mut rows = build_nikkei_decade_rows(day_count, start_close);
+    for (index, line) in rows.iter_mut().enumerate().skip(1) {
+        let mut columns = line.split(',').collect::<Vec<_>>();
+        if let Some(volume) = columns.last_mut() {
+            let cycle = (index % 23) as i64;
+            *volume = if cycle < 8 {
+                "880000"
+            } else if cycle < 16 {
+                "1680000"
+            } else {
+                "2420000"
+            };
+        }
+        *line = columns.join(",");
+    }
+    rows
+}
+
 fn build_nikkei_futures_decade_rows(day_count: usize, start_close: f64) -> Vec<String> {
     let mut rows = vec!["trade_date,open,high,low,close,adj_close,volume".to_string()];
     let start_date = NaiveDate::from_ymd_opt(2015, 8, 8).expect("seed date should be valid");
@@ -2387,23 +2510,81 @@ fn weekly_price_aggregation_emits_distribution_quantiles_for_nikkei_training() {
             .any(|name| name == &"weekly_volume_price_confirmation"),
         "weekly volume-price confirmation feature should exist in weekly row"
     );
+    // 2026-04-26 CST: Added because Nikkei index-volume behavior can be yearly
+    // rather than weekly. Purpose: lock the approved long-horizon accumulation
+    // feature contract before changing the weekly training implementation.
+    for feature_name in [
+        "weekly_volume_ratio_13w",
+        "weekly_volume_ratio_26w",
+        "weekly_volume_ratio_52w",
+        "weekly_price_position_52w",
+        "weekly_volume_accumulation_26w",
+        "weekly_volume_accumulation_52w",
+        "weekly_high_volume_low_price_signal",
+        "weekly_high_volume_breakout_signal",
+    ] {
+        assert!(
+            feature_names.iter().any(|name| name == feature_name),
+            "{feature_name} should exist in weekly row"
+        );
+    }
     let volume_ratio_values = weekly_rows
         .iter()
         .filter_map(|row| row.feature_values.get("weekly_volume_ratio_4w").copied())
         .collect::<Vec<_>>();
+    let long_volume_ratio_values = weekly_rows
+        .iter()
+        .filter_map(|row| row.feature_values.get("weekly_volume_ratio_52w").copied())
+        .collect::<Vec<_>>();
+    let long_price_position_values = weekly_rows
+        .iter()
+        .filter_map(|row| row.feature_values.get("weekly_price_position_52w").copied())
+        .collect::<Vec<_>>();
+    let accumulation_values = weekly_rows
+        .iter()
+        .filter_map(|row| {
+            row.feature_values
+                .get("weekly_volume_accumulation_52w")
+                .copied()
+        })
+        .collect::<Vec<_>>();
     let up_share_values = weekly_rows
         .iter()
-        .filter_map(|row| row.feature_values.get("weekly_up_day_volume_share").copied())
+        .filter_map(|row| {
+            row.feature_values
+                .get("weekly_up_day_volume_share")
+                .copied()
+        })
         .collect::<Vec<_>>();
     let confirmation_values = weekly_rows
         .iter()
-        .filter_map(|row| row.feature_values.get("weekly_volume_price_confirmation").copied())
+        .filter_map(|row| {
+            row.feature_values
+                .get("weekly_volume_price_confirmation")
+                .copied()
+        })
         .collect::<Vec<_>>();
     assert!(
         volume_ratio_values
             .windows(2)
             .any(|pair| (pair[0] - pair[1]).abs() > f64::EPSILON),
         "weekly volume ratio should vary when futures volume varies even if index spot volume is unavailable"
+    );
+    assert!(
+        long_volume_ratio_values
+            .windows(2)
+            .any(|pair| (pair[0] - pair[1]).abs() > f64::EPSILON),
+        "weekly 52w volume ratio should vary when long-horizon volume behavior varies"
+    );
+    assert!(
+        long_price_position_values
+            .iter()
+            .all(|value| (0.0..=1.0).contains(value)),
+        "weekly 52w price position should stay normalized"
+    );
+    assert!(
+        accumulation_values.iter().any(|value| *value > 0.0),
+        "weekly 52w accumulation should become positive on elevated-volume low/mid-price weeks"
     );
     assert!(
         up_share_values

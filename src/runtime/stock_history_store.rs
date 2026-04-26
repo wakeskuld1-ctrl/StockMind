@@ -44,6 +44,21 @@ pub struct StockHistoryCoverageSummary {
     pub history_days: usize,
 }
 
+// 2026-04-25 CST: Added because Nikkei volume governance needs source-level
+// volume coverage and provenance before training can consume proxy volume safely.
+// Purpose: provide one store contract for volume manifests without duplicating SQL in ops.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StockHistoryVolumeSourceSummary {
+    pub first_trade_date: String,
+    pub last_trade_date: String,
+    pub row_count: usize,
+    pub nonzero_volume_rows: usize,
+    pub zero_volume_rows: usize,
+    pub min_volume: i64,
+    pub max_volume: i64,
+    pub source_names: Vec<String>,
+}
+
 // 2026-03-28 CST: 这里定义股票历史 SQLite Store，原因是用户已经明确历史数据要走 SQLite；
 // 目的：把股票历史表和 session/runtime 记忆分离，既复用同一个 runtime 根目录，又不把两类表硬耦合到一起。
 // Purpose: keep stock-history persistence inside the governed runtime family while staying
@@ -470,6 +485,90 @@ impl StockHistoryStore {
                     _ => Ok(None),
                 }
             })
+    }
+
+    // 2026-04-25 CST: Added because the volume-source manifest must distinguish
+    // "has price rows but no volume" from "has a short non-zero volume proxy".
+    // Purpose: centralize source/date/volume coverage statistics on the official store.
+    pub fn load_volume_source_summary(
+        &self,
+        symbol: &str,
+        as_of_date: Option<&str>,
+    ) -> Result<Option<StockHistoryVolumeSourceSummary>, StockHistoryStoreError> {
+        let connection = self.open_connection()?;
+        let mut statement = connection
+            .prepare(
+                "
+                SELECT
+                    MIN(trade_date) AS first_trade_date,
+                    MAX(trade_date) AS last_trade_date,
+                    COUNT(*) AS row_count,
+                    SUM(CASE WHEN volume > 0 THEN 1 ELSE 0 END) AS nonzero_volume_rows,
+                    SUM(CASE WHEN volume = 0 THEN 1 ELSE 0 END) AS zero_volume_rows,
+                    MIN(volume) AS min_volume,
+                    MAX(volume) AS max_volume,
+                    GROUP_CONCAT(DISTINCT source) AS source_names
+                FROM stock_price_history
+                WHERE symbol = ?1
+                  AND (?2 IS NULL OR trade_date <= ?2)
+                ",
+            )
+            .map_err(|error| StockHistoryStoreError::ReadRows(error.to_string()))?;
+
+        statement
+            .query_row(params![symbol, as_of_date], |row| {
+                let first_trade_date: Option<String> = row.get(0)?;
+                let last_trade_date: Option<String> = row.get(1)?;
+                let row_count: i64 = row.get(2)?;
+                let nonzero_volume_rows: Option<i64> = row.get(3)?;
+                let zero_volume_rows: Option<i64> = row.get(4)?;
+                let min_volume: Option<i64> = row.get(5)?;
+                let max_volume: Option<i64> = row.get(6)?;
+                let source_names: Option<String> = row.get(7)?;
+                Ok((
+                    first_trade_date,
+                    last_trade_date,
+                    row_count,
+                    nonzero_volume_rows,
+                    zero_volume_rows,
+                    min_volume,
+                    max_volume,
+                    source_names,
+                ))
+            })
+            .map_err(|error| StockHistoryStoreError::ReadRows(error.to_string()))
+            .and_then(
+                |(
+                    first_trade_date,
+                    last_trade_date,
+                    row_count,
+                    nonzero_volume_rows,
+                    zero_volume_rows,
+                    min_volume,
+                    max_volume,
+                    source_names,
+                )| match (first_trade_date, last_trade_date) {
+                    (Some(first_trade_date), Some(last_trade_date)) if row_count > 0 => {
+                        Ok(Some(StockHistoryVolumeSourceSummary {
+                            first_trade_date,
+                            last_trade_date,
+                            row_count: row_count as usize,
+                            nonzero_volume_rows: nonzero_volume_rows.unwrap_or_default() as usize,
+                            zero_volume_rows: zero_volume_rows.unwrap_or_default() as usize,
+                            min_volume: min_volume.unwrap_or_default(),
+                            max_volume: max_volume.unwrap_or_default(),
+                            source_names: source_names
+                                .unwrap_or_default()
+                                .split(',')
+                                .map(str::trim)
+                                .filter(|source| !source.is_empty())
+                                .map(str::to_string)
+                                .collect(),
+                        }))
+                    }
+                    _ => Ok(None),
+                },
+            )
     }
 
     fn open_connection(&self) -> Result<Connection, StockHistoryStoreError> {

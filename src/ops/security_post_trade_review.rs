@@ -208,6 +208,7 @@ pub fn security_post_trade_review(
         portfolio_position_plan_document: effective_request
             .portfolio_position_plan_document
             .clone(),
+        replay_commit_control: None,
         created_at: effective_request.created_at.clone(),
     })?;
     let outcome_binding = SecurityPostTradeReviewOutcomeBinding {

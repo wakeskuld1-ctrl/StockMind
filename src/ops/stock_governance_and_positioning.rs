@@ -26,5 +26,9 @@ pub use super::security_decision_package_revision;
 pub use super::security_decision_submit_approval;
 pub use super::security_decision_verify_package;
 pub use super::security_portfolio_position_plan;
+// 2026-04-26 CST: Added because the Nikkei ETF daily signal is a governed
+// position-state decision, not a raw data import or model-training artifact.
+// Purpose: keep the public grouping aligned with the approved daily Tool boundary.
+pub use super::security_nikkei_etf_position_signal;
 pub use super::security_position_plan;
 pub use super::security_position_plan_record;

@@ -59,6 +59,16 @@ impl SecurityExecutionStoreSession {
         self.with_repository_context(|context| context.upsert_execution_record(record))
     }
 
+    // 2026-04-26 CST: Added because P19D replay-control writes must check the target ref
+    // inside the same transaction before upsert. Purpose: prevent repository-level
+    // ON CONFLICT updates from overwriting replay evidence.
+    pub(crate) fn load_execution_record(
+        &self,
+        execution_record_id: &str,
+    ) -> Result<Option<SecurityExecutionRecordDocument>, SecurityExecutionStoreError> {
+        self.with_repository_context(|context| context.load_execution_record(execution_record_id))
+    }
+
     pub(crate) fn commit(mut self) -> Result<(), SecurityExecutionStoreError> {
         self.connection
             .execute_batch("COMMIT")
@@ -223,6 +233,9 @@ mod tests {
             holding_total_return_pct: None,
             breakeven_price: None,
             corporate_action_summary: None,
+            replay_commit_idempotency_key: None,
+            replay_commit_payload_hash: None,
+            replay_commit_source_p19c_ref: None,
             execution_record_notes: vec!["fixture".to_string()],
             attribution_summary: "fixture".to_string(),
         };

@@ -106,8 +106,21 @@ pub struct SecurityExecutionRecordRequest {
     pub execution_record_notes: Vec<String>,
     #[serde(default)]
     pub portfolio_position_plan_document: Option<SecurityPortfolioPositionPlanDocument>,
+    // 2026-04-26 CST: Added because P19D replay commits need deterministic execution-record
+    // identity inside the governed execution_record write path. Purpose: prevent replay
+    // writers from bypassing execution_record and writing runtime records directly.
+    #[serde(default)]
+    pub replay_commit_control: Option<SecurityExecutionReplayCommitControl>,
     #[serde(default = "default_created_at")]
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct SecurityExecutionReplayCommitControl {
+    pub target_execution_record_ref: String,
+    pub commit_idempotency_key: String,
+    pub canonical_commit_payload_hash: String,
+    pub source_p19c_ref: String,
 }
 
 // 2026-04-09 CST: Keep the formal execution-record document because P1 is not replacing record
@@ -222,6 +235,14 @@ pub struct SecurityExecutionRecordDocument {
     // Purpose: preserve a minimal interpretable explanation beside the numeric fields.
     #[serde(default)]
     pub corporate_action_summary: Option<String>,
+    // 2026-04-26 CST: Added because P19D already-committed checks must be machine-readable.
+    // Purpose: keep replay idempotency evidence out of notes-only parsing.
+    #[serde(default)]
+    pub replay_commit_idempotency_key: Option<String>,
+    #[serde(default)]
+    pub replay_commit_payload_hash: Option<String>,
+    #[serde(default)]
+    pub replay_commit_source_p19c_ref: Option<String>,
     pub execution_record_notes: Vec<String>,
     pub attribution_summary: String,
 }
@@ -256,6 +277,10 @@ pub enum SecurityExecutionRecordError {
     HoldingEconomics(#[from] OpenPositionCorporateActionSummaryError),
     #[error("security execution record build failed: {0}")]
     Build(String),
+    #[error("security execution record replay commit already exists: {0}")]
+    ReplayCommitAlreadyExists(String),
+    #[error("security execution record replay commit conflict: {0}")]
+    ReplayCommitConflict(String),
 }
 
 #[derive(Debug, Clone)]
@@ -306,6 +331,9 @@ pub fn security_execution_record(
     if let Some(overlay) = lifecycle_overlay.as_ref() {
         apply_lifecycle_execution_overlay(&mut execution_record, overlay);
     }
+    if let Some(control) = effective_request.replay_commit_control.as_ref() {
+        apply_replay_commit_control(&mut execution_record, control);
+    }
     // 2026-04-10 CST: Persist the formal execution record because plan B needs later account tools
     // to recover open-position state automatically.
     // Purpose: give account snapshots and planning a single runtime fact source instead of
@@ -314,6 +342,9 @@ pub fn security_execution_record(
     let position_plan_record =
         build_execution_store_position_plan_record(&execution_journal_result.position_plan_result);
     let session = store.open_session()?;
+    if let Some(control) = effective_request.replay_commit_control.as_ref() {
+        ensure_replay_commit_target_is_safe(&session, control)?;
+    }
     session.upsert_position_plan(&position_plan_record)?;
     session.upsert_execution_record(&execution_record)?;
     session.commit()?;
@@ -507,6 +538,45 @@ fn apply_lifecycle_execution_overlay(
             .execution_record_notes
             .push(format!("condition review ref: {condition_review_ref}"));
     }
+}
+
+fn apply_replay_commit_control(
+    execution_record: &mut SecurityExecutionRecordDocument,
+    control: &SecurityExecutionReplayCommitControl,
+) {
+    execution_record.execution_record_id = control.target_execution_record_ref.clone();
+    execution_record.replay_commit_idempotency_key = Some(control.commit_idempotency_key.clone());
+    execution_record.replay_commit_payload_hash =
+        Some(control.canonical_commit_payload_hash.clone());
+    execution_record.replay_commit_source_p19c_ref = Some(control.source_p19c_ref.clone());
+}
+
+fn ensure_replay_commit_target_is_safe(
+    session: &crate::runtime::security_execution_store_session::SecurityExecutionStoreSession,
+    control: &SecurityExecutionReplayCommitControl,
+) -> Result<(), SecurityExecutionRecordError> {
+    let Some(existing) = session.load_execution_record(&control.target_execution_record_ref)?
+    else {
+        return Ok(());
+    };
+
+    let idempotency_matches = existing.replay_commit_idempotency_key.as_deref()
+        == Some(control.commit_idempotency_key.as_str());
+    let payload_matches = existing.replay_commit_payload_hash.as_deref()
+        == Some(control.canonical_commit_payload_hash.as_str());
+    let source_matches =
+        existing.replay_commit_source_p19c_ref.as_deref() == Some(control.source_p19c_ref.as_str());
+
+    if idempotency_matches && payload_matches && source_matches {
+        return Err(SecurityExecutionRecordError::ReplayCommitAlreadyExists(
+            control.target_execution_record_ref.clone(),
+        ));
+    }
+
+    Err(SecurityExecutionRecordError::ReplayCommitConflict(format!(
+        "target_execution_record_ref `{}` already exists with different replay evidence",
+        control.target_execution_record_ref
+    )))
 }
 
 // 2026-04-09 CST: Expose the execution-record builder because review, package, and audit still
@@ -1006,6 +1076,7 @@ mod tests {
             execution_journal_notes: Vec::new(),
             execution_record_notes: Vec::new(),
             portfolio_position_plan_document: Some(portfolio_plan_fixture()),
+            replay_commit_control: None,
             created_at: "2026-04-14T16:00:00+08:00".to_string(),
         }
     }

@@ -182,6 +182,60 @@ fn stock_root_keeps_only_the_frozen_module_manifest() {
         // approved public module before any later reconciliation stage.
         // Purpose: align the frozen public stock manifest with the checked-in P16 boundary.
         "security_portfolio_execution_status_bridge",
+        // 2026-04-25 CST: Updated because P17 recovery now restores the formal
+        // reconciliation bridge downstream of the P16 status artifact.
+        // Reason: the current D:\SM truth now includes reconciliation as an
+        // approved public module before repair-intent packaging.
+        // Purpose: align the frozen public stock manifest with the recovered P17 boundary.
+        "security_portfolio_execution_reconciliation_bridge",
+        // 2026-04-25 CST: Updated because P18 recovery now restores the formal
+        // repair-intent package downstream of the P17 reconciliation artifact.
+        // Reason: the current D:\SM truth now includes repair-intent freeze but
+        // still excludes replay execution and lifecycle closeout.
+        // Purpose: align the frozen public stock manifest with the recovered P18 boundary.
+        "security_portfolio_execution_repair_package",
+        // 2026-04-25 CST: Updated because P19A now adds a strict replay-request
+        // package downstream of the P18 repair-intent artifact.
+        // Reason: governed retry candidates need one approved public request package
+        // before any later replay executor or lifecycle closeout.
+        // Purpose: align the frozen public stock manifest with the P19A boundary.
+        "security_portfolio_execution_replay_request_package",
+        // 2026-04-25 CST: Updated because P19B now adds a dry-run-only replay
+        // executor downstream of the P19A replay-request package.
+        // Reason: executor validation needs one approved public module before
+        // any later commit-mode runtime replay.
+        // Purpose: align the frozen public stock manifest with the P19B boundary.
+        "security_portfolio_execution_replay_executor",
+        // 2026-04-26 CST: Updated because P19C now freezes replay commit
+        // preflight payloads downstream of the P19B dry-run executor.
+        // Reason: commit readiness needs one approved public preflight module
+        // before any later P19D runtime writer can be designed.
+        // Purpose: align the frozen public stock manifest with the P19C boundary.
+        "security_portfolio_execution_replay_commit_preflight",
+        // 2026-04-26 CST: Updated because P19D now adds the controlled per-row
+        // replay commit writer downstream of P19C.
+        // Reason: runtime replay commit authority is now an approved separate boundary
+        // that writes only through security_execution_record.
+        // Purpose: align the frozen public stock manifest with the P19D boundary.
+        "security_portfolio_execution_replay_commit_writer",
+        // 2026-04-26 CST: Updated because P19E now adds read-only replay commit
+        // audit downstream of the P19D writer.
+        // Reason: runtime replay commit verification needs a public boundary that
+        // reads execution records without opening new write authority.
+        // Purpose: align the frozen public stock manifest with the P19E boundary.
+        "security_portfolio_execution_replay_commit_audit",
+        // 2026-04-26 CST: Updated because P20A now adds side-effect-free closeout readiness
+        // downstream of P19E audit truth.
+        // Reason: readiness eligibility needs one approved public module before any later
+        // lifecycle writer or archive-producing phase can be designed.
+        // Purpose: align the frozen public stock manifest with the P20A boundary.
+        "security_portfolio_execution_lifecycle_closeout_readiness",
+        // 2026-04-26 CST: Updated because P20B now adds read-only closeout evidence
+        // packaging downstream of P20A readiness.
+        // Reason: archive or lifecycle writers need one approved evidence boundary
+        // before any mutation or archive-producing phase can be designed.
+        // Purpose: align the frozen public stock manifest with the P20B boundary.
+        "security_portfolio_execution_lifecycle_closeout_evidence_package",
         "security_position_contract",
         "security_per_position_evaluation",
         "security_monitoring_evidence_package",
@@ -240,6 +294,16 @@ fn stock_root_keeps_only_the_frozen_module_manifest() {
         "stock_training_data_backfill",
         "stock_training_data_coverage_audit",
         "security_real_data_validation_backfill",
+        // 2026-04-25 CST: Updated because the current dirty worktree already
+        // exposes a governed Nikkei volume-source manifest on the stock boundary.
+        // Reason: P19A guard verification must align with the active public manifest
+        // without reverting the parallel volume-source slice.
+        // Purpose: keep the frozen manifest equal to the checked-in stock boundary.
+        "security_volume_source_manifest",
+        // 2026-04-25 CST: Updated because the approved free-source route now needs
+        // a formal receiver for manually exported Nikkei official Total Trading Value.
+        // Purpose: freeze the turnover importer as a governed data-pipeline module.
+        "security_nikkei_turnover_import",
     ]
     .into_iter()
     .map(String::from)

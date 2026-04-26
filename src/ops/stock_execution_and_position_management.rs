@@ -61,6 +61,45 @@ pub use super::security_portfolio_execution_apply_bridge;
 // Reason: later reconciliation should start from one named status bridge, not raw apply rows.
 // Purpose: make the P16 execution-status bridge reachable through the grouped gateway.
 pub use super::security_portfolio_execution_status_bridge;
+// 2026-04-25 CST: Added because P17 recovery now extends the post-P15 chain
+// from P16 status freezing into one side-effect-free reconciliation truth layer.
+// Reason: grouping keeps reconciliation on the same execution-and-position surface
+// without implying repair, replay, or position materialization.
+// Purpose: make the P17 reconciliation bridge reachable through the grouped gateway.
+pub use super::security_portfolio_execution_reconciliation_bridge;
+// 2026-04-25 CST: Added because P18 recovery now freezes repair intent
+// downstream of the recovered P17 reconciliation truth.
+// Reason: grouping keeps repair-intent packaging on the same execution surface
+// without implying retry execution or lifecycle closeout.
+// Purpose: make the P18 repair package reachable through the grouped gateway.
+pub use super::security_portfolio_execution_repair_package;
+// 2026-04-25 CST: Added because P19A now freezes P18 governed retry candidates
+// as replay request rows without becoming a replay executor.
+// Reason: replay request packaging must remain separate from runtime writes and broker-fill replay.
+// Purpose: make the P19A replay request package reachable through the grouped gateway.
+pub use super::security_portfolio_execution_replay_request_package;
+// 2026-04-25 CST: Added because P19B now validates replay requests as dry-run
+// executor truth without writing runtime facts.
+// Reason: commit-mode replay remains out of scope until a later approved contract.
+// Purpose: make the P19B dry-run replay executor reachable through the grouped gateway.
+pub use super::security_portfolio_execution_replay_executor;
+// 2026-04-26 CST: Added because P19C freezes commit payload readiness after
+// P19B while remaining side-effect free.
+// Reason: runtime write authority must wait for P19D and a durable idempotency contract.
+// Purpose: make the P19C replay commit preflight reachable through the grouped gateway.
+pub use super::security_portfolio_execution_replay_commit_preflight;
+// 2026-04-26 CST: Added because P19D follows P19C as the controlled runtime replay writer.
+// Purpose: keep replay commit authority grouped with execution management and not pre-trade flow.
+pub use super::security_portfolio_execution_replay_commit_writer;
+// 2026-04-26 CST: Added because P19E audits P19D runtime replay commit results.
+// Purpose: keep read-only replay verification on the same grouped execution gateway.
+pub use super::security_portfolio_execution_replay_commit_audit;
+// 2026-04-26 CST: Added because P20A consumes P19E audit truth for closeout preflight readiness.
+// Purpose: keep side-effect-free readiness grouped with execution management without closing lifecycle.
+pub use super::security_portfolio_execution_lifecycle_closeout_readiness;
+// 2026-04-26 CST: Added because P20B verifies closed runtime evidence after P20A.
+// Purpose: keep read-only closeout evidence grouped with execution management without archive writes.
+pub use super::security_portfolio_execution_lifecycle_closeout_evidence_package;
 // 2026-04-18 CST: Added because Task 2 introduces the live contract object that
 // stands between approved intake and later active-position state.
 // Reason: the user approved keeping the live contract on the post-open data path.

@@ -224,6 +224,9 @@ mod tests {
             holding_total_return_pct: None,
             breakeven_price: None,
             corporate_action_summary: None,
+            replay_commit_idempotency_key: None,
+            replay_commit_payload_hash: None,
+            replay_commit_source_p19c_ref: None,
             execution_record_notes: Vec::new(),
             attribution_summary: "fixture".to_string(),
         }

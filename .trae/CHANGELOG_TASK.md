@@ -2327,3 +2327,741 @@
 - Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_verify_package_verify'; cargo test --test security_decision_verify_package_source_guard -- --nocapture`, which passed with `1 passed; 0 failed`.
 - Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_verify_legacy_freeze'; cargo test --test security_decision_committee_legacy_freeze_source_guard -- --nocapture`, which passed with `1 passed; 0 failed`.
 - Verified `$env:CARGO_TARGET_DIR='D:\SM_latest_8214bc7d\target_full_regression_20260424_c'; cargo test -- --nocapture`, which passed repository-wide in this worktree.
+## 2026-04-25
+### Modified
+- Restored the missing P16 execution-status bridge module at `D:\SM\src\ops\security_portfolio_execution_status_bridge.rs`.
+- Added CLI coverage at `D:\SM\tests\security_portfolio_execution_status_bridge_cli.rs` for catalog visibility, fully-applied status freeze, and rejected apply-document preservation.
+- Restored the missing capital-flow/capital-source module files and runtime store required by the current stock boundary:
+  - `D:\SM\src\runtime\security_capital_flow_store.rs`
+  - `D:\SM\src\ops\security_capital_flow_backfill.rs`
+  - `D:\SM\src\ops\security_capital_flow_raw_audit.rs`
+  - `D:\SM\src\ops\security_capital_flow_jpx_weekly_import.rs`
+  - `D:\SM\src\ops\security_capital_flow_jpx_weekly_live_backfill.rs`
+  - `D:\SM\src\ops\security_capital_flow_mof_weekly_import.rs`
+  - `D:\SM\src\ops\security_capital_source_factor_snapshot.rs`
+  - `D:\SM\src\ops\security_capital_source_factor_audit.rs`
+- Cleaned generated verification target directories and deleted the verified backup `D:\SM_backup_20260425_055754`.
+
+### Why
+- After consolidating the latest branch into `D:\SM`, fresh verification failed because the public stock boundary referenced modules that were not present in the working tree.
+- P16 needed to remain a pure P15 apply-document status-freeze layer, not reconciliation, runtime replay, broker execution, or position materialization.
+- The Nikkei capital-source training path also depended on governed capital-flow persistence and observation-only factor snapshots, so compile-only placeholders were not sufficient for repository-wide green.
+
+### Remaining
+- [ ] The restored JPX/MOF import and live-backfill routes preserve public contracts but do not implement real workbook, CSV, or network adapters in this recovery slice.
+- [ ] The capital-source snapshot computes the observation-only metrics required by current training tests from governed raw rows; broader financial interpretation still needs a separate approved design if expanded.
+
+### Risks
+- [ ] The capital-flow restoration was reconstructed from active tests and contract references because the original module files were absent from `HEAD`, branch history, and the retained backup.
+- [ ] Future capital-source work should avoid treating this recovery as approval to merge capital-source factors into model features; current behavior remains observation-only.
+
+### Closed
+- Verified RED first: `$env:CARGO_TARGET_DIR='D:\SM\target_p16_status_bridge_red'; cargo test --test security_portfolio_execution_status_bridge_cli -- --nocapture`, which failed on missing `src\ops\security_portfolio_execution_status_bridge.rs`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p16_status_bridge_green'; cargo test --test security_portfolio_execution_status_bridge_cli -- --nocapture`, which passed with `3 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p16_status_bridge_check'; cargo test --test stock_formal_boundary_manifest_source_guard -- --nocapture`, which passed with `4 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_scorecard_training_capital_fix'; cargo test --test security_scorecard_training_cli -- --nocapture`, which passed with `17 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_verify_after_p16_final'; cargo test -- --nocapture`, which passed repository-wide.
+## 2026-04-25
+### Modified
+- Added `D:\SM\docs\plans\2026-04-25-p17-p18-execution-recovery-design.md` and `D:\SM\docs\plans\2026-04-25-p17-p18-execution-recovery-plan.md` to freeze the approved方案A recovery contract before implementation.
+- Rebuilt P17 at `D:\SM\src\ops\security_portfolio_execution_reconciliation_bridge.rs` with CLI coverage in `D:\SM\tests\security_portfolio_execution_reconciliation_bridge_cli.rs`.
+- Rebuilt P18 at `D:\SM\src\ops\security_portfolio_execution_repair_package.rs` with CLI coverage in `D:\SM\tests\security_portfolio_execution_repair_package_cli.rs`.
+- Wired P17/P18 through `D:\SM\src\ops\stock.rs`, `D:\SM\src\ops\stock_execution_and_position_management.rs`, `D:\SM\src\tools\catalog.rs`, `D:\SM\src\tools\dispatcher.rs`, and `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+- Updated `D:\SM\tests\stock_formal_boundary_manifest_source_guard.rs`, `D:\SM\docs\governance\contract_registry.md`, `D:\SM\docs\governance\decision_log.md`, `D:\SM\docs\handoff\CURRENT_STATUS.md`, and `D:\SM\docs\handoff\HANDOFF_ISSUES.md` for the recovered P17/P18 truth.
+
+### Why
+- The user approved方案A after inspection showed `E:\SM` and the historical temporary worktrees were unavailable and Git history did not contain the P17/P18 source files.
+- P17 had to be rebuilt before P18 because repair intent must consume a formal reconciliation artifact rather than raw P16 status rows.
+- P18 was kept as repair-intent freeze only, not replay execution, broker execution, position materialization, or lifecycle closeout.
+
+### Remaining
+- [ ] P19 replay executor / repair executor is still not designed or implemented; it requires a separate approved contract.
+- [ ] Repository-wide `cargo test -- --nocapture` was not rerun in this recovery closeout; current evidence is focused P17/P18 plus boundary/grouping guards and `cargo check`.
+
+### Risks
+- [ ] The original `E:\SM` P17/P18 files were unavailable, so this recovery was reconstructed from the current P16 implementation, handoff notes, and changelog evidence rather than copied byte-for-byte.
+- [ ] The worktree remains dirty with unrelated local files and generated targets, so any Git delivery must stage only this task slice.
+
+### Closed
+- Verified RED first: `$env:CARGO_TARGET_DIR='D:\SM\target_p17_recovery_red'; cargo test --test security_portfolio_execution_reconciliation_bridge_cli -- --nocapture`, which failed with `unsupported tool: security_portfolio_execution_reconciliation_bridge`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p17_recovery_green'; cargo test --test security_portfolio_execution_reconciliation_bridge_cli -- --nocapture`, which passed with `4 passed; 0 failed`.
+- Verified RED first: `$env:CARGO_TARGET_DIR='D:\SM\target_p18_recovery_red'; cargo test --test security_portfolio_execution_repair_package_cli -- --nocapture`, which failed with `unsupported tool: security_portfolio_execution_repair_package`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p18_recovery_green'; cargo test --test security_portfolio_execution_repair_package_cli -- --nocapture`, which passed with `6 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p17_p18_recovery_guard'; cargo test --test stock_formal_boundary_manifest_source_guard -- --nocapture`, which passed with `4 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p17_p18_recovery_guard'; cargo test --test stock_catalog_grouping_source_guard -- --nocapture`, which passed with `2 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p17_p18_recovery_guard'; cargo test --test stock_dispatcher_grouping_source_guard -- --nocapture`, which passed with `1 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p17_p18_recovery_final'; cargo test --test security_portfolio_execution_reconciliation_bridge_cli --test security_portfolio_execution_repair_package_cli -- --nocapture`, which passed with `10 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p17_p18_recovery_final'; cargo check`, which completed successfully.
+- Ran `cargo fmt`.
+- Verified after formatting: `$env:CARGO_TARGET_DIR='D:\SM\target_p17_p18_recovery_verify_after_fmt'; cargo test --test security_portfolio_execution_reconciliation_bridge_cli --test security_portfolio_execution_repair_package_cli -- --nocapture`, which passed with `10 passed; 0 failed`.
+- Verified after formatting: `$env:CARGO_TARGET_DIR='D:\SM\target_p17_p18_recovery_verify_after_fmt'; cargo check`, which completed successfully.
+## 2026-04-25
+### Modified
+- Updated `D:\SM\docs\handoff\CURRENT_STATUS.md` and `D:\SM\docs\handoff\HANDOFF_ISSUES.md` with the fresh repository-wide verification result after the P17/P18 recovery.
+
+### Why
+- The user chose方案1 after P17/P18 focused verification: run full repository regression before deciding whether to design P19.
+- Branch-health truth changed from focused-green plus `cargo check` to repository-wide `cargo test -- --nocapture` green in the current `D:\SM` worktree.
+
+### Remaining
+- [ ] P19 replay executor / repair executor is still not designed or implemented; it still requires a separate approved contract-first design.
+- [ ] The worktree remains dirty with multiple tracked and untracked recovery files, so repository green does not imply clean Git state or ready-to-stage scope.
+
+### Risks
+- [ ] The full regression used an isolated target directory, but it ran in the dirty local `D:\SM` worktree; future Git delivery must still stage only the intended task slice.
+
+### Closed
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_repo_full_after_p18'; cargo test -- --nocapture`, which completed with exit code 0 after running unit tests, integration tests, source guards, P17/P18 tests, and doc tests.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_repo_full_after_p18_confirm'; cargo test -- --nocapture`, which completed with exit code 0 in the current session before moving to any P19 design decision.
+## 2026-04-25
+### Modified
+- Added `D:\SM\docs\plans\2026-04-25-p19a-execution-replay-request-package-design.md` and `D:\SM\docs\plans\2026-04-25-p19a-execution-replay-request-package-plan.md` for the approved A1 strict replay-request package.
+- Added P19A at `D:\SM\src\ops\security_portfolio_execution_replay_request_package.rs` with CLI coverage in `D:\SM\tests\security_portfolio_execution_replay_request_package_cli.rs`.
+- Wired P19A through `D:\SM\src\ops\stock.rs`, `D:\SM\src\ops\stock_execution_and_position_management.rs`, `D:\SM\src\tools\catalog.rs`, `D:\SM\src\tools\dispatcher.rs`, and `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+- Updated `D:\SM\tests\stock_formal_boundary_manifest_source_guard.rs`, `D:\SM\docs\governance\contract_registry.md`, `D:\SM\docs\governance\decision_log.md`, `D:\SM\docs\handoff\CURRENT_STATUS.md`, and `D:\SM\docs\handoff\HANDOFF_ISSUES.md` for P19A.
+
+### Why
+- The user selected P19A/A1 after P17/P18 recovery and repository-wide regression verification.
+- P19A needed to freeze only P18 `governed_retry_candidate` rows as replay requests before any future replay executor contract.
+- Manual follow-up and blocked governance rows must remain excluded from replay request rows.
+
+### Remaining
+- [ ] P19B replay executor / retry executor is still not designed or implemented; it requires a separate approved contract.
+- [ ] Repository-wide `cargo test -- --nocapture` was not rerun after P19A; current evidence is P19A focused tests, formal boundary/grouping guards, and `cargo check`.
+
+### Risks
+- [ ] The worktree remains dirty with unrelated local files and parallel Nikkei/capital-source changes, so any Git delivery must stage only the intended task slice.
+- [ ] Formal boundary guard verification had to align its expected manifest with the active `security_volume_source_manifest` module already present in the dirty worktree.
+
+### Closed
+- Verified RED first: `$env:CARGO_TARGET_DIR='D:\SM\target_p19a_replay_request_red'; cargo test --test security_portfolio_execution_replay_request_package_cli -- --nocapture`, which failed with `unsupported tool: security_portfolio_execution_replay_request_package`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p19a_replay_request_green'; cargo test --test security_portfolio_execution_replay_request_package_cli -- --nocapture`, which passed with `5 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p19a_replay_request_final'; cargo test --test security_portfolio_execution_replay_request_package_cli -- --nocapture`, which passed with `5 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p19a_replay_request_final'; cargo test --test stock_formal_boundary_manifest_source_guard -- --nocapture`, which passed with `4 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p19a_replay_request_final'; cargo test --test stock_catalog_grouping_source_guard -- --nocapture`, which passed with `2 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p19a_replay_request_final'; cargo test --test stock_dispatcher_grouping_source_guard -- --nocapture`, which passed with `1 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p19a_replay_request_final'; cargo check`, which completed successfully.
+## 2026-04-25
+### Modified
+- Added the approved Nikkei volume-proxy training contract in `D:\SM\docs\plans\2026-04-25-nikkei-volume-proxy-design.md` and `D:\SM\docs\plans\2026-04-25-nikkei-volume-proxy-plan.md`.
+- Updated `D:\SM\src\ops\security_scorecard_training.rs` with `volume_proxy_symbol` support for weekly training.
+- Updated `D:\SM\tests\security_scorecard_training_cli.rs` with a regression test proving the proxy gives weekly volume features non-constant values without enabling futures price features.
+- Updated `D:\SM\task_plan.md`, `D:\SM\progress.md`, and `D:\SM\findings.md` with the data state, real rerun comparison, and verification evidence.
+
+### Why
+- The restored governed Nikkei price source is FRED close-only data, so all `NK225.IDX` rows have `volume=0`.
+- Weekly volume features were therefore structurally unavailable and collapsed to zero variance.
+- The user approved Scheme B: preserve FRED as the official price source and add a separate volume-only proxy instead of mixing Yahoo OHLCV into the spot history.
+
+### Remaining
+- [ ] The current proxy source only covers `2024-10-01..2026-04-01`; a full-range Nikkei volume proxy is still needed before treating the result as a complete 10-year validation.
+- [ ] Accuracy improvement is limited and mixed, so further model tuning should wait until the longer volume source is available.
+
+### Risks
+- [ ] The short proxy fixes feature availability but may overweight recent volume behavior because early training windows still fall back to spot/futures/zero-volume availability.
+- [ ] `D:\SM` remains a dirty worktree with unrelated recovery files and generated target directories; any Git delivery must stage only the intended task slice.
+
+### Closed
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_volume_proxy_green'; cargo test security_scorecard_training_nikkei_weekly_uses_volume_proxy_without_futures_features --test security_scorecard_training_cli -- --nocapture`, which passed with `1 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_volume_proxy_weekly'; cargo test weekly_ --test security_scorecard_training_cli -- --nocapture`, which passed with `5 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_volume_proxy_full'; cargo test --test security_scorecard_training_cli -- --nocapture`, which passed with `18 passed; 0 failed`.
+## 2026-04-25
+### Modified
+- Added `D:\SM\docs\plans\2026-04-25-nikkei-volume-source-manifest-design.md` and `D:\SM\docs\plans\2026-04-25-nikkei-volume-source-manifest-plan.md`.
+- Added `security_volume_source_manifest` as a public stock data-pipeline tool.
+- Added source/date/volume coverage aggregation in `D:\SM\src\runtime\stock_history_store.rs`.
+- Added manifest operation logic in `D:\SM\src\ops\security_volume_source_manifest.rs`.
+- Wired the tool through `D:\SM\src\ops\stock.rs`, `D:\SM\src\ops\stock_data_pipeline.rs`, `D:\SM\src\tools\catalog.rs`, `D:\SM\src\tools\dispatcher.rs`, and `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+- Added CLI coverage in `D:\SM\tests\security_volume_source_manifest_cli.rs`.
+- Generated real manifest data at `D:\.stockmind_runtime\nikkei_10y_market_20260425\nikkei_volume_source_manifest_20260425.json`.
+- Updated `D:\SM\task_plan.md`, `D:\SM\progress.md`, and `D:\SM\findings.md` with the manifest verdict.
+
+### Why
+- The user asked to补量能系统清单数据 before further model tuning.
+- The previous volume-proxy implementation proved the feature path works, but the source inventory was still implicit.
+- A top-level investment system needs a reproducible manifest that distinguishes `no_volume`, `usable_short_proxy`, and `train_ready_volume_proxy`.
+
+### Remaining
+- [ ] Current Nikkei volume has no 750-day train-ready source; `NK225_VOL.PROXY` remains a short proxy with `365` rows.
+- [ ] The manifest is read-only in this phase; training does not yet enforce manifest gates automatically.
+
+### Risks
+- [ ] `NK225_VOL.PROXY` has one zero-volume row and short coverage, so it should not be treated as complete 10-year volume evidence.
+- [ ] The worktree still contains unrelated recovery changes and generated target directories; Git delivery must stage only the intended task slice.
+
+### Closed
+- Verified RED first: `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_volume_manifest_red'; cargo test --test security_volume_source_manifest_cli -- --nocapture`, which failed with unsupported tool/catalog miss.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_volume_manifest_green'; cargo test --test security_volume_source_manifest_cli -- --nocapture`, which passed with `2 passed; 0 failed`.
+- Ran `cargo fmt`.
+- Verified after formatting: `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_volume_manifest_green'; cargo test --test security_volume_source_manifest_cli -- --nocapture`, which passed with `2 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_volume_manifest_check'; cargo check`, which completed successfully.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_volume_manifest_guards'; cargo test --test stock_catalog_grouping_source_guard --test stock_dispatcher_grouping_source_guard --test stock_formal_boundary_manifest_source_guard -- --nocapture`, which passed with `7 passed; 0 failed` across the three guard files.
+## 2026-04-25
+### Modified
+- Added `D:\SM\docs\plans\2026-04-25-nikkei-turnover-official-import-design.md` and `D:\SM\docs\plans\2026-04-25-nikkei-turnover-official-import-plan.md`.
+- Added `security_nikkei_turnover_import` as a public stock data-pipeline tool.
+- Added official turnover import logic in `D:\SM\src\ops\security_nikkei_turnover_import.rs`.
+- Wired the tool through `D:\SM\src\ops\stock.rs`, `D:\SM\src\ops\stock_data_pipeline.rs`, `D:\SM\src\tools\catalog.rs`, `D:\SM\src\tools\dispatcher.rs`, and `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+- Added CLI coverage in `D:\SM\tests\security_nikkei_turnover_import_cli.rs`.
+- Updated `D:\SM\tests\stock_formal_boundary_manifest_source_guard.rs` so the frozen formal stock manifest includes the approved turnover importer.
+- Updated `D:\SM\task_plan.md`, `D:\SM\progress.md`, and `D:\SM\findings.md` with the turnover receiver status.
+
+### Why
+- The user rejected paid Stooq and confirmed a free-source route.
+- Nikkei official `Total Trading Value` is the preferred free proxy, but automated local access is Cloudflare-blocked.
+- The system therefore needs a governed receiver for manually exported official Nikkei turnover files.
+
+### Remaining
+- [ ] Actual long-history `NK225_TURNOVER.NIKKEI` import still needs the official Nikkei turnover export/copy-text file.
+- [ ] After the file is supplied, re-run `security_nikkei_turnover_import`, regenerate `security_volume_source_manifest`, then rerun weekly training with `volume_proxy_symbol=NK225_TURNOVER.NIKKEI`.
+
+### Risks
+- [ ] Turnover is not share-volume truth; it must remain labeled as `Total Trading Value` proxy.
+- [ ] Missing price dates are skipped by design, so a real import may have fewer rows than the official turnover export if `NK225.IDX` price coverage has gaps.
+
+### Closed
+- Verified RED first: `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_turnover_import_red'; cargo test --test security_nikkei_turnover_import_cli -- --nocapture`, which failed with unsupported tool/catalog miss.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_turnover_import_green'; cargo test --test security_nikkei_turnover_import_cli -- --nocapture`, which passed with `2 passed; 0 failed`.
+- Ran `cargo fmt`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_turnover_import_check'; cargo check`, which completed successfully.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_turnover_import_guards'; cargo test --test stock_catalog_grouping_source_guard --test stock_dispatcher_grouping_source_guard --test stock_formal_boundary_manifest_source_guard -- --nocapture`, which passed with `7 passed; 0 failed`.
+## 2026-04-25
+### Modified
+- Updated `D:\SM\docs\handoff\CURRENT_STATUS.md` with the repository-wide verification result after P19A.
+
+### Why
+- The user approved running full repository regression after P19A before entering P19B design.
+- Branch-health truth changed from P19A focused-green plus `cargo check` to repository-wide `cargo test -- --nocapture` green in the current `D:\SM` worktree.
+
+### Remaining
+- [ ] P19B replay executor / retry executor is still not designed or implemented; it now proceeds to a separate contract-first design step.
+- [ ] The worktree remains dirty with multiple tracked and untracked recovery, Nikkei, capital-source, and P19A files.
+
+### Risks
+- [ ] The full regression used an isolated target directory, but it ran in the dirty local `D:\SM` worktree; future Git delivery must still stage only the intended task slice.
+
+### Closed
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_repo_full_after_p19a'; cargo test -- --nocapture`, which completed with exit code 0 after running unit tests, integration tests, P19A tests, source guards, and doc tests.
+## 2026-04-25
+### Modified
+- Added `D:\SM\docs\plans\2026-04-25-p19b-execution-replay-dry-run-executor-design.md`.
+- Added `D:\SM\docs\plans\2026-04-25-p19b-execution-replay-dry-run-executor-plan.md`.
+
+### Why
+- The user confirmed entering P19B after the P19A repository-wide regression passed.
+- P19B needs a separate dry-run-first executor contract before any runtime write or commit-mode replay work.
+
+### Remaining
+- [ ] P19B implementation has not started; the next step is TDD red tests for `security_portfolio_execution_replay_executor`.
+- [ ] Commit-mode replay remains explicitly out of scope until a later approved design.
+
+### Risks
+- [ ] The worktree remains dirty with unrelated recovery, Nikkei, capital-source, and P19A files, so future Git delivery must stage only the intended task slice.
+
+### Closed
+- Recorded the P19B B1 dry-run-first executor design and implementation plan.
+## 2026-04-25
+### Modified
+- Added P19B at `D:\SM\src\ops\security_portfolio_execution_replay_executor.rs` with CLI coverage in `D:\SM\tests\security_portfolio_execution_replay_executor_cli.rs`.
+- Wired P19B through `D:\SM\src\ops\stock.rs`, `D:\SM\src\ops\stock_execution_and_position_management.rs`, `D:\SM\src\tools\catalog.rs`, `D:\SM\src\tools\dispatcher.rs`, and `D:\SM\src\tools\dispatcher\stock_ops.rs`.
+- Updated `D:\SM\tests\stock_formal_boundary_manifest_source_guard.rs`, `D:\SM\docs\governance\contract_registry.md`, `D:\SM\docs\governance\decision_log.md`, `D:\SM\docs\handoff\CURRENT_STATUS.md`, and `D:\SM\docs\handoff\HANDOFF_ISSUES.md` for P19B.
+
+### Why
+- The user asked to continue after approving P19B.
+- P19B needed to freeze dry-run executor eligibility and deterministic idempotency keys before any commit-mode runtime replay.
+- Commit mode remains explicitly rejected in this phase.
+
+### Remaining
+- [ ] P19C/P20 commit-mode replay executor is not designed or implemented; it requires a separate approved contract.
+- [ ] Repository-wide `cargo test -- --nocapture` was not rerun after P19B; current evidence will be focused P19B tests, guards, and `cargo check`.
+
+### Risks
+- [ ] The worktree remains dirty with unrelated recovery, Nikkei, capital-source, P19A, and P19B files, so any Git delivery must stage only the intended task slice.
+- [ ] P19B dry-run validates executor readiness but does not reduce unresolved runtime execution state.
+
+### Closed
+- Verified RED first: `$env:CARGO_TARGET_DIR='D:\SM\target_p19b_replay_executor_red'; cargo test --test security_portfolio_execution_replay_executor_cli -- --nocapture`, which failed with `unsupported tool: security_portfolio_execution_replay_executor`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p19b_replay_executor_green'; cargo test --test security_portfolio_execution_replay_executor_cli -- --nocapture`, which passed with `7 passed; 0 failed`.
+## 2026-04-25
+### Modified
+- Updated `D:\SM\docs\handoff\CURRENT_STATUS.md` with the final focused P19B verification evidence.
+
+### Why
+- The P19B implementation entry had recorded RED/GREEN evidence but not the final source guards and `cargo check` evidence from the current session.
+- Completion claims for P19B must stay tied to fresh command output rather than inferred from earlier focused runs.
+
+### Remaining
+- [ ] Repository-wide `cargo test -- --nocapture` was not rerun after P19B; current evidence is P19B focused tests, formal boundary/grouping guards, and `cargo check`.
+- [ ] P19C/P20 commit-mode replay executor remains out of scope until a separate approved contract.
+
+### Risks
+- [ ] The worktree remains dirty with unrelated recovery, Nikkei, capital-source, P19A, and P19B files, so Git delivery must stage only the intended task slice.
+
+### Closed
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p19b_replay_executor_final'; cargo test --test security_portfolio_execution_replay_executor_cli -- --nocapture`, which passed with `7 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p19b_replay_executor_final'; cargo test --test stock_formal_boundary_manifest_source_guard -- --nocapture`, which passed with `4 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p19b_replay_executor_final'; cargo test --test stock_catalog_grouping_source_guard -- --nocapture`, which passed with `2 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p19b_replay_executor_final'; cargo test --test stock_dispatcher_grouping_source_guard -- --nocapture`, which passed with `1 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p19b_replay_executor_final'; cargo check`, which completed successfully.
+## 2026-04-25
+### Modified
+- Updated `D:\SM\docs\handoff\CURRENT_STATUS.md` with the failed P19B follow-up repository-wide regression.
+
+### Why
+- The user approved running full repository regression after P19B.
+- The command did not pass and must be recorded as the current branch-health truth before any further completion claim.
+
+### Remaining
+- [ ] Resolve `security_nikkei_turnover_import` formal boundary manifest drift or remove that unapproved boundary exposure, then rerun the focused guard and full repository regression.
+- [ ] P19C/P20 commit-mode replay executor remains out of scope until P19B repository health is restored and a separate approved contract exists.
+
+### Risks
+- [ ] The failure comes from a parallel Nikkei official turnover import slice in the dirty worktree, so fixing it must avoid reverting unrelated user/parallel edits.
+- [ ] Until rerun, P19B remains focused-green but the current `D:\SM` worktree is not repository-wide green after P19B.
+
+### Closed
+- Ran `$env:CARGO_TARGET_DIR='D:\SM\target_repo_full_after_p19b'; cargo test -- --nocapture`, which failed with exit code 1.
+- Reproduced the blocker with `$env:CARGO_TARGET_DIR='D:\SM\target_repo_full_after_p19b'; cargo test --test stock_formal_boundary_manifest_source_guard stock_root_keeps_only_the_frozen_module_manifest -- --nocapture`, which failed because `security_nikkei_turnover_import` is present in `src\ops\stock.rs` but absent from the frozen public boundary manifest.
+## 2026-04-25
+### Modified
+- Updated `C:\Users\wakes\.codex\skills\contract-first-design\SKILL.md` to require a Cross-Artifact Contract and Independent Risk Pass when public boundaries, registries, catalogs, dispatchers, manifests, snapshots, or source guards may drift.
+- Updated `C:\Users\wakes\.codex\skills\writing-plans\SKILL.md` to require a Risk Synchronization Gate and a separate boundary-manifest/source-guard sync task for public boundary changes.
+- Updated `C:\Users\wakes\.codex\skills\writing-skills\SKILL.md` so future skill edits that prevent repeated cross-artifact drift failures must include RED/GREEN pressure scenarios.
+
+### Why
+- The P19B follow-up repository-wide regression exposed an earlier process gap: a public stock boundary module can be wired through runtime entrypoints while its frozen manifest/source guard is missed.
+- The user asked to solve this by requiring another risk-identification subprocess, not by adding another ordinary checklist.
+
+### Remaining
+- [ ] The current `D:\SM` repository-wide regression still needs to be rerun after the active boundary drift is resolved.
+- [ ] The skill changes are local to `C:\Users\wakes\.codex\skills`; they are not repository-tracked unless a separate skill distribution step is requested.
+
+### Risks
+- [ ] Inline fresh-pass mode is not a true independent agent; it must be labeled honestly unless the user authorizes `spawn_agent`.
+- [ ] The stronger gates may add design overhead for boundary-facing changes, but they are scoped to public surfaces, manifests, registries, catalogs, dispatchers, source guards, and derived artifacts.
+
+### Closed
+- RED pressure scenario confirmed the previous `contract-first-design` and `writing-plans` skills did not require an independent risk subprocess as a hard gate.
+- GREEN pressure scenario confirmed the updated skills now trigger `Independent Risk Pass` / `Risk Synchronization Gate` and require mode, source-of-truth, frozen-artifact, guard-test, must-sync, and blocker fields.
+- Verified `python C:\Users\wakes\.codex\skills\.system\skill-creator\scripts\quick_validate.py C:\Users\wakes\.codex\skills\contract-first-design`, which reported `Skill is valid!`.
+- Verified `python C:\Users\wakes\.codex\skills\.system\skill-creator\scripts\quick_validate.py C:\Users\wakes\.codex\skills\writing-plans`, which reported `Skill is valid!`.
+- Verified `$env:PYTHONUTF8='1'; python C:\Users\wakes\.codex\skills\.system\skill-creator\scripts\quick_validate.py C:\Users\wakes\.codex\skills\writing-skills`, which reported `Skill is valid!`.
+## 2026-04-25
+### Modified
+- Imported existing yfinance-derived Nikkei volume history into the active Nikkei market DB as `NK225_VOL.YFINANCE`.
+- Updated `D:\SM\task_plan.md`, `D:\SM\progress.md`, and `D:\SM\findings.md` with the corrected data-source route, manifest verdict, and three-run training comparison.
+
+### Why
+- The user clarified that the project already has yfinance code/data access, so the correct path is to reuse the local implementation before searching external sources.
+- The earlier `NK225_VOL.PROXY` source was too short for the 750-day readiness gate, so the weekly training comparison needed the long yfinance proxy.
+
+### Remaining
+- [ ] `NK225_VOL.YFINANCE` is still a proxy, not official Nikkei turnover truth.
+- [ ] Weekly readiness remains `caution`; do not promote this model without addressing weak walk-forward evidence and redundant correlated price-position features.
+
+### Risks
+- [ ] `NK225.IDX` must remain the FRED price source; yfinance OHLCV rows are only imported under the separate proxy symbol.
+- [ ] The post-validation holdout did not improve versus the no-proxy run, even though valid/test accuracy improved.
+
+### Closed
+- Imported `D:\.stockmind_runtime\nikkei_10y_market_20260425\nikkei_yfinance_N225_20160425_20260425_training_format.csv` as `NK225_VOL.YFINANCE`, with `2443` rows from `2016-04-25` through `2026-04-24`.
+- Verified manifest output reports `NK225_VOL.YFINANCE` as `train_ready_volume_proxy`.
+- Reran current Nikkei weekly `direction_head` with `volume_proxy_symbol=NK225_VOL.YFINANCE`; result was `valid_acc=0.520548`, `test_acc=0.502283`, `holdout_acc=0.370370`, `walk_forward_mean=0.532787`, readiness `caution`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_yfinance_volume_verify_manifest'; cargo test --test security_volume_source_manifest_cli -- --nocapture`, which passed with `2 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_yfinance_volume_verify_scorecard'; cargo test security_scorecard_training_nikkei_weekly_uses_volume_proxy_without_futures_features --test security_scorecard_training_cli -- --nocapture`, which passed with `1 passed; 0 failed`.
+## 2026-04-26
+### 修改内容
+- Added `D:\SM\docs\plans\2026-04-26-nikkei-long-horizon-volume-behavior-design.md`.
+- Added `D:\SM\docs\plans\2026-04-26-nikkei-long-horizon-volume-behavior-plan.md`.
+- Updated `D:\SM\src\ops\security_scorecard_training.rs` with long-horizon Nikkei weekly volume behavior features:
+  - `weekly_volume_ratio_13w`
+  - `weekly_volume_ratio_26w`
+  - `weekly_volume_ratio_52w`
+  - `weekly_price_position_52w`
+  - `weekly_volume_accumulation_26w`
+  - `weekly_volume_accumulation_52w`
+  - `weekly_high_volume_low_price_signal`
+  - `weekly_high_volume_breakout_signal`
+- Updated `D:\SM\tests\security_scorecard_training_cli.rs` with RED/GREEN coverage for the new weekly feature contract.
+- Updated `D:\SM\task_plan.md`, `D:\SM\progress.md`, and `D:\SM\findings.md` with formulas, verification, and real Nikkei rerun metrics.
+
+### 修改原因
+- The user confirmed Scheme B and clarified that index-level accumulation can be yearly, so the previous 4-week volume ratio was too short for large capital behavior.
+- The model needed explicit half-year/yearly volume context before judging volume as bullish, bearish, accumulation, or breakout.
+
+### 方案还差什么
+- [ ] The model remains `caution`, not production-ready.
+- [ ] A follow-up feature-governance step should reduce correlated volume features before any promotion.
+- [ ] yfinance volume remains a proxy source, not official Nikkei turnover truth.
+
+### 潜在问题
+- [ ] Feature count increased from `14` to `22` while weekly sample count stayed `244`, reducing sample-per-feature.
+- [ ] High-correlation pair count increased from `1` to `2`; `weekly_volume_accumulation_26w` and `weekly_volume_accumulation_52w` correlate at `0.8621`.
+- [ ] Walk-forward mean fell to `0.491803`, even though test and holdout improved.
+
+### 关闭项
+- RED verified: `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_long_volume_red'; cargo test weekly_price_aggregation_emits_distribution_quantiles_for_nikkei_training --test security_scorecard_training_cli -- --nocapture` failed because `weekly_volume_ratio_13w` was missing.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_long_volume_green'; cargo test weekly_price_aggregation_emits_distribution_quantiles_for_nikkei_training --test security_scorecard_training_cli -- --nocapture`, which passed with `1 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_long_volume_proxy_green'; cargo test security_scorecard_training_nikkei_weekly_uses_volume_proxy_without_futures_features --test security_scorecard_training_cli -- --nocapture`, which passed with `1 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_long_volume_weekly'; cargo test weekly_ --test security_scorecard_training_cli -- --nocapture`, which passed with `5 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_long_volume_check'; cargo check`, which completed successfully.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_nikkei_long_volume_scorecard_full'; cargo test --test security_scorecard_training_cli -- --nocapture`, which passed with `18 passed; 0 failed`.
+- Real Nikkei rerun completed at `D:\.stockmind_runtime\nikkei_current_rerun_20260426_direction_head_yfinance_10y_long_volume_behavior` with `valid_acc=0.484018`, `test_acc=0.525114`, `holdout_acc=0.407407`, `walk_forward_mean=0.491803`, readiness `caution`.
+## 2026-04-26
+### 修改内容
+- Added the low-price extreme-volume event finding to `D:\SM\findings.md`.
+- Updated `D:\SM\progress.md` with the anomaly export path and interpretation.
+
+### 修改原因
+- The user identified that low-price extreme volume may be caused by major events rather than ordinary accumulation.
+- The anomaly table supports that interpretation: the strongest low-price extreme-volume Nikkei cases cluster around tariff shock, yen carry unwind, war shock, Fed/yen pressure, and banking-stress weeks.
+
+### 方案还差什么
+- [ ] Mild-volume behavior still needs separate analysis after this event finding.
+- [ ] Event tags are initial annotations; a later feature contract would need structured event-source governance before entering training.
+
+### 潜在问题
+- [ ] Without event tagging, the model may confuse panic liquidation with accumulation.
+- [ ] Low-price extreme-volume sample count is small, so conclusions should remain diagnostic rather than production rules.
+
+### 关闭项
+- Recorded the finding: low-price extreme volume is usually panic/capitulation context when it coincides with major macro or policy events; no-event low-price volume is the better accumulation candidate.
+## 2026-04-26
+### Modified
+- Updated `D:\SM\docs\handoff\CURRENT_STATUS.md` with the P19B follow-up boundary recheck and repository-wide regression pass.
+
+### Why
+- The previous P19B follow-up full regression had failed on `security_nikkei_turnover_import` formal boundary manifest drift.
+- The user approved continuing with focused guard verification, turnover import verification, and a full repository rerun before moving past P19B.
+
+### Remaining
+- [ ] P19C/P20 commit-mode replay executor remains undesigned and unimplemented; it requires a separate contract-first design before any code change.
+- [ ] The worktree remains dirty with unrelated recovery, Nikkei, capital-source, generated target, and runtime fixture artifacts; Git delivery still needs narrow staging.
+
+### Risks
+- [ ] Repository-wide green was verified in the current dirty `D:\SM` worktree, so it proves current local branch health but not clean Git scope.
+- [ ] `security_nikkei_turnover_import` is now treated as a formal public stock-boundary module; future changes must keep its manifest/catalog/dispatcher/source guards synchronized.
+
+### Closed
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p19b_boundary_recheck'; cargo test --test stock_formal_boundary_manifest_source_guard -- --nocapture`, which passed with `4 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_p19b_boundary_recheck'; cargo test --test security_nikkei_turnover_import_cli -- --nocapture`, which passed with `2 passed; 0 failed`.
+- Verified `$env:CARGO_TARGET_DIR='D:\SM\target_repo_full_after_p19b_recheck'; cargo test -- --nocapture`, which completed with exit code 0.
+## 2026-04-26
+### Modified
+- Added `D:\SM\docs\plans\2026-04-26-p19c-execution-replay-commit-preflight-design.md`.
+- Added `D:\SM\docs\plans\2026-04-26-p19c-execution-replay-commit-preflight-plan.md`.
+
+### Why
+- The user approved P19C方案A and explicitly asked to use the newly strengthened risk-subprocess skill flow.
+- P19C should freeze commit preflight inputs, canonical payload hashes, and future durable idempotency candidates before any P19D runtime writer exists.
+- P19C must not open P19B commit mode or call `security_execution_record`.
+
+### Remaining
+- [ ] P19C production implementation has not started; the next step is TDD RED tests for `security_portfolio_execution_replay_commit_preflight`.
+- [ ] P19D controlled runtime write remains undesigned and unimplemented.
+- [ ] P19C still needs focused verification, source guards, `cargo check`, and repository-wide regression after implementation.
+
+### Risks
+- [ ] P19C naming and docs must keep `preflight` explicit so future work does not mistake it for runtime commit authority.
+- [ ] The worktree remains dirty with unrelated recovery, Nikkei, capital-source, generated target, and runtime fixture artifacts; Git delivery still needs narrow staging.
+
+### Closed
+- Ran an independent risk subprocess with mode `user-approved-subagent`; it confirmed P19C must remain commit-preflight-only and defer runtime writes to P19D.
+- Static-checked the P19C design for `Cross-Artifact Contract`, `Independent Risk Pass`, `Hard Rejection Red Lines`, `security_execution_record` non-goal, and P19D deferral.
+- Static-checked the P19C plan for `Risk Synchronization Gate`, `user-approved-subagent` mode, must-sync files, must-run checks, runtime ref rejection, and focused Cargo commands.
+- Verified current P19C changes are documentation-only: only the two new P19C docs appear under the `p19c` git-status filter.
+## 2026-04-26
+### Modified
+- Added `D:\SM\src\ops\security_portfolio_execution_replay_commit_preflight.rs`.
+- Added `D:\SM\tests\security_portfolio_execution_replay_commit_preflight_cli.rs`.
+- Updated the stock public boundary, catalog, dispatcher, contract registry, decision log, current status, and handoff issues for P19C.
+- Added P19C independent-risk follow-up hard gates for P19B/P14 `document_type`, P19B/P14 `contract_version`, blocked P14 readiness, and source-level preflight-only enforcement.
+
+### Why
+- The user approved P19C scheme A and explicitly required using the newly added independent risk subprocess flow.
+- P19C must freeze replay commit preflight payload hashes and idempotency candidates before any P19D runtime writer exists.
+- The independent risk subprocess found that formal input identity and blocked-P14 gating were not hard enough, so the contract was tightened before final verification.
+
+### Remaining
+- [ ] P19D controlled runtime write remains undesigned and unimplemented.
+- [ ] P19C remains preflight-only and must not be extended to call `security_execution_record` without a new approved P19D contract.
+- [ ] The worktree remains dirty with unrelated recovery, Nikkei, capital-source, generated target, and runtime fixture artifacts; Git delivery still needs narrow staging.
+
+### Risks
+- [ ] P19C source now has a guard against direct runtime-write adapters, but future P19D work still needs a separate durable idempotency and already-committed detection design.
+- [ ] Current repository-wide green was verified in the dirty `D:\SM` worktree, so it proves current local branch health but not clean Git scope.
+
+### Closed
+- RED verified: `$env:CARGO_TARGET_DIR='D:\SM\target_p19c_commit_preflight_red'; cargo test --test security_portfolio_execution_replay_commit_preflight_cli -- --nocapture` failed because the P19C tool was unsupported.
+- GREEN verified: `$env:CARGO_TARGET_DIR='D:\SM\target_p19c_commit_preflight_green'; cargo test --test security_portfolio_execution_replay_commit_preflight_cli -- --nocapture` passed with `10 passed; 0 failed`.
+- Independent risk RED verified: `$env:CARGO_TARGET_DIR='D:\SM\target_p19c_commit_preflight_risk_red'; cargo test --test security_portfolio_execution_replay_commit_preflight_cli -- --nocapture` failed with 3 expected failures for missing P19B/P14 identity and blocked-P14 gating.
+- Independent risk GREEN verified: `$env:CARGO_TARGET_DIR='D:\SM\target_p19c_commit_preflight_risk_green'; cargo test --test security_portfolio_execution_replay_commit_preflight_cli -- --nocapture` passed with `14 passed; 0 failed`.
+- Final P19C focused verification passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19c_commit_preflight_final'; cargo test --test security_portfolio_execution_replay_commit_preflight_cli -- --nocapture` with `14 passed; 0 failed`.
+- Final boundary guard passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19c_commit_preflight_final'; cargo test --test stock_formal_boundary_manifest_source_guard -- --nocapture` with `4 passed; 0 failed`.
+- Final catalog guard passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19c_commit_preflight_final'; cargo test --test stock_catalog_grouping_source_guard -- --nocapture` with `2 passed; 0 failed`.
+- Final dispatcher guard passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19c_commit_preflight_final'; cargo test --test stock_dispatcher_grouping_source_guard -- --nocapture` with `1 passed; 0 failed`.
+- Final `cargo check` completed successfully with `D:\SM\target_p19c_commit_preflight_final`.
+- Repository-wide regression passed: `$env:CARGO_TARGET_DIR='D:\SM\target_repo_full_after_p19c'; cargo test -- --nocapture` completed with exit code 0.
+## 2026-04-26
+### Modified
+- Added and hardened `D:\SM\docs\plans\2026-04-26-p19d-controlled-replay-commit-writer-design.md`.
+- Added and hardened `D:\SM\docs\plans\2026-04-26-p19d-controlled-replay-commit-writer-plan.md`.
+
+### Why
+- The user approved P19D A1, but the independent risk subprocess found that deterministic idempotency, already-committed evidence, and source-write guards were not hard enough.
+- P19D must write runtime facts only through `security_execution_record`, with replay-control conflict checks inside that path rather than a notes-only outer precheck.
+
+### Remaining
+- [ ] P19D production implementation has not started; the next step is TDD RED for `SecurityExecutionReplayCommitControl` and the P19D writer.
+- [ ] P19D still needs focused tests, source guards, boundary/catalog/dispatcher sync, `cargo check`, and repository-wide regression after implementation.
+
+### Risks
+- [ ] `SecurityExecutionRecordDocument` must gain machine-readable replay metadata fields; notes-only evidence is explicitly rejected.
+- [ ] `security_execution_record` must prevent conflict overwrite inside its own runtime session because the current repository upsert uses conflict update behavior.
+- [ ] The worktree remains dirty with unrelated changes; future Git delivery must stage only P19D-owned files.
+
+### Closed
+- Incorporated the successful user-approved independent risk subprocess findings after one failed 429 attempt.
+- Static-checked P19D design and plan for no whitespace errors with `git diff --check -- docs\plans\2026-04-26-p19d-controlled-replay-commit-writer-design.md docs\plans\2026-04-26-p19d-controlled-replay-commit-writer-plan.md`.
+- Confirmed this step is documentation/planning only; P19D production code has not been modified.
+## 2026-04-26
+### Modified
+- Added `D:\SM\src\ops\security_portfolio_execution_replay_commit_writer.rs`.
+- Added `D:\SM\tests\security_portfolio_execution_replay_commit_writer_cli.rs`.
+- Updated `D:\SM\src\ops\security_execution_record.rs` with `SecurityExecutionReplayCommitControl` and machine-readable replay metadata fields.
+- Updated `D:\SM\src\runtime\security_execution_store_session.rs` with session-local execution-record lookup for replay conflict checks.
+- Updated public stock boundary, grouped gateway, catalog, dispatcher, formal boundary guard, governance docs, handoff docs, and adjacent execution-record tests for P19D.
+
+### Why
+- The user confirmed P19D after approving A1.
+- P19D must consume P19C preflight evidence and write runtime records only through `security_execution_record`.
+- The independent risk subprocess required deterministic target refs, machine-readable already-committed evidence, and no direct runtime write APIs from P19D.
+
+### Remaining
+- [ ] Git delivery still needs narrow staging because the worktree contains many unrelated existing and generated changes.
+- [ ] Future phases after P19D, such as lifecycle closeout or broker-fill replay, remain undesigned and out of scope.
+
+### Risks
+- [ ] P19D is intentionally per-row and non-atomic across rows; callers must read `non_atomicity_notice` and row statuses instead of assuming rollback.
+- [ ] `SecurityExecutionReplayCommitControl` now extends `security_execution_record`; future changes must preserve the no-overwrite check inside the runtime session.
+
+### Closed
+- RED verified: `$env:CARGO_TARGET_DIR='D:\SM\target_p19d_execution_record_red'; cargo test --test security_execution_record_cli security_execution_record_replay_control -- --nocapture` failed with 2 expected failures for missing deterministic replay id and conflict rejection.
+- GREEN verified: `$env:CARGO_TARGET_DIR='D:\SM\target_p19d_execution_record_green'; cargo test --test security_execution_record_cli security_execution_record_replay_control -- --nocapture` passed with `2 passed; 0 failed`.
+- RED verified: `$env:CARGO_TARGET_DIR='D:\SM\target_p19d_commit_writer_red'; cargo test --test security_portfolio_execution_replay_commit_writer_cli tool_catalog_includes_security_portfolio_execution_replay_commit_writer -- --nocapture` failed because the P19D tool was absent from the catalog.
+- Focused P19D verification passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19d_commit_writer_green'; cargo test --test security_portfolio_execution_replay_commit_writer_cli -- --nocapture` with `6 passed; 0 failed`.
+- Final P19D focused verification passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19d_commit_writer_final'; cargo test --test security_portfolio_execution_replay_commit_writer_cli -- --nocapture` with `6 passed; 0 failed`.
+- Final adjacent execution-record verification passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19d_commit_writer_final'; cargo test --test security_execution_record_cli -- --nocapture` with `7 passed; 0 failed`.
+- Final boundary guard passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19d_commit_writer_final'; cargo test --test stock_formal_boundary_manifest_source_guard -- --nocapture` with `4 passed; 0 failed`.
+- Final catalog guard passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19d_commit_writer_final'; cargo test --test stock_catalog_grouping_source_guard -- --nocapture` with `2 passed; 0 failed`.
+- Final dispatcher guard passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19d_commit_writer_final'; cargo test --test stock_dispatcher_grouping_source_guard -- --nocapture` with `1 passed; 0 failed`.
+- Final `cargo check` completed successfully with `D:\SM\target_p19d_commit_writer_final`.
+- Repository-wide regression passed: `$env:CARGO_TARGET_DIR='D:\SM\target_repo_full_after_p19d'; cargo test -- --nocapture` completed with exit code 0.
+- Post-format repository-wide regression passed: `$env:CARGO_TARGET_DIR='D:\SM\target_repo_full_after_p19d_fmt'; cargo test -- --nocapture` completed with exit code 0.
+## 2026-04-26
+### Modified
+- Added `D:\SM\src\ops\security_portfolio_execution_replay_commit_audit.rs`.
+- Added `D:\SM\tests\security_portfolio_execution_replay_commit_audit_cli.rs`.
+- Added `D:\SM\docs\plans\2026-04-26-p19e-replay-commit-audit-design.md`.
+- Added `D:\SM\docs\plans\2026-04-26-p19e-replay-commit-audit-plan.md`.
+- Updated public stock boundary, grouped gateway, catalog, dispatcher, formal boundary guard, governance docs, and handoff docs for P19E.
+
+### Why
+- The user approved Scheme A after P19D: add P19E commit audit/runtime replay verification before any P20 lifecycle closeout.
+- P19E must verify P19D runtime replay metadata through read-only execution-record lookup.
+- The independent risk subprocess required synchronizing public boundary artifacts and avoiding another frozen-manifest drift.
+
+### Remaining
+- [ ] Git delivery still needs narrow staging because the worktree contains many unrelated existing and generated changes.
+- [ ] P20 lifecycle closeout remains undesigned and must start from a separate approved contract.
+
+### Risks
+- [ ] P19E intentionally verifies replay commit metadata only; it does not prove broker fills, position materialization, or lifecycle closure.
+- [ ] P19E depends on P19D machine-readable replay metadata fields remaining stable.
+
+### Closed
+- RED verified: `$env:CARGO_TARGET_DIR='D:\SM\target_p19e_commit_audit_red'; cargo test --test security_portfolio_execution_replay_commit_audit_cli -- --nocapture` failed because `security_portfolio_execution_replay_commit_audit` was unsupported and the source file was absent after correcting the test fixture recursion limit.
+- Focused P19E verification passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19e_commit_audit_green'; cargo test --test security_portfolio_execution_replay_commit_audit_cli -- --nocapture` with `9 passed; 0 failed`.
+- Boundary guard first exposed the expected frozen manifest drift for `security_portfolio_execution_replay_commit_audit`, then passed after manifest sync.
+- Final P19E focused verification passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19e_commit_audit_final'; cargo test --test security_portfolio_execution_replay_commit_audit_cli -- --nocapture` with `9 passed; 0 failed`.
+- Final adjacent P19D verification passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19e_commit_audit_final'; cargo test --test security_portfolio_execution_replay_commit_writer_cli -- --nocapture` with `6 passed; 0 failed`.
+- Final boundary guard passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19e_commit_audit_final'; cargo test --test stock_formal_boundary_manifest_source_guard -- --nocapture` with `4 passed; 0 failed`.
+- Final catalog guard passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19e_commit_audit_final'; cargo test --test stock_catalog_grouping_source_guard -- --nocapture` with `2 passed; 0 failed`.
+- Final dispatcher guard passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p19e_commit_audit_final'; cargo test --test stock_dispatcher_grouping_source_guard -- --nocapture` with `1 passed; 0 failed`.
+- Final `cargo check` completed successfully with `D:\SM\target_p19e_commit_audit_final`.
+- Repository-wide regression passed: `$env:CARGO_TARGET_DIR='D:\SM\target_repo_full_after_p19e'; cargo test -- --nocapture` completed with exit code 0.
+## 2026-04-26
+### Modified
+- Added `D:\SM\src\ops\security_portfolio_execution_lifecycle_closeout_readiness.rs`.
+- Added `D:\SM\tests\security_portfolio_execution_lifecycle_closeout_readiness_cli.rs`.
+- Updated public stock boundary, grouped gateway, catalog, dispatcher, formal boundary guard, governance docs, and handoff docs for P20A.
+
+### Why
+- The user approved P20A after P19E and required full-repository regression before continuing.
+- P20A must consume P19E replay commit audit truth and emit side-effect-free closeout preflight readiness.
+- P20A must not call `security_execution_record`, `security_post_trade_review`, or `security_closed_position_archive`, and must not claim lifecycle closure.
+
+### Remaining
+- [ ] Git delivery still needs narrow staging because the worktree contains many unrelated existing and generated changes.
+- [ ] P20B remains undesigned and must start from a separate approved contract before adding any lifecycle writer/archive-producing behavior.
+
+### Risks
+- [ ] P20A eligibility is only preflight readiness; downstream code must not treat it as broker-fill truth, position materialization, closed archive truth, or lifecycle closure.
+- [ ] Future formatting must avoid running rustfmt on root modules that recursively format frozen legacy modules; use leaf files or skip-child formatting instead.
+
+### Closed
+- RED verified: `$env:CARGO_TARGET_DIR='D:\SM\target_p20a_closeout_readiness_red'; cargo test --test security_portfolio_execution_lifecycle_closeout_readiness_cli -- --nocapture` failed because `security_portfolio_execution_lifecycle_closeout_readiness` was unsupported and the source file was absent.
+- Focused P20A verification passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p20a_closeout_readiness_green'; cargo test --test security_portfolio_execution_lifecycle_closeout_readiness_cli -- --nocapture` with `9 passed; 0 failed`.
+- Boundary guard first exposed the expected frozen manifest drift for `security_portfolio_execution_lifecycle_closeout_readiness`, then passed after manifest sync.
+- Final P20A focused verification passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p20a_closeout_readiness_final'; cargo test --test security_portfolio_execution_lifecycle_closeout_readiness_cli -- --nocapture` with `9 passed; 0 failed`.
+- Final adjacent P19E verification passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p20a_closeout_readiness_final'; cargo test --test security_portfolio_execution_replay_commit_audit_cli -- --nocapture` with `9 passed; 0 failed`.
+- Final boundary guard passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p20a_closeout_readiness_final'; cargo test --test stock_formal_boundary_manifest_source_guard -- --nocapture` with `4 passed; 0 failed`.
+- Final catalog guard passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p20a_closeout_readiness_final'; cargo test --test stock_catalog_grouping_source_guard -- --nocapture` with `2 passed; 0 failed`.
+- Final dispatcher guard passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p20a_closeout_readiness_final'; cargo test --test stock_dispatcher_grouping_source_guard -- --nocapture` with `1 passed; 0 failed`.
+- Final `cargo check` completed successfully with `D:\SM\target_p20a_closeout_readiness_final`.
+- First repository-wide regression attempt exposed a rustfmt recursion mistake that formatted frozen `security_decision_committee.rs`; the formatting-only drift was reverted and `security_decision_committee_legacy_freeze_source_guard` passed again.
+- Repository-wide regression passed: `$env:CARGO_TARGET_DIR='D:\SM\target_repo_full_after_p20a'; cargo test -- --nocapture` completed with exit code 0.
+## 2026-04-26
+### Modified
+- Added `D:\SM\docs\plans\2026-04-26-p20b-lifecycle-closeout-evidence-package-design.md`.
+- Added `D:\SM\docs\plans\2026-04-26-p20b-lifecycle-closeout-evidence-package-plan.md`.
+- Added `D:\SM\src\ops\security_portfolio_execution_lifecycle_closeout_evidence_package.rs`.
+- Added `D:\SM\tests\security_portfolio_execution_lifecycle_closeout_evidence_package_cli.rs`.
+- Updated public stock boundary, grouped gateway, catalog, dispatcher, formal boundary guard, governance docs, and handoff docs for P20B.
+
+### Why
+- The user confirmed P20B after P20A full-repository regression.
+- P20B must consume P20A closeout-readiness truth and produce a read-only closeout evidence package for archive preflight.
+- P20B must not write lifecycle/archive/runtime records, must not call lifecycle writer tools, and must not claim lifecycle closure.
+
+### Remaining
+- [ ] Git delivery still needs narrow staging because the worktree contains many unrelated existing and generated changes.
+- [ ] Any lifecycle closeout writer or archive-producing phase remains undesigned and must start from a separate approved contract.
+
+### Risks
+- [ ] P20B evidence readiness is archive preflight evidence only; downstream code must not treat it as lifecycle closure or closed archive production.
+- [ ] P20B reads runtime execution records for eligible P20A rows; missing or drifted runtime records remain explicit blockers rather than auto-repair behavior.
+
+### Closed
+- Design and implementation plan were reviewed with an inline fallback risk pass after the independent risk subprocess was blocked by external quota errors.
+- RED verified: `$env:CARGO_TARGET_DIR='D:\SM\target_p20b_closeout_evidence_red'; cargo test --test security_portfolio_execution_lifecycle_closeout_evidence_package_cli -- --nocapture` failed with 11 expected failures for unsupported tool and missing source file.
+- Focused P20B verification passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p20b_closeout_evidence_green'; cargo test --test security_portfolio_execution_lifecycle_closeout_evidence_package_cli -- --nocapture` with `11 passed; 0 failed`.
+- Boundary guard first exposed the expected frozen manifest drift for `security_portfolio_execution_lifecycle_closeout_evidence_package`, then passed after manifest sync.
+- Final P20B focused verification passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p20b_closeout_evidence_final'; cargo test --test security_portfolio_execution_lifecycle_closeout_evidence_package_cli -- --nocapture` with `11 passed; 0 failed`.
+- Final adjacent P20A verification passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p20b_closeout_evidence_final'; cargo test --test security_portfolio_execution_lifecycle_closeout_readiness_cli -- --nocapture` with `9 passed; 0 failed`.
+- Final boundary guard passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p20b_closeout_evidence_final'; cargo test --test stock_formal_boundary_manifest_source_guard -- --nocapture` with `4 passed; 0 failed`.
+- Final catalog guard passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p20b_closeout_evidence_final'; cargo test --test stock_catalog_grouping_source_guard -- --nocapture` with `2 passed; 0 failed`.
+- Final dispatcher guard passed: `$env:CARGO_TARGET_DIR='D:\SM\target_p20b_closeout_evidence_final'; cargo test --test stock_dispatcher_grouping_source_guard -- --nocapture` with `1 passed; 0 failed`.
+- Final `cargo check` completed successfully with `D:\SM\target_p20b_closeout_evidence_final`.
+- Repository-wide regression passed: `$env:CARGO_TARGET_DIR='D:\SM\target_repo_full_after_p20b'; cargo test -- --nocapture` completed with exit code 0.
+## 2026-04-26
+### Modified
+- Updated `D:\SM\docs\handoff\CURRENT_STATUS.md` to mark P20B lifecycle closeout evidence package as complete instead of in progress.
+- Updated the P20B handoff verification bullets to include final focused, adjacent, guard, `cargo check`, and repository-wide regression evidence.
+
+### Why
+- The user asked to continue into P20C, and the active handoff file still contained stale P20B pending language.
+- P20C design must start from a truthful status baseline: P20B is complete and P20C is not yet designed.
+
+### Remaining
+- [ ] P20C lifecycle closeout/archive writer design has not been approved or written yet.
+- [ ] Git delivery still needs narrow staging because the worktree contains many unrelated existing and generated changes.
+
+### Risks
+- [ ] P20C must not infer archive/lifecycle write semantics from P20B evidence readiness without a new approved contract.
+- [ ] Handoff files contain older historical sections; future status claims should cite the latest P20B verification and task journal entry.
+
+### Closed
+- `git diff --check -- docs\handoff\CURRENT_STATUS.md` completed with exit code 0; Git reported only LF/CRLF normalization warnings.
+## 2026-04-26
+### Modified
+- Added `D:\SM\docs\plans\2026-04-26-p20c-lifecycle-closeout-archive-writer-design.md`.
+
+### Why
+- The user approved P20C Scheme A: a controlled lifecycle closeout/archive writer after P20B evidence readiness.
+- Local repository evidence shows no callable `security_closed_position_archive` implementation or route, so P20C must define its own explicit writer contract instead of depending on stale handoff language.
+
+### Remaining
+- [ ] P20C design still needs user approval before writing an implementation plan.
+- [ ] P20C implementation plan, RED tests, runtime archive repository/schema changes, public boundary wiring, and verification are not started.
+- [ ] Git delivery still needs narrow staging because the worktree contains many unrelated existing and generated changes.
+
+### Risks
+- [ ] P20C introduces the first closeout/archive write path after P20A/P20B; idempotency, conflict rejection, and partial-row semantics must be frozen before code.
+- [ ] If the user wants all-row atomic closure instead of per-row non-atomic archive writes, the design must be revised before implementation.
+
+### Closed
+- P20C contract-first design now defines intent, contract, hard rejection lines, decision, acceptance gates, cross-artifact sync, and an inline fresh risk pass.
+## 2026-04-26
+### Modified
+- Prepared the current source, test, plan, governance, and handoff state for a narrow GitHub upload on branch `codex/p10-p11-clean-upload-20260420`.
+
+### Why
+- The user asked to push the current work to GitHub before continuing P20C implementation planning.
+- The worktree contains many generated targets and runtime fixtures, so upload preparation must stage source and documentation artifacts without staging generated outputs.
+
+### Remaining
+- [ ] The Git commit and push still need to be performed after narrow staging and staged diff health checks.
+- [ ] P20C implementation plan and code remain unstarted.
+
+### Risks
+- [ ] The worktree remains dirty with generated artifacts and unrelated local runtime output after the upload.
+- [ ] Public boundary files reference multiple active source slices, so staging must include the corresponding source and test files rather than only the latest P20C design doc.
+
+### Closed
+- Confirmed the active branch is `codex/p10-p11-clean-upload-20260420`.
+- Confirmed `origin` points to `https://github.com/wakeskuld1-ctrl/StockMind.git`.
+- Confirmed the branch is currently even with `origin/codex/p10-p11-clean-upload-20260420` before the new upload commit.
+## 2026-04-26
+### 修改内容
+- 新增 `D:\SM\docs\plans\2026-04-26-nikkei-etf-position-signal-tool-plan.md`，固化日经ETF每日仓位 Tool 的实现计划和边界同步要求。
+- 新增 `D:\SM\src\ops\security_nikkei_etf_position_signal.rs`，提供 `security_nikkei_etf_position_signal` 的日经指数锚定仓位信号。
+- 新增 `D:\SM\tests\security_nikkei_etf_position_signal_cli.rs`，覆盖 catalog、rule_only 输出、HGB artifact 拒绝、历史不足拒绝、未来数据隔离、权重股广度确认。
+- 更新 `D:\SM\src\ops\stock.rs`、`D:\SM\src\ops\stock_governance_and_positioning.rs`、`D:\SM\src\tools\catalog.rs`、`D:\SM\src\tools\dispatcher.rs`、`D:\SM\src\tools\dispatcher\stock_ops.rs`，把新 Tool 接入正式 stock Tool bus。
+- 更新 `D:\SM\docs\governance\contract_registry.md`，登记日经ETF每日仓位信号契约。
+
+### 修改原因
+- 用户要求把当前日经ETF策略写成以后每天可运行一次的正式 Tool。
+- 当前策略目标是交易日经ETF，日经指数作为锚定，权重股只作为买入/加仓时机和广度确认依据。
+- Tool 必须避免未来函数，不能把回测未来标签或 HGB 临时状态伪装成每日可用信号。
+
+### 方案还差什么
+- [ ] `v3_hgb` 当前只做 artifact 必填拒绝，还没有实现受治理模型 artifact 的真实推理。
+- [ ] 当前组件广度支持本地 CSV 权重和组件日线目录，尚未绑定官方前30权重文件的字段兼容矩阵。
+- [ ] 日经成交额/量能 proxy 已作为输入字段保留，但本轮尚未把 3D/20D 放量突破确认正式纳入输出。
+
+### 潜在问题
+- [ ] 当前 rule_only 是可运行的 V3/广度第一版，不等同于之前 walk-forward 里 HGB增强V3 的完整收益结果。
+- [ ] 如果实际组件 CSV 文件名或列名与测试夹具不同，后续每日运行前需要补兼容解析。
+- [ ] 当前工作区已有大量其他未提交变更，本轮只应窄范围提交新增 Tool 相关文件。
+
+### 关闭项
+- 已验证 RED：`cargo test --test security_nikkei_etf_position_signal_cli -- --nocapture` 初始失败，原因是 catalog 缺少新 Tool 且 dispatcher 返回 unsupported tool。
+- 已验证组件广度 RED：`cargo test --test security_nikkei_etf_position_signal_cli security_nikkei_etf_position_signal_uses_component_breadth_when_supplied -- --nocapture` 失败，原因是实现尚未读取组件广度。
+- Focused Tool 测试通过：`cargo test --test security_nikkei_etf_position_signal_cli -- --nocapture`，`6 passed; 0 failed`。
+- Catalog guard 通过：`cargo test --test stock_catalog_grouping_source_guard -- --nocapture`，`2 passed; 0 failed`。
+- Dispatcher guard 通过：`cargo test --test stock_dispatcher_grouping_source_guard -- --nocapture`，`1 passed; 0 failed`。
+## 2026-04-26
+### 修改内容
+- 扩展 `D:\SM\src\ops\security_nikkei_etf_position_signal.rs`，新增 `volume_signal` 与 `volume_metrics` 输出。
+- 扩展 `D:\SM\src\ops\security_nikkei_etf_position_signal.rs`，实现 `v3_hgb` 模式读取 `nikkei_v3_hgb_adjustment.v1` 每日调仓 artifact。
+- 扩展 `D:\SM\tests\security_nikkei_etf_position_signal_cli.rs`，新增量能突破确认测试和 HGB artifact 调仓测试。
+- 更新 `D:\SM\docs\governance\contract_registry.md` 与 `D:\SM\docs\plans\2026-04-26-nikkei-etf-position-signal-tool-plan.md`，同步量能与 HGB artifact 契约。
+
+### 修改原因
+- 用户要求继续做完日经ETF每日策略 Tool。
+- 上一轮只完成 rule_only、组件广度、HGB 缺 artifact 拒绝；仍缺量能确认和可审计 HGB 接入边界。
+- 日常运行必须避免把历史回测 log 当作未来推理结果，因此 HGB 只接受明确日期匹配的每日 artifact。
+
+### 方案还差什么
+- [ ] 尚未实现 Rust 内部训练/执行 HGB 模型；当前接入的是已生成的每日 HGB 调仓 artifact。
+- [ ] 量能确认当前使用 volume proxy 的 3D 平均 / 前20D 平均，并叠加20D突破；如果后续要复刻 60D 或组件放量突破阈值，需要新增独立契约。
+
+### 潜在问题
+- [ ] 如果每日 HGB artifact 没有由训练系统稳定产出，`v3_hgb` 模式会拒绝运行，不能自动降级伪装成模型输出。
+- [ ] 当前 volume proxy 读取 `volume` 字段，若 volume 为 0 则回退使用 `close`，适配成交额 proxy 但要求输入源语义清晰。
+
+### 关闭项
+- 已验证量能 RED：`cargo test --test security_nikkei_etf_position_signal_cli security_nikkei_etf_position_signal_confirms_volume_backed_breakout -- --nocapture` 初始失败，原因是输出缺少 `volume_signal`。
+- 已验证 HGB RED：`cargo test --test security_nikkei_etf_position_signal_cli security_nikkei_etf_position_signal_applies_hgb_adjustment_artifact -- --nocapture` 初始失败，原因是 `hgb_adjustment` 仍为 `0.0`。
+- Focused Tool 测试通过：`cargo test --test security_nikkei_etf_position_signal_cli -- --nocapture`，`8 passed; 0 failed`。

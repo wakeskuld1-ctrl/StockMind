@@ -8,6 +8,8 @@ pub const STOCK_TOOL_NAMES: &[&str] = &[
     "security_disclosure_history_live_backfill",
     "security_capital_flow_backfill",
     "security_capital_flow_raw_audit",
+    "security_volume_source_manifest",
+    "security_nikkei_turnover_import",
     "security_capital_flow_jpx_weekly_import",
     "security_capital_flow_jpx_weekly_live_backfill",
     "security_capital_flow_mof_weekly_import",
@@ -37,6 +39,10 @@ pub const STOCK_TOOL_NAMES: &[&str] = &[
     "security_position_plan",
     "security_position_plan_record",
     "security_portfolio_position_plan",
+    // 2026-04-26 CST: Added because the approved Nikkei ETF workflow needs one
+    // daily side-effect-free target-position signal on the public Tool surface.
+    // Purpose: make the index-anchored ETF signal discoverable for operator runs.
+    "security_nikkei_etf_position_signal",
     // execution_and_position_management: execution facts and current position view.
     "security_execution_record",
     "security_execution_journal",
@@ -76,6 +82,38 @@ pub const STOCK_TOOL_NAMES: &[&str] = &[
     // layer downstream of the governed P15 apply bridge.
     // Purpose: make the execution-status bridge discoverable without implying reconciliation.
     "security_portfolio_execution_status_bridge",
+    // 2026-04-25 CST: Added because P17 recovery now restores the formal
+    // reconciliation bridge downstream of the P16 status artifact.
+    // Purpose: make reconciliation truth discoverable without implying repair or replay.
+    "security_portfolio_execution_reconciliation_bridge",
+    // 2026-04-25 CST: Added because P18 recovery now restores the formal
+    // repair-intent package downstream of the P17 reconciliation artifact.
+    // Purpose: make repair intent discoverable without implying replay execution or lifecycle closeout.
+    "security_portfolio_execution_repair_package",
+    // 2026-04-25 CST: Added because P19A now freezes governed retry candidates
+    // from the P18 repair package into replay request rows.
+    // Purpose: make replay requests discoverable without implying replay execution.
+    "security_portfolio_execution_replay_request_package",
+    // 2026-04-25 CST: Added because P19B now exposes dry-run replay executor
+    // validation after the P19A replay request package.
+    // Purpose: make executor dry-run validation discoverable without implying runtime writes.
+    "security_portfolio_execution_replay_executor",
+    // 2026-04-26 CST: Added because P19C now freezes replay commit payload
+    // readiness without becoming the runtime writer.
+    // Purpose: make commit preflight discoverable without implying commit authority.
+    "security_portfolio_execution_replay_commit_preflight",
+    // 2026-04-26 CST: Added because P19D now owns controlled per-row runtime replay commits.
+    // Purpose: expose commit writer authority separately from P19C preflight.
+    "security_portfolio_execution_replay_commit_writer",
+    // 2026-04-26 CST: Added because P19E now audits P19D commit results without writing runtime facts.
+    // Purpose: make replay commit verification discoverable separately from commit authority.
+    "security_portfolio_execution_replay_commit_audit",
+    // 2026-04-26 CST: Added because P20A exposes closeout preflight readiness after P19E audit truth.
+    // Purpose: make side-effect-free readiness discoverable without implying lifecycle closure.
+    "security_portfolio_execution_lifecycle_closeout_readiness",
+    // 2026-04-26 CST: Added because P20B exposes closeout evidence after P20A readiness.
+    // Purpose: make read-only evidence packaging discoverable without implying archive production.
+    "security_portfolio_execution_lifecycle_closeout_evidence_package",
     "security_record_position_adjustment",
     // post_trade: review and conclusion after the in-trade loop.
     "security_post_trade_review",

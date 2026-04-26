@@ -31,6 +31,12 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         "security_capital_flow_raw_audit" => {
             stock_ops::dispatch_security_capital_flow_raw_audit(request.args)
         }
+        "security_volume_source_manifest" => {
+            stock_ops::dispatch_security_volume_source_manifest(request.args)
+        }
+        "security_nikkei_turnover_import" => {
+            stock_ops::dispatch_security_nikkei_turnover_import(request.args)
+        }
         "security_capital_flow_jpx_weekly_import" => {
             stock_ops::dispatch_security_capital_flow_jpx_weekly_import(request.args)
         }
@@ -108,6 +114,11 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         "security_portfolio_position_plan" => {
             stock_ops::dispatch_security_portfolio_position_plan(request.args)
         }
+        // 2026-04-26 CST: Added because the approved Nikkei ETF daily signal is now
+        // a formal side-effect-free stock Tool rather than an external script.
+        "security_nikkei_etf_position_signal" => {
+            stock_ops::dispatch_security_nikkei_etf_position_signal(request.args)
+        }
         "security_account_objective_contract" => {
             stock_ops::dispatch_security_account_objective_contract(request.args)
         }
@@ -131,6 +142,39 @@ pub fn dispatch(request: ToolRequest) -> ToolResponse {
         }
         "security_portfolio_execution_status_bridge" => {
             stock_ops::dispatch_security_portfolio_execution_status_bridge(request.args)
+        }
+        "security_portfolio_execution_reconciliation_bridge" => {
+            stock_ops::dispatch_security_portfolio_execution_reconciliation_bridge(request.args)
+        }
+        "security_portfolio_execution_repair_package" => {
+            stock_ops::dispatch_security_portfolio_execution_repair_package(request.args)
+        }
+        "security_portfolio_execution_replay_request_package" => {
+            stock_ops::dispatch_security_portfolio_execution_replay_request_package(request.args)
+        }
+        "security_portfolio_execution_replay_executor" => {
+            stock_ops::dispatch_security_portfolio_execution_replay_executor(request.args)
+        }
+        "security_portfolio_execution_replay_commit_preflight" => {
+            stock_ops::dispatch_security_portfolio_execution_replay_commit_preflight(request.args)
+        }
+        "security_portfolio_execution_replay_commit_writer" => {
+            stock_ops::dispatch_security_portfolio_execution_replay_commit_writer(request.args)
+        }
+        "security_portfolio_execution_replay_commit_audit" => {
+            stock_ops::dispatch_security_portfolio_execution_replay_commit_audit(request.args)
+        }
+        "security_portfolio_execution_lifecycle_closeout_readiness" => {
+            stock_ops::dispatch_security_portfolio_execution_lifecycle_closeout_readiness(
+                request.args,
+            )
+        }
+        // 2026-04-26 CST: Added because P20B exposes read-only closeout evidence
+        // after P20A readiness without granting lifecycle/archive write authority.
+        "security_portfolio_execution_lifecycle_closeout_evidence_package" => {
+            stock_ops::dispatch_security_portfolio_execution_lifecycle_closeout_evidence_package(
+                request.args,
+            )
         }
         "security_position_contract" => {
             stock_ops::dispatch_security_position_contract(request.args)

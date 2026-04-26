@@ -89,6 +89,12 @@ pub mod security_position_plan;
 #[path = "security_portfolio_position_plan.rs"]
 pub mod security_portfolio_position_plan;
 
+// 2026-04-26 CST: Added because the approved Nikkei ETF daily workflow needs a
+// governed side-effect-free position signal Tool rather than a local research script.
+// Purpose: expose the daily index-anchored ETF position signal on the formal stock boundary.
+#[path = "security_nikkei_etf_position_signal.rs"]
+pub mod security_nikkei_etf_position_signal;
+
 #[path = "security_post_trade_review.rs"]
 pub mod security_post_trade_review;
 
@@ -169,6 +175,64 @@ pub mod security_portfolio_execution_apply_bridge;
 // Purpose: expose the portfolio execution status bridge on the formal stock boundary.
 #[path = "security_portfolio_execution_status_bridge.rs"]
 pub mod security_portfolio_execution_status_bridge;
+
+// 2026-04-25 CST: Added because P17 recovery now restores the reconciliation
+// bridge downstream of the P16 status-freeze artifact.
+// Reason: repair intent must consume one named reconciliation truth document
+// instead of raw status rows.
+// Purpose: expose the portfolio execution reconciliation bridge on the formal stock boundary.
+#[path = "security_portfolio_execution_reconciliation_bridge.rs"]
+pub mod security_portfolio_execution_reconciliation_bridge;
+
+// 2026-04-25 CST: Added because P18 recovery now restores the repair-intent
+// package downstream of the P17 reconciliation artifact.
+// Reason: the next phase must freeze repair intent before any replay executor
+// or lifecycle closeout can be designed.
+// Purpose: expose the portfolio execution repair package on the formal stock boundary.
+#[path = "security_portfolio_execution_repair_package.rs"]
+pub mod security_portfolio_execution_repair_package;
+
+// 2026-04-25 CST: Added because P19A now freezes governed retry candidates
+// from the P18 repair package into one replay-request package.
+// Reason: replay execution needs a separate approved contract after request freezing.
+// Purpose: expose the portfolio execution replay request package on the formal stock boundary.
+#[path = "security_portfolio_execution_replay_request_package.rs"]
+pub mod security_portfolio_execution_replay_request_package;
+
+// 2026-04-25 CST: Added because P19B now validates P19A replay requests
+// through a dry-run-only executor boundary.
+// Reason: runtime replay needs executor validation before commit-mode writes are approved.
+// Purpose: expose the portfolio execution replay executor on the formal stock boundary.
+#[path = "security_portfolio_execution_replay_executor.rs"]
+pub mod security_portfolio_execution_replay_executor;
+
+// 2026-04-26 CST: Added because P19C now freezes replay commit inputs
+// after P19B dry-run validation without writing runtime facts.
+// Reason: future P19D runtime replay needs canonical preflight payload hashes first.
+// Purpose: expose the portfolio execution replay commit preflight on the formal stock boundary.
+#[path = "security_portfolio_execution_replay_commit_preflight.rs"]
+pub mod security_portfolio_execution_replay_commit_preflight;
+
+// 2026-04-26 CST: Added because P19D is the approved controlled per-row writer
+// after P19C preflight freezes replay payload hashes.
+// Purpose: expose runtime replay commit authority without reopening P19B/P19C write boundaries.
+#[path = "security_portfolio_execution_replay_commit_writer.rs"]
+pub mod security_portfolio_execution_replay_commit_writer;
+
+// 2026-04-26 CST: Added because P19E verifies P19D runtime replay commits without write authority.
+// Purpose: expose read-only replay commit audit separately from replay commit writing.
+#[path = "security_portfolio_execution_replay_commit_audit.rs"]
+pub mod security_portfolio_execution_replay_commit_audit;
+
+// 2026-04-26 CST: Added because P20A freezes lifecycle closeout readiness after P19E audit truth.
+// Purpose: expose side-effect-free closeout preflight eligibility without claiming lifecycle closure.
+#[path = "security_portfolio_execution_lifecycle_closeout_readiness.rs"]
+pub mod security_portfolio_execution_lifecycle_closeout_readiness;
+
+// 2026-04-26 CST: Added because P20B verifies closed runtime evidence after P20A readiness.
+// Purpose: expose read-only closeout evidence packaging without archive or lifecycle mutation.
+#[path = "security_portfolio_execution_lifecycle_closeout_evidence_package.rs"]
+pub mod security_portfolio_execution_lifecycle_closeout_evidence_package;
 
 // 2026-04-18 CST: Added because Task 2 now lands the only formal live
 // governance object between approved intake and active holdings.
@@ -382,6 +446,18 @@ pub mod security_capital_flow_backfill;
 // Purpose: expose governed JPX/MOF raw weekly table rendering on the formal stock boundary.
 #[path = "security_capital_flow_raw_audit.rs"]
 pub mod security_capital_flow_raw_audit;
+
+// 2026-04-25 CST: Added because Nikkei volume-source governance needs one
+// formal manifest before volume proxies are used as training evidence.
+// Purpose: expose volume-source inventory as a stock data-pipeline boundary.
+#[path = "security_volume_source_manifest.rs"]
+pub mod security_volume_source_manifest;
+
+// 2026-04-25 CST: Added because the approved free-source route needs a governed
+// receiver for manually exported Nikkei official Total Trading Value files.
+// Purpose: convert official turnover tables into a distinct training proxy symbol.
+#[path = "security_nikkei_turnover_import.rs"]
+pub mod security_nikkei_turnover_import;
 
 // 2026-04-21 CST: Added because Task 2.1 now needs one JPX-specific workbook
 // import bridge above the governed capital-flow backfill contract.

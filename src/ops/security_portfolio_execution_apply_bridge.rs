@@ -589,6 +589,7 @@ fn build_execution_record_request(
             generated_at
         )],
         portfolio_position_plan_document: None,
+        replay_commit_control: None,
         created_at: generated_at.to_string(),
     })
 }
