@@ -3204,3 +3204,22 @@
 - Catalog guard 通过：`cargo test --test stock_catalog_grouping_source_guard -- --nocapture`，`2 passed; 0 failed`。
 - Dispatcher guard 通过：`cargo test --test stock_dispatcher_grouping_source_guard -- --nocapture`，`1 passed; 0 failed`。
 - 编译检查通过：`cargo check`。
+## 2026-04-28
+### 修改内容
+- 新增 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\MODEL_SUMMARY_20260428.md`，系统整理当前日经 ETF HGB/RF V3 主线的算法结构、调仓规则、训练思路、关键准确率、回测表现、解释性结论和未收口问题。
+- 更新 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\README.md`、`ALGORITHM_HANDOFF_MANUAL.md`、`UPLOAD_NOTES.md`，把新总览文档接入研究包主入口、交接阅读顺序和上传说明。
+
+### 修改原因
+- 用户要求把日经主线的“算法、规则、训练思路、准确率”整理成一份可直接阅读的文档，并推送到 GitHub。
+- 当前研究包虽然已有快照、手册和上传说明，但缺少一篇把关键结论压缩到同一阅读入口的总览文档，导致恢复和判断成本偏高。
+
+### 方案还差什么?
+- [ ] 本轮没有新增训练或回测，只是基于当前研究包已落盘产物做文档收口；后续若重训，需同步更新这份总览文档。
+- [ ] 研究包里 `registry_id / candidate_registry_ref` 残留 `10d` 语义的问题仍未解决，本轮只在总览文档中如实标注。
+
+### 潜在问题
+- [ ] 总览文档里的准确率、Sharpe、回撤等数字依赖当前研究快照；后续如果重跑模型或更换数据口径，文档会与新产物漂移。
+- [ ] 当前工作区仍存在大量无关生成目录和 runtime fixtures，上传时必须继续窄范围 stage，不能误带运行产物。
+
+### 关闭项
+- 已把中文总览文档接入研究包 `README`、算法交接手册和上传说明，GitHub 上可以从研究包入口直接定位阅读。

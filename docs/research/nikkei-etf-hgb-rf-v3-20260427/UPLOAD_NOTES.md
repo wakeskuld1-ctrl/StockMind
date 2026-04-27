@@ -10,6 +10,7 @@ Included:
 - Full ETF live-like backtest snapshot.
 - Full daily HGB/RF scoring snapshot.
 - File manifest with SHA256 hashes.
+- Chinese model summary for fast review.
 - Algorithm handoff manual.
 - README with conclusions and reproduction notes.
 
@@ -88,8 +89,9 @@ artifact manifest hash check passed: 210/210
 ## Suggested Review Order
 
 1. `README.md`
-2. `ALGORITHM_HANDOFF_MANUAL.md`
-3. `artifact_manifest.csv`
-4. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/05_latest_adjustment_artifacts_live_pre_year.csv`
-5. `artifacts/01_training_and_intermediate_full_snapshot/analysis_exports/adjustment_point_analysis/64_walk_forward_hgb_backtest_summary.csv`
-6. `artifacts/02_live_like_backtest_full_snapshot/08_no_deadband_decision_summary.csv`
+2. `MODEL_SUMMARY_20260428.md`
+3. `ALGORITHM_HANDOFF_MANUAL.md`
+4. `artifact_manifest.csv`
+5. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/05_latest_adjustment_artifacts_live_pre_year.csv`
+6. `artifacts/01_training_and_intermediate_full_snapshot/analysis_exports/adjustment_point_analysis/64_walk_forward_hgb_backtest_summary.csv`
+7. `artifacts/02_live_like_backtest_full_snapshot/08_no_deadband_decision_summary.csv`

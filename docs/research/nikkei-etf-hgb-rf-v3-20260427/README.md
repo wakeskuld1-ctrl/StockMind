@@ -20,9 +20,14 @@ This is a research snapshot, not a final production model registry.
 | `artifacts/02_live_like_backtest_full_snapshot/` | ETF execution backtests using 159866 and 513520, including next-open execution, dual low-premium selection, 3bp cost, no-deadband variant, and variant scan outputs. |
 | `artifacts/03_daily_hgb_rf_scoring_full_snapshot/` | Daily HGB/RF scoring script and outputs for `live_pre_year` and `known_labels_asof` policies. |
 | `artifact_manifest.csv` | File inventory and SHA256 hashes for all included artifacts. |
+| `MODEL_SUMMARY_20260428.md` | Chinese summary of algorithms, rules, training logic, accuracy, backtest results, and current limits. |
 | `ALGORITHM_HANDOFF_MANUAL.md` | Algorithm handoff manual for the next AI or engineer. |
 
 ## Key Research Conclusions
+
+If you need the fastest high-level overview, read:
+
+`MODEL_SUMMARY_20260428.md`
 
 ### HGB Enhanced V3
 
