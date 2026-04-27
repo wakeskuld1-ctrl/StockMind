@@ -5,11 +5,12 @@
 Read these files first:
 
 1. `README.md`
-2. `artifact_manifest.csv`
-3. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/01_daily_model_scores_live_pre_year.csv`
-4. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/04_local_driver_explanations_live_pre_year.csv`
-5. `artifacts/01_training_and_intermediate_full_snapshot/analysis_exports/adjustment_point_analysis/64_walk_forward_hgb_backtest_summary.csv`
-6. `artifacts/02_live_like_backtest_full_snapshot/08_no_deadband_decision_summary.csv`
+2. `SESSION_HANDOFF_2026-04-27.md`
+3. `artifact_manifest.csv`
+4. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/01_daily_model_scores_live_pre_year.csv`
+5. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/04_local_driver_explanations_live_pre_year.csv`
+6. `artifacts/01_training_and_intermediate_full_snapshot/analysis_exports/adjustment_point_analysis/64_walk_forward_hgb_backtest_summary.csv`
+7. `artifacts/02_live_like_backtest_full_snapshot/08_no_deadband_decision_summary.csv`
 
 The current practical question is not "predict Nikkei up/down every day". The operating question is:
 
@@ -236,6 +237,31 @@ It ranks features by combining:
 This is good enough to answer "which features are unusual and important today", but it does not prove exact tree-path causality.
 
 If production-grade explainability is required, add explicit HGB tree-path extraction or SHAP-like analysis as a separate governed enhancement.
+
+## 2026-04-27 Refresh Status
+
+This research line now has a split status:
+
+- price-layer refresh is available through `2026-04-27`
+- formal HGB signal-layer refresh is not yet complete through `2026-04-27`
+
+Strictly verified:
+
+- Nikkei price row exists on `2026-04-27`
+- ETF price rows exist on `2026-04-27` for both `159866.SZ` and `513520.SS`
+- latest formal HGB daily artifact still has `as_of_date = 2026-04-24`
+- that strict HGB action is still `adjustment = -1`, target proxy `12.24%`
+
+Still blocked:
+
+- no refreshed `base_position_v3` through `2026-04-27`
+- latest Nikkei volume proxy row is zero
+- no approved refreshed NAV / IOPV source for the dual-ETF low-premium execution logic
+
+Operational rule:
+
+- on `2026-04-27`, treat the HGB action as "execute the 2026-04-24 close signal at next open"
+- do not describe `2026-04-27` as a fully refreshed new HGB formal signal date yet
 
 ## 2026-04 Key Interpretation
 

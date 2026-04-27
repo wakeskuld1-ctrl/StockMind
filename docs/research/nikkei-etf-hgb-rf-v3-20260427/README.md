@@ -21,6 +21,7 @@ This is a research snapshot, not a final production model registry.
 | `artifacts/03_daily_hgb_rf_scoring_full_snapshot/` | Daily HGB/RF scoring script and outputs for `live_pre_year` and `known_labels_asof` policies. |
 | `artifact_manifest.csv` | File inventory and SHA256 hashes for all included artifacts. |
 | `ALGORITHM_HANDOFF_MANUAL.md` | Algorithm handoff manual for the next AI or engineer. |
+| `SESSION_HANDOFF_2026-04-27.md` | Session-level handoff for the latest refresh status, blockers, and user-approved questions/answers. |
 
 ## Key Research Conclusions
 
@@ -54,6 +55,20 @@ Interpretation:
 - HGB treated the 2026-04-24 state as high-risk because price was far above support and volume breadth was elevated.
 - RF treated the same state as neutral/hold because trend and component breadth still looked supportive.
 - Neither model gave a buy/add signal on 2026-04-24.
+
+### 2026-04-27 Refresh Boundary
+
+The `2026-04-27` price rows for Nikkei and both ETFs are available, but the full signal chain is still incomplete:
+
+- `base_position_v3` was not formally refreshed through `2026-04-27`
+- Nikkei latest volume proxy row is still zero
+- ETF NAV / IOPV premium refresh source is still missing
+
+Practical meaning:
+
+- the latest strict executable HGB action on `2026-04-27` is still the `2026-04-24` close signal
+- that strict signal remains `adjustment = -1`, target proxy `12.24%`
+- do not call `2026-04-27` a fully refreshed new HGB daily artifact yet
 
 ### Live-Like ETF Execution
 

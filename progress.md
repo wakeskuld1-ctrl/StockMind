@@ -1,0 +1,104 @@
+# HGB/RF V3 Data Completion Progress
+
+## 2026-04-27
+- Created task tracking files after user approved Plan A.
+- Next: inspect packaged artifact manifests, scripts, and key data files without modifying project logic.
+- Inspected the daily scoring script and ETF backtest snapshot inventory.
+- Found that current replay can avoid old absolute defaults by passing explicit `--analysis-root` and `--output-root`.
+- Confirmed the minimum data families needed by the HGB/RF V3 daily scorer.
+- Checked packaged date coverage for index/volume, top30 component files, V3 dataset/base curve, daily scores, and ETF backtest outputs.
+- Replayed packaged HGB/RF V3 live scorer successfully into `.verification/nikkei_hgb_rf_v3_replay_20260427`.
+- Confirmed local data tooling availability: `yfinance`, `pandas`, and `sklearn`.
+- Added execution plan at `docs/plans/2026-04-27-nikkei-hgb-rf-v3-data-completion-plan.md`.
+- Current status: inventory and replay are verified; external data refresh has not started because the ETF NAV/premium source must be approved separately from yfinance price data.
+- Ran Task 1 staging refresh. New staged market data exists under `.verification/nikkei_hgb_rf_v3_data_update_20260427_094746`.
+- Ran Task 2 scorer attempt for `2026-04-27`; latest artifacts stayed at `2026-04-24` because V3 base position is not refreshed.
+- Ran Task 3 ETF execution data check. ETF price rows are available for `2026-04-27`, but NAV/IOPV remains missing.
+- Checked generated JSON artifacts and found filename/internal-date mismatch caused by missing V3 base position for `2026-04-27`.
+- User approved combined `方案A + 方案B` for position optimization analysis.
+- Added execution contract and analysis plan at `docs/plans/2026-04-27-nikkei-hgb-rf-v3-position-optimization-analysis-plan.md`.
+- Current analysis boundary: compare synthetic position-mapping variants and attribute missed upside/protected downside using packaged data only; no production logic changes yet.
+- Ran Plan A + Plan B analysis into `.verification/nikkei_position_optimization_analysis_20260427`.
+- Produced:
+  - `variant_metrics.csv`
+  - `attribution_summary_2026_ytd.csv`
+  - `attribution_daily_2026_ytd.csv`
+  - `derisk_forward_returns_2026_ytd.csv`
+  - `recent_daily_score_decision_position_table.csv`
+- Refined synthetic variant definition to avoid guessing the original baseline rule: each variant now applies deltas on top of packaged `baseline_target_position`.
+- Current result snapshot:
+  - `base_lift_light` and `base_lift_medium` improve return but increase drawdown.
+  - `upside_asym_light` improves full-period return with almost no extra drawdown, but 2026 YTD effect is weak.
+  - Real ETF execution remains materially below HGB anchor in 2026 YTD.
+- Added bull-regime audit plan at `docs/plans/2026-04-27-nikkei-bull-regime-audit-and-bull-position-evaluation-plan.md`.
+- Ran bull-regime audit and bull-only aggressive position evaluation into `.verification/nikkei_bull_regime_audit_20260427`.
+- Produced:
+  - `bull_regime_quality_summary.csv`
+  - `bull_false_positive_events.csv`
+  - `bull_segments.csv`
+  - `bull_only_aggressive_variant_metrics.csv`
+  - `bull_false_positive_variant_loss_10d.csv`
+- Added consecutive MA breakout study plan at `docs/plans/2026-04-27-nikkei-consecutive-ma-breakout-study-plan.md`.
+- Ran consecutive 20/50/100 MA breakout event study into `.verification/nikkei_consecutive_ma_breakout_study_20260427`.
+- Produced:
+  - `consecutive_ma_breakout_events.csv`
+  - `consecutive_ma_breakout_summary.csv`
+  - `consecutive_ma_breakout_speed_summary.csv`
+  - `consecutive_ma_breakout_vs_bull_segments_detail.csv`
+  - `consecutive_ma_breakout_vs_bull_segments_summary.csv`
+- User approved the XGBoost comparison route for the HGB/RF V3 adjustment model.
+- Added execution plan at `docs/plans/2026-04-27-nikkei-xgboost-model-compare-plan.md`.
+- Built a standalone compare runner at `.verification/nikkei_xgb_model_compare_20260427/run_model_compare.py`.
+- Ran the comparison experiment and produced:
+  - `model_compare_classification_metrics.csv`
+  - `model_compare_strict_test_backtest.csv`
+  - `model_compare_full_backtest_summary.csv`
+  - `model_compare_latest_signal_snapshot.csv`
+  - `xgb_feature_importance.csv`
+  - per-model strict/full equity curves
+  - `reproduction_gap_vs_packaged.csv`
+- Current status: classification metrics are close to packaged HGB/RF baselines, but strict backtest replay still does not reproduce the packaged `60_v3_adjustment_model_strict_test_backtest.csv` exactly.
+- Added a package-compatible execution replay path to `.verification/nikkei_xgb_model_compare_20260427/run_model_compare.py`.
+- Added regression check `.verification/nikkei_xgb_model_compare_20260427/test_backtest_alignment.py` to replay packaged V3 base execution logs within a tight tolerance band.
+- Re-ran the compare script with dual strict surfaces:
+  - `model_compare_leak_free_strict_backtest.csv`
+  - `model_compare_strict_test_backtest.csv` (executor-aligned)
+  - `model_compare_packaged_strict_truth.csv`
+  - `model_compare_training_diff_summary.csv`
+- Current status: HGB / RF strict replay is now much closer to the packaged `60_v3_adjustment_model_strict_test_backtest.csv`; the remaining gap is small enough to attribute mainly to residual execution-detail mismatch rather than a wrong model/data boundary.
+- User rejected using "closest to packaged" as the main comparison standard and approved continuing with a stricter common comparison route.
+- Extended `.verification/nikkei_xgb_model_compare_20260427/run_model_compare.py` to add a shared yearly walk-forward surface for `HGB / RF / XGBoost`.
+- Switched this round's output root to `.verification/nikkei_xgb_model_compare_20260427_wf` because the prior output directory had a locked CSV.
+- Produced new walk-forward artifacts:
+  - `model_compare_walk_forward_yearly_metrics.csv`
+  - `model_compare_walk_forward_backtest.csv`
+  - `model_compare_walk_forward_reproduction_gap.csv`
+  - per-model `walk_forward_curve_*.csv`
+- Current strict common-surface result (`2022-01-04` to `2026-04-24`):
+  - `HGB`: return about `+93.90%`, max drawdown about `-12.56%`, Sharpe about `1.40`
+  - `RF`: return about `+86.19%`, max drawdown about `-16.62%`, Sharpe about `1.19`
+  - `XGBoost`: return about `+85.14%`, max drawdown about `-12.84%`, Sharpe about `1.28`
+- Current status: under the shared yearly walk-forward surface, HGB remains the best overall model; XGBoost does not exceed HGB.
+- Verification limit: the recreated HGB walk-forward line is directionally close but still not official-grade aligned:
+  - return gap about `+6.93pct`
+  - max drawdown gap about `-2.99pct`
+  - execution count gap `+55`
+  - therefore this surface is usable for fair model ranking, but not yet as a formal replacement for packaged `64_walk_forward_hgb_backtest_summary.csv`.
+- Re-ran regression test `pytest E:\\SM\\.verification\\nikkei_xgb_model_compare_20260427\\test_backtest_alignment.py -q`; it passed.
+- Checked `ALGORITHM_HANDOFF_MANUAL.md` before further walk-forward edits.
+- Manual confirms an important boundary distinction:
+  - `base_position_v3 +/- 0.25` is only the daily scorer proxy mapping.
+  - the formal execution layer may add portfolio constraints and execution mechanics.
+- Manual explicitly confirms ETF execution research uses:
+  - T-1 close information for signal
+  - next available open for execution
+  - no rebalance deadband
+- Manual does not spell out the full official HGB walk-forward signal-cadence generator.
+- Follow-up code inspection found the missing regime-cap rule in `src/ops/security_nikkei_etf_position_signal.rs` and that rule has now been added to the temporary walk-forward compare surface.
+- After adding regime caps, HGB walk-forward reproduction improved materially, but execution count is still `294` vs official `239`, so remaining mismatch is concentrated in signal cadence rather than gross target mapping.
+- Re-checked the `2026-04-27` price layer and confirmed:
+  - Nikkei and both ETF price rows exist for `2026-04-27`
+  - latest strict HGB artifact still remains `2026-04-24`
+  - strict `2026-04-27` HGB action therefore remains "reduce toward 12.24% target proxy"
+- Added research handoff packet `docs/research/nikkei-etf-hgb-rf-v3-20260427/SESSION_HANDOFF_2026-04-27.md`.
+- Updated package `README.md` and `ALGORITHM_HANDOFF_MANUAL.md` so the next worker can find the latest refresh boundary and the user-approved question/answer trail without reconstructing chat history.

@@ -2170,3 +2170,208 @@
 
 ### 记忆点（可选）
 - 以后只要用户提到“别的主机也要继续”，必须优先把数据真源、恢复命令、禁止误判项写进专项 handoff，而不是只写聊天总结。
+
+## 2026-04-27
+### 修改内容
+- `src/runtime/security_capital_flow_store.rs`: read both legacy `security_capital_flow_history` and new `capital_flow_observations` so JPX/MOF history is not silently empty after table migration.
+- `src/ops/security_capital_flow_raw_audit.rs`: restore raw audit output with `weekly_rows`, `week_count`, and explicit `complete/missing_jpx/missing_mof` availability states.
+- `src/ops/security_capital_source_factor_snapshot.rs`: restore first-stage capital-source ratio factors used by snapshot/audit contracts, while keeping training unchanged.
+- `src/ops/security_capital_source_factor_audit.rs`: restore standalone factor replay with coverage, distinct values, bucket hit rates, holdout accuracy, and walk-forward accuracy.
+
+### 修改原因
+- 新拉回版本里 store 只读新表 `capital_flow_observations`，但旧真实 DB 使用 `security_capital_flow_history`；raw audit 与 factor audit 也退化为 pending adapter。
+- 第一阶段目标是修复“原始资金流可读 + 审计可证明”，不是把 capital-source 因子接入 scorecard 训练。
+
+### 方案还差什么？
+- [ ] 第二阶段如需入模，应新增显式 allowlist/gate 模式，而不是复用 observation-only 开关。
+
+### 潜在问题
+- [ ] 当前兼容层会同时读取两个已知表；如果同一 DB 同时含有重复迁移数据，后续需要用更强的 batch/source 去重规则收敛。
+- [ ] `.stockmind_runtime` 当前没有可用真实 DB 目录，本轮旧表 smoke 使用系统临时目录构造旧 schema 验证。
+
+### 关闭项
+- 已通过 `cargo check`
+- 已通过 `cargo test --test security_capital_flow_raw_audit_cli -- --nocapture`
+- 已通过 `cargo test --test security_capital_source_factor_snapshot_cli -- --nocapture`
+- 已通过 `cargo test --test security_capital_source_factor_audit_cli -- --nocapture`
+- 已通过旧表 smoke：临时 `security_capital_flow_history` DB 可被 `security_capital_flow_raw_audit` 读出 `weekly_rows`。
+
+### 记忆点（可选）
+- capital-source 第一阶段修复边界是“读数和审计”，不是训练入模；训练仍保持 observation-only。
+## 2026-04-27
+### 修改内容
+- `docs/plans/2026-04-27-nikkei-xgboost-model-compare-plan.md`：新增 XGBoost 同口径对比实施计划，明确数据边界、特征口径、切分口径和验收门。
+- `.verification/nikkei_xgb_model_compare_20260427/run_model_compare.py`：新增临时对比脚本，在不动生产研究脚本的前提下复用 HGB/RF 口径并加入 XGBoost baseline。
+- `progress.md` / `findings.md`：补充本轮 XGBoost 对比实验以及严格回测复现差距的当前真相。
+
+### 修改原因
+- 用户已批准“严格同口径做 HGB / RF / XGBoost 对比训练”，需要先在 `.verification` 下做一轮边界清晰的实验，不能直接动正式 artifact 或替换现有模型。
+- 同时需要用验证证据区分“分类指标接近”和“严格回测已完全复现正式包”，不能把推断当事实。
+
+### 方案还差什么？
+- [ ] 还没有把临时 strict backtest 和打包 `60_v3_adjustment_model_strict_test_backtest.csv` 的回放层差异彻底收敛。
+- [ ] 还没有做 XGBoost 的小范围参数搜索；当前只是一个 conservative baseline。
+
+### 潜在问题
+- [ ] 当前 XGBoost 结论对本次复现实验表面有效，但严格回测仍未能与打包结果 bit-identical；如果直接用于替换现有 HGB，会有误判时间线的风险。
+- [ ] `.verification/nikkei_xgb_model_compare_20260427/run_model_compare.py` 是临时验证脚本；如果后续决定变成正式主链，需要重新定合同、放入生产研究流程并做更强验证。
+
+### 关闭项
+- 已通过 `python .verification\\nikkei_xgb_model_compare_20260427\\run_model_compare.py`，生成 classification/backtest/latest snapshot/importance 对比产物。
+- 已通过 `reproduction_gap_vs_packaged.csv` 确认：HGB/RF 分类指标与打包基线接近，但严格回测仍存在明显差距，需要在结论里明确算作验证限制。
+
+### 记忆点（可选）
+- 用户对“同口径、样本数、边界清晰、既要看指标也要看回测”非常敏感；后续只要包含模型对比，就不能只告诉一个指标结论。
+
+## 2026-04-27
+### 修改内容
+- `.verification/nikkei_xgb_model_compare_20260427/run_model_compare.py`：补 package-compatible 执行器、双口径 strict backtest、packaged strict truth 读取、训练差异汇总表。
+- `.verification/nikkei_xgb_model_compare_20260427/test_backtest_alignment.py`：新增执行回放回归检查，用 packaged V3 base log 校验 next-open 执行器。
+- `progress.md` / `findings.md`：补充 strict replay 对齐进展、剩余尾差来源、以及对齐后 XGBoost 的新读数。
+
+### 修改原因
+- 用户要求先把 strict backtest 与正式包 `60_v3_adjustment_model_strict_test_backtest.csv` 尽量对齐，再判断 XGBoost 是否值得继续细调。
+- 只看分类指标已经不够；需要把执行器和信号节奏也拉回到正式包附近，避免把执行偏差误判成模型优劣。
+
+### 方案还差什么？
+- [ ] 还没有把 executor-aligned replay 做到与 packaged truth bit-identical；当前仍有小幅尾差。
+- [ ] 还没有基于对齐后的 surface 做 XGBoost 小范围参数搜索；当前还是 baseline 对比。
+
+### 潜在问题
+- [ ] HGB/RF 当前已显著贴近正式包，但剩余差距仍说明 packaged execution 里还有少量未完全显式化的细节（例如信号节奏或 sizing 尾差）。
+- [ ] `.verification` 下的 strict 对比已适合继续模型评估，但如果要升格为正式研究主链，还需要把执行合同写进正式脚本而不是继续停留在临时验证层。
+
+### 关闭项
+- 已通过 `pytest .verification\\nikkei_xgb_model_compare_20260427\\test_backtest_alignment.py -q`，确认 next-open 执行器可以把 packaged V3 base 回放到紧容差范围内。
+- 已通过 `python .verification\\nikkei_xgb_model_compare_20260427\\run_model_compare.py`，生成双口径 strict backtest、packaged truth、训练差异表和更新后的 reproduction gap 表。
+- 已确认 HGB/RF executor-aligned strict replay 与 packaged truth 的收益差已分别收敛到约 `-2.27pct` 和 `-1.85pct`。
+
+### 记忆点（可选）
+- 用户对“先对齐数据和执行面，再谈模型优劣”要求很明确；后续涉及模型比较时，必须先说明比较 surface 是 leak-free 还是 package-compatible，不能混报。
+## 2026-04-27
+### 修改内容
+- `.verification/nikkei_xgb_model_compare_20260427/run_model_compare.py`：补充三模型统一的年度 walk-forward 训练与回放逻辑，新增 `model_compare_walk_forward_yearly_metrics.csv`、`model_compare_walk_forward_backtest.csv`、`model_compare_walk_forward_reproduction_gap.csv` 输出，并将本轮输出根切换到 `.verification/nikkei_xgb_model_compare_20260427_wf`。
+- `progress.md`：追加本轮双口径与共同严格口径的进展、产物和验证状态。
+- `findings.md`：追加共同年度 walk-forward 结果、HGB 对官方口径的偏差，以及当前可用结论边界。
+- `task_plan.md`：重写为当前的模型对比执行合同，明确双口径边界、非目标和验收项。
+
+### 修改原因
+- 用户明确纠正了“最接近正式包”和“最严谨共同比较”不是同一件事，需要把三模型比较切回共同严格口径。
+- 现有结果目录中的旧 CSV 被占用，继续复写会阻塞本轮输出。
+
+### 方案还差什么？
+- [ ] 进一步拆解官方 HGB walk-forward 的信号节奏，确认为什么当前复现多出 55 次执行。
+- [ ] 决定下一步是继续做官方级 HGB walk-forward 对齐，还是回到仓位/回补逻辑优化主线。
+
+### 潜在问题
+- [ ] 当前共同 walk-forward 口径对 HGB 官方真值仍有偏差：收益约高 6.93pct、最大回撤约多 2.99pct、执行次数多 55 次；若直接当正式口径使用，会高估模型表现。
+- [ ] 输出目录已切换到 `.verification/nikkei_xgb_model_compare_20260427_wf`，后续若仍引用旧目录，容易读错表。
+
+### 关闭项
+- 已通过 `python E:\SM\.verification\nikkei_xgb_model_compare_20260427\run_model_compare.py` 生成新的共同 walk-forward 结果。
+- 已通过 `pytest E:\SM\.verification\nikkei_xgb_model_compare_20260427\test_backtest_alignment.py -q`，结果 `1 passed`。
+
+### 记忆点（可选）
+- 用户纠正点：正式包口径可用于校准，但三模型主比较必须回到共同最严谨口径，不能再把“更像正式包”当成“更靠谱”的默认结论。
+## 2026-04-27
+### 修改内容
+- `.verification/nikkei_xgb_model_compare_20260427/test_backtest_alignment.py`：新增 walk-forward regime-cap 回归测试，锁定 `bear/range/bull` 上限映射。
+- `.verification/nikkei_xgb_model_compare_20260427/run_model_compare.py`：为共享 walk-forward 口径新增 `apply_walk_forward_position_mapping()`，将 `bear=0.35 / range=0.75 / bull=1.0` 的上限约束接入年度 walk-forward 目标仓位映射。
+- `progress.md` / `findings.md`：补充交接手册核查结果、walk-forward 目标映射边界、以及当前剩余偏差集中在信号节奏的结论。
+
+### 修改原因
+- 逐日对比官方 `62_WF_HGB_adjusted_V3_2022_2026_log.csv` 后发现，当前复现不仅多调仓，而且同日目标仓位也经常不同。
+- 查交接手册后确认 `base_position_v3 +/- 0.25` 只是 proxy；正式执行层可能加约束。继续查 formal Rust 工具后，确认缺失的是 regime-cap 规则。
+
+### 方案还差什么？
+- [ ] 继续拆官方 HGB walk-forward 的信号节奏，解释为什么执行次数仍是 `294` 而不是 `239`。
+- [ ] 判断剩余差异来自 rounded target/base、trigger day 稀疏化，还是其他信号节流规则。
+
+### 潜在问题
+- [ ] 当前 shared walk-forward 已补上 regime cap，但还不能宣称与官方 walk-forward 完全一致；收益和回撤虽更接近，执行次数仍偏高。
+- [ ] 交接手册没有直接写出官方 walk-forward 的完整信号生成器，后续仍需要依赖 log-level 反推与代码线索。
+
+### 关闭项
+- 已通过 `pytest E:\SM\.verification\nikkei_xgb_model_compare_20260427\test_backtest_alignment.py -q`，结果 `2 passed`。
+- 已通过 `python E:\SM\.verification\nikkei_xgb_model_compare_20260427\run_model_compare.py` 重跑 shared walk-forward。
+- 已确认补上 regime cap 后，HGB 对官方的收益偏差从约 `+6.93pct` 缩到约 `+2.36pct`。
+
+### 记忆点（可选）
+- 交接手册里的 `base +/- 0.25` 是研究 proxy，不要直接当成官方 walk-forward 的完整目标仓位合同。
+## 2026-04-27
+### 修改内容
+- docs/plans/2026-04-27-a-share-monster-stock-research-plan.md：新增妖股研究执行合同，冻结研究 runtime、price-history 真源、research metadata store 和验收项。
+- docs/research/a_share_monster_stock_20260427/README.md 与 monster_stock_candidates.csv：新增研究产物根和 18 只样本清单，先固定股票代码、名称、年份和事件日起待验证状态。
+- scripts/research/bootstrap_monster_stock_research_db.ps1 与 sync_a_share_monster_stock_history.ps1：新增研究元数据库初始化和样本批量 OHLCV 同步脚本。
+- E:\SM\.stockmind_runtime\monster_stock_research_20260427\stock_history.db 与 monster_stock_research.db：生成独立研究运行时，价格历史和样本元数据分库落盘。
+- docs/research/a_share_monster_stock_20260427/sync_results.csv：导出 18 只样本的同步结果，保留 provider、起止日期和行数证据。
+
+### 修改原因
+- 用户已批准方案 A，要求先把 2020-2026 年 A 股非新股妖股样本整理进独立数据库，再做吸筹特征分析。
+- 当前工作区没有现成研究 runtime，但已有正式 sync_stock_price_history 入口可复用，因此先搭研究底座比做临时分析更稳。
+
+### 方案还差什么？
+- [ ] 还没有冻结 18 只样本的“连板启动日”真源，当前 event_start_date 仍为 pending_verification。
+- [ ] 还没有补齐日度换手率、流通市值、成交额和筹码分布口径，因此现在只能先做 OHLCV 层的数据整理。
+
+### 潜在问题
+- [ ]  02952.SZ 和 688585.SH 的历史起点晚于 2019-01-01，这是上市时间自然边界；后续做启动前 1 年窗口时要按实际事件日核对样本是否满年。
+- [ ] monster_stock_research.db 当前只有样本元数据，尚未落事件表和特征表；如果不先冻结事件日口径，后续特征表容易返工。
+
+### 关闭项
+- 已通过 powershell -ExecutionPolicy Bypass -File E:\SM\scripts\research\bootstrap_monster_stock_research_db.ps1，确认输出 18，表示 18 条样本已入元数据库。
+- 已通过 powershell -ExecutionPolicy Bypass -File E:\SM\scripts\research\sync_a_share_monster_stock_history.ps1，确认 18 只样本全部 status=ok，且日线历史已落入 stock_history.db。
+- 已通过 SQLite 核对，stock_price_history 中 18 只样本均有覆盖，绝大多数从 2019-01-02 开始，到 2026-04-27 截止。
+
+### 记忆点（可选）
+- 用户纠正点：在证券研究任务中，“成本集中率、成交率、压力位”必须先冻结可计算口径，不能把各家终端的私有指标名称混成一个结论。
+## 2026-04-27
+### 修改内容
+- scripts/research/fetch_a_share_monster_stock_enriched_daily.py：新增研究侧增强日线抓取脚本，补充日度成交额、振幅、涨跌幅、涨跌额、换手率，并结合东财快照股本推导流通/总市值近似值。
+- E:\SM\.stockmind_runtime\monster_stock_research_20260427\monster_stock_research.db：新增 daily_price_enriched 表并写入 18 只样本共 31325 行增强日线记录。
+- docs/research/a_share_monster_stock_20260427\enriched_sync_results.csv 与 enriched_coverage.csv：导出增强抓取执行结果与数据库真实覆盖清单。
+
+### 修改原因
+- 用户确认先补标准日频字段，再研究妖股启动前一年是否存在可重复的吸筹特征。
+- 现有正式 stock_history.db 合同不含成交额、换手率、市值代理，因此需要在研究侧单独补增强表。
+
+### 方案还差什么？
+- [ ] 还没有冻结 18 只样本的连板启动日，无法严谨切出“启动前 1 年”事件窗口。
+- [ ] 当前流通市值/总市值使用的是“当前股本快照 × 历史收盘价”的近似口径，尚未接入历史股本变动真源。
+
+### 潜在问题
+- [ ] 东财 HTTP 源存在限流/断流，enriched_sync_results.csv 可能记录最后一次尝试状态，不一定等于库内最终覆盖；后续应以 enriched_coverage.csv 和数据库实查为准。
+- [ ] 对于送转、增发、限售解禁较多的股票，快照股本回推的历史市值会有误差，后续如要把市值特征用于强结论，需要补历史股本序列。
+
+### 关闭项
+- 已通过 python E:\SM\scripts\research\fetch_a_share_monster_stock_enriched_daily.py 建表并完成增强日线入库。
+- 已通过 SQLite 核对 daily_price_enriched，确认覆盖 18 只样本、共 31325 行。
+- 已抽查 600121.SH，确认日度 mount_cny、	urnover_rate_pct、loat_market_cap_est、	otal_market_cap_est 可正常读取。
+
+### 记忆点（可选）
+- 在研究任务里，外部源的“最后一次调用状态”不等于“数据库最终状态”；只要存在重试和断流，最终验收要以库内覆盖和导出覆盖清单为准。
+## 2026-04-27
+### 修改内容
+- `docs/research/nikkei-etf-hgb-rf-v3-20260427/SESSION_HANDOFF_2026-04-27.md`：新增本轮日经 ETF HGB/RF V3 研究交接包，记录 2026-04-27 严格结论、数据阻塞、用户已批准决策，以及本轮明确提出并收敛的问题。
+- `docs/research/nikkei-etf-hgb-rf-v3-20260427/README.md`：补充 2026-04-27 刷新边界说明，并加入 session handoff 入口，目的：让 GitHub 接手方先看到“价格层已更新、正式信号层未完整更新”的真实边界。
+- `docs/research/nikkei-etf-hgb-rf-v3-20260427/ALGORITHM_HANDOFF_MANUAL.md`：补充 2026-04-27 refresh status，并把 session handoff 提升到起始阅读顺序，目的：避免后续把 2026-04-27 误当成已完整刷新信号日。
+- `findings.md` / `progress.md`：补记 2026-04-27 严格结论与 handoff 落盘动作，目的：让本轮验证与上传准备具备可追溯记录。
+
+### 修改原因
+- 用户要求把今天的内容上传到 GitHub，并且明确要求“包括你询问的问题”。
+- 现有研究包虽然已经有 README 和算法交接手册，但还缺少一份聚焦今天这轮推进的 session-level 交接包，导致下一位接手者仍需要回溯聊天记录。
+
+### 方案还差什么?
+- [ ] 仅完成 Git 交接文档与研究记录收口；如要形成新的正式 `2026-04-27` HGB 信号，仍需补齐 `61_V3_base_2022_2026_curve.csv`。
+- [ ] 如要验证 2026-04-27 之后的低溢价 ETF 执行，仍需补齐 `159866/513520` 的 NAV / IOPV / premium 数据源。
+
+### 潜在问题
+- [ ] 当前工作区仍有大量与本轮无关的脏改动；Git 提交必须严格窄范围 staging，否则会把无关代码与运行时产物一起推上去。
+- [ ] `CHANGELOG_TASK.MD` 仍含历史 `NUL` 字节，本轮继续采用 append-only 方式记录，未做编码清洗。
+
+### 关闭项
+- 已通过文档核对与数据复查确认：`2026-04-27` 价格层已更新，但严格 HGB 可执行信号仍是 `2026-04-24 -> 2026-04-27 next open`，目标仓位代理 `12.24%`。
+- 已补齐可 Git 交接的 session handoff，并将入口接入研究包主 README 与算法交接手册。
+
+### 记忆点（可选）
+- 当用户要求“上传今天内容并包括我询问的问题”时，不要只推已有 README；要补一份 session-level handoff，把问题、答案、边界、阻塞和下一步显式落盘。
