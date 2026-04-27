@@ -5,12 +5,13 @@
 Read these files first:
 
 1. `README.md`
-2. `SESSION_HANDOFF_2026-04-27.md`
-3. `artifact_manifest.csv`
-4. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/01_daily_model_scores_live_pre_year.csv`
-5. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/04_local_driver_explanations_live_pre_year.csv`
-6. `artifacts/01_training_and_intermediate_full_snapshot/analysis_exports/adjustment_point_analysis/64_walk_forward_hgb_backtest_summary.csv`
-7. `artifacts/02_live_like_backtest_full_snapshot/08_no_deadband_decision_summary.csv`
+2. `MODEL_SUMMARY_20260428.md`
+3. `SESSION_HANDOFF_2026-04-27.md`
+4. `artifact_manifest.csv`
+5. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/01_daily_model_scores_live_pre_year.csv`
+6. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/04_local_driver_explanations_live_pre_year.csv`
+7. `artifacts/01_training_and_intermediate_full_snapshot/analysis_exports/adjustment_point_analysis/64_walk_forward_hgb_backtest_summary.csv`
+8. `artifacts/02_live_like_backtest_full_snapshot/08_no_deadband_decision_summary.csv`
 
 The current practical question is not "predict Nikkei up/down every day". The operating question is:
 
