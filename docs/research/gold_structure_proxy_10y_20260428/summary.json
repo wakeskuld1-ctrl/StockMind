@@ -1,0 +1,96 @@
+{
+  "data_counts": {
+    "gold_rows": 2592,
+    "usd_rows": 2594,
+    "oil_rows": 2594,
+    "merged_rows": 2592
+  },
+  "structure_counts": {
+    "none": 2246,
+    "pullback_repair": 197,
+    "mean_reversion": 90,
+    "trend_continuation": 59
+  },
+  "best_by_win_rate": [
+    {
+      "holding_days": 10,
+      "sample_count": 8,
+      "win_rate": 1.0,
+      "avg_return": 0.050394233987100995,
+      "median_return": 0.0382847860391381,
+      "avg_max_drawdown": -0.009001292702192881,
+      "avg_max_runup": 0.06311872372634228,
+      "return_per_day": 0.005039423398710099,
+      "annualized_equivalent": 2.4520628399164375,
+      "structure_name": "mean_reversion",
+      "resonance_regime": "usd_down_oil_down"
+    },
+    {
+      "holding_days": 30,
+      "sample_count": 46,
+      "win_rate": 0.7608695652173914,
+      "avg_return": 0.04086732783242116,
+      "median_return": 0.04470570652134276,
+      "avg_max_drawdown": -0.0400983443650419,
+      "avg_max_runup": 0.0668497400090675,
+      "return_per_day": 0.0013622442610807053,
+      "annualized_equivalent": 0.3999778445534845,
+      "structure_name": "pullback_repair",
+      "resonance_regime": "usd_down_oil_down"
+    },
+    {
+      "holding_days": 3,
+      "sample_count": 9,
+      "win_rate": 0.7777777777777778,
+      "avg_return": 0.007831390038587448,
+      "median_return": 0.010012989956948326,
+      "avg_max_drawdown": -0.01125678340883819,
+      "avg_max_runup": 0.020755199354267815,
+      "return_per_day": 0.002610463346195816,
+      "annualized_equivalent": 0.9256705507350942,
+      "structure_name": "trend_continuation",
+      "resonance_regime": "usd_up_oil_up"
+    }
+  ],
+  "best_by_time_efficiency": [
+    {
+      "holding_days": 5,
+      "sample_count": 8,
+      "win_rate": 0.875,
+      "avg_return": 0.029065672979077042,
+      "median_return": 0.024782676500321954,
+      "avg_max_drawdown": -0.009001292702192881,
+      "avg_max_runup": 0.034818273666579386,
+      "return_per_day": 0.0058131345958154085,
+      "annualized_equivalent": 3.2377156336307316,
+      "structure_name": "mean_reversion",
+      "resonance_regime": "usd_down_oil_down"
+    },
+    {
+      "holding_days": 30,
+      "sample_count": 46,
+      "win_rate": 0.7608695652173914,
+      "avg_return": 0.04086732783242116,
+      "median_return": 0.04470570652134276,
+      "avg_max_drawdown": -0.0400983443650419,
+      "avg_max_runup": 0.0668497400090675,
+      "return_per_day": 0.0013622442610807053,
+      "annualized_equivalent": 0.3999778445534845,
+      "structure_name": "pullback_repair",
+      "resonance_regime": "usd_down_oil_down"
+    },
+    {
+      "holding_days": 3,
+      "sample_count": 19,
+      "win_rate": 0.7368421052631579,
+      "avg_return": 0.009607603907405829,
+      "median_return": 0.009307398627404151,
+      "avg_max_drawdown": -0.009875111933581891,
+      "avg_max_runup": 0.019029064983176528,
+      "return_per_day": 0.0032025346358019427,
+      "annualized_equivalent": 1.2326439879219508,
+      "structure_name": "trend_continuation",
+      "resonance_regime": "usd_down_oil_down"
+    }
+  ]
+}

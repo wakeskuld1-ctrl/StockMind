@@ -1,0 +1,87 @@
+{
+  "data_counts": {
+    "gold_rows": 2592,
+    "usd_rows": 2594,
+    "oil_rows": 2594,
+    "merged_rows": 2592,
+    "mean_reversion_rows": 90,
+    "broad_event_rows": 32,
+    "v2_event_rows": 32
+  },
+  "verdict": {
+    "exit_rule": "hold_15d",
+    "sample_count": 32,
+    "avg_holding_days": 15.0,
+    "win_rate": 0.90625,
+    "avg_return": 0.03992812988550265,
+    "median_return": 0.03628894393672777,
+    "avg_max_drawdown": -0.01800044040168589,
+    "avg_max_runup": 0.05976403624940941,
+    "return_per_day": 0.0026618753257001766,
+    "annualized_equivalent": 0.9304380809067618,
+    "positive_year_ratio": 0.875,
+    "stable_year_count": 6
+  },
+  "summary": [
+    {
+      "exit_rule": "break_event_low",
+      "sample_count": 32,
+      "avg_holding_days": 6.78125,
+      "win_rate": 0.34375,
+      "avg_return": 0.12218420352171397,
+      "median_return": -0.008176381295567914,
+      "avg_max_drawdown": -0.005459925510397191,
+      "avg_max_runup": 0.18821346378552803,
+      "return_per_day": 0.01745488621738771,
+      "annualized_equivalent": 62.432150839429724
+    },
+    {
+      "exit_rule": "break_ma10",
+      "sample_count": 32,
+      "avg_holding_days": 1.0,
+      "win_rate": 0.40625,
+      "avg_return": 0.019697052642865844,
+      "median_return": -0.002236391973830465,
+      "avg_max_drawdown": 0.011903986568479252,
+      "avg_max_runup": 0.032968454568943484,
+      "return_per_day": 0.019697052642865844,
+      "annualized_equivalent": 135.37454993106178
+    },
+    {
+      "exit_rule": "break_ma5",
+      "sample_count": 32,
+      "avg_holding_days": 1.03125,
+      "win_rate": 0.375,
+      "avg_return": 0.019304733489516866,
+      "median_return": -0.0032064861357066765,
+      "avg_max_drawdown": 0.011513428396475775,
+      "avg_max_runup": 0.03308984497333617,
+      "return_per_day": 0.019304733489516866,
+      "annualized_equivalent": 122.77083899501213
+    },
+    {
+      "exit_rule": "hold_10d",
+      "sample_count": 32,
+      "avg_holding_days": 10.0,
+      "win_rate": 0.90625,
+      "avg_return": 0.029094523109261677,
+      "median_return": 0.023732533267111444,
+      "avg_max_drawdown": -0.016768949418659477,
+      "avg_max_runup": 0.05008435509224766,
+      "return_per_day": 0.0029094523109261675,
+      "annualized_equivalent": 1.06002611109479
+    },
+    {
+      "exit_rule": "hold_15d",
+      "sample_count": 32,
+      "avg_holding_days": 15.0,
+      "win_rate": 0.90625,
+      "avg_return": 0.03992812988550265,
+      "median_return": 0.03628894393672777,
+      "avg_max_drawdown": -0.01800044040168589,
+      "avg_max_runup": 0.05976403624940941,
+      "return_per_day": 0.0026618753257001766,
+      "annualized_equivalent": 0.9304380809067618
+    }
+  ]
+}

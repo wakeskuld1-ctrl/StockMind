@@ -1,0 +1,92 @@
+{
+  "data_counts": {
+    "gold_rows": 2592,
+    "usd_rows": 2594,
+    "oil_rows": 2594,
+    "merged_rows": 2592,
+    "mean_reversion_rows": 90,
+    "broad_event_rows": 32
+  },
+  "verdict": {
+    "holding_days": 10.0,
+    "sample_count": 32.0,
+    "win_rate": 0.90625,
+    "avg_return": 0.029094523109261677,
+    "median_return": 0.023732533267111444,
+    "avg_max_drawdown": -0.016768949418659477,
+    "avg_max_runup": 0.05008435509224766,
+    "return_per_day": 0.0029094523109261675,
+    "annualized_equivalent": 1.06002611109479,
+    "positive_year_ratio": 0.875,
+    "years_with_enough_samples": 6,
+    "is_repeatable_pattern": true
+  },
+  "overall": [
+    {
+      "holding_days": 3,
+      "sample_count": 32,
+      "win_rate": 0.53125,
+      "avg_return": 0.010051000537319905,
+      "median_return": 0.0001931126464119748,
+      "avg_max_drawdown": -0.012535094169831885,
+      "avg_max_runup": 0.02133347292302173,
+      "return_per_day": 0.003350333512439968,
+      "annualized_equivalent": 1.3165275376728265
+    },
+    {
+      "holding_days": 5,
+      "sample_count": 32,
+      "win_rate": 0.65625,
+      "avg_return": 0.020607334923483545,
+      "median_return": 0.00789328305827941,
+      "avg_max_drawdown": -0.013832098835358034,
+      "avg_max_runup": 0.03191510706047992,
+      "return_per_day": 0.0041214669846967086,
+      "annualized_equivalent": 1.7956173964215307
+    },
+    {
+      "holding_days": 10,
+      "sample_count": 32,
+      "win_rate": 0.90625,
+      "avg_return": 0.029094523109261677,
+      "median_return": 0.023732533267111444,
+      "avg_max_drawdown": -0.016768949418659477,
+      "avg_max_runup": 0.05008435509224766,
+      "return_per_day": 0.0029094523109261675,
+      "annualized_equivalent": 1.06002611109479
+    },
+    {
+      "holding_days": 15,
+      "sample_count": 32,
+      "win_rate": 0.90625,
+      "avg_return": 0.03992812988550265,
+      "median_return": 0.03628894393672777,
+      "avg_max_drawdown": -0.01800044040168589,
+      "avg_max_runup": 0.05976403624940941,
+      "return_per_day": 0.0026618753257001766,
+      "annualized_equivalent": 0.9304380809067618
+    },
+    {
+      "holding_days": 20,
+      "sample_count": 32,
+      "win_rate": 0.875,
+      "avg_return": 0.04593400861139865,
+      "median_return": 0.03804461503365253,
+      "avg_max_drawdown": -0.019935037512278094,
+      "avg_max_runup": 0.07082913326810406,
+      "return_per_day": 0.0022967004305699326,
+      "annualized_equivalent": 0.760978212266062
+    },
+    {
+      "holding_days": 30,
+      "sample_count": 32,
+      "win_rate": 0.84375,
+      "avg_return": 0.04072926180018935,
+      "median_return": 0.023964402878860813,
+      "avg_max_drawdown": -0.017974179009874948,
+      "avg_max_runup": 0.07683060330464897,
+      "return_per_day": 0.0013576420600063116,
+      "annualized_equivalent": 0.3984187272970854
+    }
+  ]
+}

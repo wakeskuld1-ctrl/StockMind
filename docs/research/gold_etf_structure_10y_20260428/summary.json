@@ -1,0 +1,88 @@
+{
+  "symbols": [
+    "518880.SH",
+    "518800.SH",
+    "159934.SZ"
+  ],
+  "sample_counts": {
+    "trend_continuation": 0,
+    "pullback_repair": 0,
+    "mean_reversion": 0
+  },
+  "best_by_win_rate": [
+    {
+      "holding_days": 3,
+      "sample_count": 0,
+      "win_rate": NaN,
+      "avg_return": NaN,
+      "median_return": NaN,
+      "avg_max_drawdown": NaN,
+      "avg_max_runup": NaN,
+      "return_per_day": NaN,
+      "annualized_equivalent": NaN,
+      "structure_name": "mean_reversion"
+    },
+    {
+      "holding_days": 3,
+      "sample_count": 0,
+      "win_rate": NaN,
+      "avg_return": NaN,
+      "median_return": NaN,
+      "avg_max_drawdown": NaN,
+      "avg_max_runup": NaN,
+      "return_per_day": NaN,
+      "annualized_equivalent": NaN,
+      "structure_name": "pullback_repair"
+    },
+    {
+      "holding_days": 3,
+      "sample_count": 0,
+      "win_rate": NaN,
+      "avg_return": NaN,
+      "median_return": NaN,
+      "avg_max_drawdown": NaN,
+      "avg_max_runup": NaN,
+      "return_per_day": NaN,
+      "annualized_equivalent": NaN,
+      "structure_name": "trend_continuation"
+    }
+  ],
+  "best_by_time_efficiency": [
+    {
+      "holding_days": 3,
+      "sample_count": 0,
+      "win_rate": NaN,
+      "avg_return": NaN,
+      "median_return": NaN,
+      "avg_max_drawdown": NaN,
+      "avg_max_runup": NaN,
+      "return_per_day": NaN,
+      "annualized_equivalent": NaN,
+      "structure_name": "mean_reversion"
+    },
+    {
+      "holding_days": 3,
+      "sample_count": 0,
+      "win_rate": NaN,
+      "avg_return": NaN,
+      "median_return": NaN,
+      "avg_max_drawdown": NaN,
+      "avg_max_runup": NaN,
+      "return_per_day": NaN,
+      "annualized_equivalent": NaN,
+      "structure_name": "pullback_repair"
+    },
+    {
+      "holding_days": 3,
+      "sample_count": 0,
+      "win_rate": NaN,
+      "avg_return": NaN,
+      "median_return": NaN,
+      "avg_max_drawdown": NaN,
+      "avg_max_runup": NaN,
+      "return_per_day": NaN,
+      "annualized_equivalent": NaN,
+      "structure_name": "trend_continuation"
+    }
+  ]
+}
