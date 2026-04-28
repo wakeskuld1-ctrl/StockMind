@@ -2,7 +2,7 @@
 
 ## Snapshot Date
 
-- Date: 2026-04-26
+- Date: 2026-04-28
 - Workspace path: `D:\SM`
 - Branch: `codex/p10-p11-clean-upload-20260420`
 - HEAD: local branch now includes the merged docfix line on top of `8214bc7`
@@ -12,6 +12,20 @@
 - this local `D:\SM` worktree continues the same dirty delivery line and now carries the P19D controlled replay commit-writer slice on top of the P19C replay commit-preflight state
 - 2026-04-27 update: the Nikkei ETF HGB/RF V3 research chain has been packaged under `docs/research/nikkei-etf-hgb-rf-v3-20260427/`, including full Nikkei training/intermediate artifacts, ETF live-like backtest outputs, daily HGB/RF scoring outputs, an artifact manifest, upload notes, and an algorithm handoff manual.
 - For future Nikkei ETF model work, start with `docs/research/nikkei-etf-hgb-rf-v3-20260427/ALGORITHM_HANDOFF_MANUAL.md`; use `live_pre_year` outputs for live-like interpretation and treat `known_labels_asof` as diagnostic only.
+- 2026-04-28 update: the current Nikkei operator entrypoint is `python D:\SM\scripts\run_nikkei_hgb_rf_daily_workflow.py --as-of-date <date> --score-start-date <date> --journal-dir D:\SM\docs\trading-journal\nikkei`; the workflow prints `effective_signal_date`, writes `06_daily_workflow_manifest_live_pre_year.json`, and may fall back to the latest live artifact on or before the requested date.
+- 2026-04-28 update: the current 2026 `live_pre_year` daily workflow keeps a fixed live split of `train through 2025-09-30` and `validate on 2025Q4`, then scores daily rows; the expanding-window cadence belongs to governed retrain / yearly HGB walk-forward, not to day-by-day operator retraining.
+- 2026-04-28 update: the formal ETF Tool boundary is now `src/ops/security_nikkei_etf_position_signal.rs`, which accepts only governed `live_pre_year` HGB artifacts and rejects `known_labels_asof` plus deprecated non-policy filenames.
+- 2026-04-28 update: the Nikkei live journal truth now lives under `D:\SM\docs\trading-journal\nikkei\` with `journal.csv`, `journal.md`, and `snapshots\*.json`; rating-change replay uses `python C:\Users\wakes\.codex\skills\nikkei-live-journal\scripts\compare_rating_change.py --journal-dir D:\SM\docs\trading-journal\nikkei --signal-date <date> --etf-symbol <symbol>`.
+- 2026-04-28 update: code/tests now enforce the Nikkei weekly `1w` registry/refit token, and the packaged Nikkei research snapshot was rerun on 2026-04-28 so the old `...10d-direction_head` training metadata residue has been cleared from that snapshot.
+- 2026-04-28 update: the first offline Nikkei replay-classifier line now exists under `docs/research/nikkei-etf-hgb-rf-v3-20260427/artifacts/04_replay_classifier_full_snapshot/`; start with `REPLAY_CLASSIFIER_SUMMARY_20260428.md` for signal-quality replay truth.
+- 2026-04-28 update: the first offline Nikkei continuation-head line now exists under `docs/research/nikkei-etf-hgb-rf-v3-20260427/artifacts/05_continuation_head_full_snapshot/`; read it together with `CONTINUATION_HEAD_SUMMARY_20260428.md` as a second-stage refinement layer on top of replay classification.
+- 2026-04-28 update: the current continuation-head truth is research-only; the main gap is no longer whether continuation exists, but whether its highly imbalanced labels can be optimized enough for future operator use.
+- 2026-04-29 update: the first simulated-action balance experiment now exists under `docs/research/nikkei-etf-hgb-rf-v3-20260427/artifacts/06_simulated_action_balance_experiment/`; use `SIMULATED_ACTION_BALANCE_SUMMARY_20260429.md` before approving any synthetic augmentation into governed training.
+- 2026-04-29 update: the first augmentation did not improve real-validation balance-aware metrics; the active gap is now negative-sample quality, not just negative-sample quantity.
+- 2026-04-29 update: the second continuation-balance pass now exists under `docs/research/nikkei-etf-hgb-rf-v3-20260427/artifacts/07_real_failure_event_experiment/`; read `REAL_FAILURE_EVENT_SUMMARY_20260429.md` before approving any real-failure augmentation into governed training.
+- 2026-04-29 update: the later prototype-add refinement made the `07_real_failure_event_experiment` add-only and closer to untouched-validation `premature_add` negatives; this improved `1D / 3D` balance-aware metrics versus the prior broad real-failure pass, but still did not beat baseline, so the active gap is now the remaining subtype split inside prototype add failures, especially on `5D`.
+- 2026-04-29 update: the next `5D` specialization split the shared add prototype into two `5D` slow-fail subcontexts and slightly lifted `5D balanced_accuracy` above baseline, but the effective mined train count before validation is only `1`, so the active gap has shifted to `5D` sample density under the time-aware split.
+- 2026-04-29 update: the dedicated prediction-methods handoff now lives at `docs/research/nikkei-etf-hgb-rf-v3-20260427/PREDICTION_METHODS_HANDOFF_20260429.md`; use it when the immediate question is the `Replay Classifier / Continuation Head` line rather than the base HGB/RF V3 model.
 - historical `E:\SM` verification entries below are preserved as background evidence only; current branch-health claims for this continuation must be made from fresh `D:\SM` commands
 - the working tree still contains many uncommitted local edits and generated runtime artifacts, including `P16` governance-sync work, capital-source raw-flow/snapshot/audit work, earlier portfolio-core/post-P12 edits, user-local Nikkei training changes, and large runtime fixture/output directories
 - the latest branch-truth imported from the docfix line records a fresh 2026-04-24 repository-wide green verification in a separate reconciliation worktree after the missing `docs/plans/design/` backfill and the `Stock/Foundation Decoupling Baseline` handoff marker were restored
@@ -20,6 +34,29 @@
 ## Verified Commands
 
 ### Passed
+
+Fresh Nikkei focused verification run on 2026-04-28 in `D:\SM`:
+
+```powershell
+$env:CARGO_TARGET_DIR='D:\SM\.verification\cargo-targets\nikkei_refit_20260428'; cargo test --test security_scorecard_refit_cli -- --nocapture
+$env:CARGO_TARGET_DIR='D:\SM\.verification\cargo-targets\nikkei_training_20260428'; cargo test --test security_scorecard_training_cli -- --nocapture
+$env:CARGO_TARGET_DIR='D:\SM\.verification\cargo-targets\nikkei_etf_signal_20260428'; cargo test --test security_nikkei_etf_position_signal_cli -- --nocapture
+python D:\SM\scripts\test_run_nikkei_hgb_rf_daily_workflow.py
+python C:\Users\wakes\.codex\skills\nikkei-live-journal\scripts\test_upsert_journal.py
+$env:CARGO_TARGET_DIR='D:\SM\.verification\cargo-targets\nikkei_check_20260428'; cargo check
+python D:\SM\scripts\run_nikkei_hgb_rf_daily_workflow.py --as-of-date 2026-04-27 --score-start-date 2026-04-01 --output-root D:\SM\.verification\nikkei_daily_workflow_20260428
+```
+
+Results:
+
+- `security_scorecard_refit_cli`: `4 passed, 0 failed`
+- `security_scorecard_training_cli`: `19 passed, 0 failed`
+- `security_nikkei_etf_position_signal_cli`: `15 passed, 0 failed`
+- `test_run_nikkei_hgb_rf_daily_workflow.py`: `4 passed, 0 failed`
+- `test_upsert_journal.py`: `4 passed, 0 failed`
+- `cargo check`: completed successfully
+- real daily workflow run completed successfully with `train_policy=live_pre_year`, `as_of_date=2026-04-27`, `effective_signal_date=2026-04-24`, `HGB adjustment=-1`, `RF adjustment=0`
+- the real daily workflow emitted a non-blocking `joblib/loky` physical-core warning on Windows `wmic`; the workflow still completed with exit code 0 and wrote outputs to `D:\SM\.verification\nikkei_daily_workflow_20260428`
 
 The latest preserved focused verification evidence carried into this merge handoff includes:
 
@@ -360,6 +397,9 @@ Historical note only:
 
 ## Current Delivery Read
 
+- the Nikkei live operator entrypoint is now `scripts/run_nikkei_hgb_rf_daily_workflow.py`, and the approved live interpretation must read both the requested `as_of_date` and the resolved `effective_signal_date`
+- the formal `security_nikkei_etf_position_signal` boundary now consumes only governed `live_pre_year` HGB artifacts and rejects `known_labels_asof`, stale-date filenames, and deprecated non-policy filenames
+- the Nikkei live journal path under `docs/trading-journal/nikkei/` is now part of the governed delivery line, with signal-fact persistence owned by the daily workflow and rating-change replay owned by the journal skill script
 - the merged local branch contains the P10/P11/P12 portfolio-core slice plus the post-P12 P13 request package, P14 request enrichment, P15 apply-bridge path, and your local carried-forward P16 plus capital-source line
 - the new `security_portfolio_allocation_decision` tool is live on the public stock bus as an enhanced bounded P12 refinement layer with baseline-vs-refined allocation traceability
 - the new `security_portfolio_execution_preview` tool is live on the public stock bus as a preview-only downstream consumer of governed P12 output, and each preview row now carries a nested execution-request-aligned preview subset
@@ -388,6 +428,9 @@ Historical note only:
 
 ## Current Gaps Still Visible
 
+- the fresh 2026-04-28 governed daily workflow still falls back to `effective_signal_date=2026-04-24`; the active gap is now the daily live artifact freshness, not the old `10d` registry/refit residue
+- the current 2026 Nikkei daily workflow still depends on an external Python preprocessing/scoring step rather than an internal Rust training subsystem
+- the Windows `joblib/loky` physical-core warning remains a local environment nuisance during the real workflow run; it did not block execution in the 2026-04-28 fresh run
 - the first repository-level graph audit is AST-only and code-structural; document/image semantic extraction remains an optional future enhancement, not a branch-health blocker
 - P12 is still intentionally not a trim-funded reallocation solver; this route only refines with baseline residual cash and remaining turnover slack
 - the post-P12 preview bridge is intentionally preview-only and must not be mistaken for real execution or persistence, even though it now exposes one nested execution-request-aligned preview subset

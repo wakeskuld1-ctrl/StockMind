@@ -1,0 +1,35 @@
+{
+  "target_definition_version": "nikkei_replay_label_v1",
+  "label_horizon": "5d",
+  "label_column": "replay_label_5d",
+  "label_vocabulary": [
+    "correct_reduce",
+    "acceptable_reduce",
+    "premature_reduce",
+    "late_reduce",
+    "correct_add",
+    "acceptable_add",
+    "premature_add",
+    "late_add",
+    "inconclusive"
+  ],
+  "sample_count": 2203,
+  "observed_outcome_sample_count": 2203,
+  "train_sample_count": 1762,
+  "validation_sample_count": 441,
+  "observed_label_count": 7,
+  "observed_labels": [
+    "acceptable_add",
+    "acceptable_reduce",
+    "correct_add",
+    "correct_reduce",
+    "inconclusive",
+    "premature_add",
+    "premature_reduce"
+  ],
+  "classifier_name": "LogisticRegression",
+  "fallback_reason": null,
+  "generated_at_utc": "2026-04-28T14:30:19.806466+00:00",
+  "train_accuracy": 0.8047673098751419,
+  "validation_accuracy": 0.7210884353741497
+}

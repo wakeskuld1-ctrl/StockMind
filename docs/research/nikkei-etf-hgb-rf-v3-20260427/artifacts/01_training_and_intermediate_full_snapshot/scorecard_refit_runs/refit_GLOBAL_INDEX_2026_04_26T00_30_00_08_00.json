@@ -10,7 +10,7 @@
   "valid_range": "2025-10-01..2025-12-31",
   "test_range": "2026-01-01..2026-04-17",
   "candidate_artifact_path": "D:\\.stockmind_runtime\\nikkei_current_rerun_20260426_direction_head_yfinance_10y_long_volume_behavior\\scorecard_artifacts\\global_index_nikkei_index_1w_direction_head__candidate_2026_04_26T00_30_00_08_00.json",
-  "candidate_registry_ref": "registry-global_index_nikkei_index_1w_direction_head-candidate_2026_04_26T00_30_00_08_00-10d-direction_head",
+  "candidate_registry_ref": "registry-global_index_nikkei_index_1w_direction_head-candidate_2026_04_26T00_30_00_08_00-1w-direction_head",
   "comparison_to_champion_json": null,
   "promotion_decision": "candidate_only",
   "model_grade": "candidate",

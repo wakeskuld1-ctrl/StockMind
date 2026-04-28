@@ -1,0 +1,2 @@
+﻿label_horizon,baseline_train_count,augmented_train_count,validation_count,real_failure_train_count,baseline_accuracy,augmented_accuracy,baseline_balanced_accuracy,augmented_balanced_accuracy,baseline_negative_recall,augmented_negative_recall
+3d,836,861,209,25,0.5789473684210527,0.645933014354067,0.7147020725388601,0.6363341968911918,0.875,0.625

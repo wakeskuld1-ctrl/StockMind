@@ -1,0 +1,25 @@
+{
+  "target_definition_version": "nikkei_continuation_head_v1",
+  "label_horizon": "3d",
+  "label_column": "continuation_label_3d",
+  "supported_horizons": [
+    "1d",
+    "3d",
+    "5d"
+  ],
+  "sample_count": 2205,
+  "eligible_sample_count": 1045,
+  "observed_outcome_sample_count": 1045,
+  "train_sample_count": 836,
+  "validation_sample_count": 209,
+  "observed_label_count": 2,
+  "observed_labels": [
+    "0",
+    "1"
+  ],
+  "classifier_name": "LogisticRegression",
+  "fallback_reason": null,
+  "generated_at_utc": "2026-04-28T14:54:39.076525+00:00",
+  "train_accuracy": 0.6160287081339713,
+  "validation_accuracy": 0.5789473684210527
+}

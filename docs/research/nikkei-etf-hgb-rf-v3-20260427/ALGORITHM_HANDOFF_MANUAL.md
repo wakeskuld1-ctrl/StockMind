@@ -5,12 +5,19 @@
 Read these files first:
 
 1. `README.md`
-2. `MODEL_SUMMARY_20260428.md`
-3. `artifact_manifest.csv`
-4. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/01_daily_model_scores_live_pre_year.csv`
-5. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/04_local_driver_explanations_live_pre_year.csv`
-6. `artifacts/01_training_and_intermediate_full_snapshot/analysis_exports/adjustment_point_analysis/64_walk_forward_hgb_backtest_summary.csv`
-7. `artifacts/02_live_like_backtest_full_snapshot/08_no_deadband_decision_summary.csv`
+2. `PREDICTION_METHODS_HANDOFF_20260429.md`
+3. `MODEL_SUMMARY_20260428.md`
+4. `REPLAY_CLASSIFIER_SUMMARY_20260428.md`
+5. `CONTINUATION_HEAD_SUMMARY_20260428.md`
+6. `artifact_manifest.csv`
+7. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/01_daily_model_scores_live_pre_year.csv`
+8. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/04_local_driver_explanations_live_pre_year.csv`
+9. `artifacts/01_training_and_intermediate_full_snapshot/analysis_exports/adjustment_point_analysis/64_walk_forward_hgb_backtest_summary.csv`
+10. `artifacts/02_live_like_backtest_full_snapshot/08_no_deadband_decision_summary.csv`
+
+If the immediate question is only about the two prediction-enhancement methods,
+read `PREDICTION_METHODS_HANDOFF_20260429.md` first. That document is the
+shortest path into the Replay Classifier and Continuation Head line.
 
 The current practical question is not "predict Nikkei up/down every day". The operating question is:
 
@@ -93,6 +100,40 @@ Practical interpretation:
 - HGB is the primary risk-position model.
 - RF is a stabilizer or disagreement detector.
 - If HGB says reduce and RF says hold, do not immediately declare the model broken; inspect support distance, volume breadth, and trend breadth.
+
+### Phase 6: Replay Classification Became the First Signal-Quality Gate
+
+Replay classification was added because generic weekly direction was too broad for the real trading question.
+
+The replay layer grades whether a governed action was:
+
+- correct
+- acceptable
+- premature
+- late
+
+across `1D / 3D / 5D`.
+
+Use:
+
+- `REPLAY_CLASSIFIER_SUMMARY_20260428.md`
+- `artifacts/04_replay_classifier_full_snapshot/`
+
+### Phase 7: Continuation Head Was Added as a Second-Stage Refinement
+
+A continuation head now sits after replay classification and reuses the same event-anchored sample base.
+
+Its role is narrower:
+
+- separate usable continuation from stop-quality continuation;
+- operate as a research-only refinement layer;
+- not replace HGB risk-position logic;
+- not act as a standalone live execution signal.
+
+Use:
+
+- `CONTINUATION_HEAD_SUMMARY_20260428.md`
+- `artifacts/05_continuation_head_full_snapshot/`
 
 ## Model Objects
 
@@ -200,6 +241,40 @@ This is diagnostic only:
 - Useful for understanding model behavior after labels are known.
 - Not acceptable as a live trading signal.
 
+## Approved Live Cadence (2026-04-28)
+
+The approved operating cadence is now:
+
+1. Expand-window retrain.
+2. Daily walk-forward scoring.
+3. Consume only governed `live_pre_year` artifacts.
+
+Interpretation:
+
+- The governed retrain / yearly walk-forward side should follow the approved expanding-window cadence, not a frozen old one-off run.
+- The daily live workflow side should behave like a daily walk-forward process, not a retrospective diagnostic read.
+- `known_labels_asof` remains a diagnostic comparison surface only.
+- The daily operator path must expose both `as_of_date` and the actually usable `effective_signal_date`.
+
+Important precision:
+
+- In the current 2026 `live_pre_year` daily workflow, the train/validate split is fixed at `train through 2025-09-30` and `validate on 2025Q4`, then the workflow scores daily rows for the requested range.
+- The expanding-window cadence is expressed on the governed retrain / yearly HGB walk-forward side, not as a day-by-day 2026 train-window rewrite inside the operator workflow.
+
+If the requested `as_of_date` is later than the last completed live-policy market row, the workflow is allowed to fall back to the latest available live artifact on or before that date. That fallback is valid only when:
+
+- `train_policy = live_pre_year`
+- the artifact filename is policy-qualified
+- the workflow summary and manifest both expose the fallback explicitly
+
+Implementation field names:
+
+- artifact table: `requested_as_of_date`, `effective_as_of_date`
+- stdout summary: `effective_signal_date=...`
+- workflow manifest: `latest_artifact_as_of_date`
+
+This prevents a false assumption that "requested date" always equals "signal date".
+
 ## Daily Scoring Process
 
 The script is:
@@ -220,9 +295,44 @@ Output files:
 - `03_global_feature_importance_<policy>.csv`
 - `04_local_driver_explanations_<policy>.csv`
 - `05_latest_adjustment_artifacts_<policy>.csv`
+- `06_daily_workflow_manifest_<policy>.json`
 - `<model_id>_<policy>_<as_of_date>_adjustment.json`
 
 Do not use non-policy JSON filenames. They are deprecated.
+
+The operator entrypoint is now:
+
+`scripts/run_nikkei_hgb_rf_daily_workflow.py`
+
+This workflow:
+
+1. Runs one governed `live_pre_year` scoring batch.
+2. Reloads the written live artifact table from disk.
+3. Reloads the matching workflow manifest from disk.
+4. Prints a stable HGB/RF summary for operators.
+5. Optionally persists signal facts into `docs/trading-journal/nikkei/` through the governed journal skill script.
+
+Recommended operator command:
+
+`python D:\SM\scripts\run_nikkei_hgb_rf_daily_workflow.py --as-of-date 2026-04-27 --score-start-date 2026-04-01 --journal-dir D:\SM\docs\trading-journal\nikkei`
+
+Important reading rule:
+
+- `as_of_date` is the requested workflow date.
+- `effective_signal_date` is the actual latest usable live signal date.
+- `requested_as_of_date` / `effective_as_of_date` live in the artifact table.
+- `latest_artifact_as_of_date` lives in `06_daily_workflow_manifest_live_pre_year.json`.
+- Live interpretation must follow `effective_signal_date`, not a guessed market date.
+
+Journal outputs owned by this workflow live at:
+
+- `D:\SM\docs\trading-journal\nikkei\journal.csv`
+- `D:\SM\docs\trading-journal\nikkei\journal.md`
+- `D:\SM\docs\trading-journal\nikkei\snapshots\<signal_date>_<etf_symbol>.json`
+
+Rating-change replay command:
+
+`python C:\Users\wakes\.codex\skills\nikkei-live-journal\scripts\compare_rating_change.py --journal-dir D:\SM\docs\trading-journal\nikkei --signal-date <date> --etf-symbol <symbol>`
 
 ## Local Explanation Method
 
@@ -282,11 +392,14 @@ The formal Rust tool exists at:
 
 `src/ops/security_nikkei_etf_position_signal.rs`
 
-Current limitation:
+Current governed behavior:
 
-- It can consume governed HGB adjustment artifacts.
-- It does not yet train HGB/RF internally.
-- It still depends on external daily artifact generation for model mode.
+- It consumes governed HGB adjustment artifacts only.
+- It accepts only `live_pre_year` artifacts for model mode.
+- It rejects `known_labels_asof` artifacts for live use.
+- It rejects deprecated non-policy JSON filenames even if the JSON body was hand-edited.
+- It rejects stale filename/date mismatches against the governed live naming contract.
+- It still does not train HGB/RF internally and depends on external daily artifact generation.
 
 If formalizing this research into production, the next design should decide whether:
 
@@ -299,21 +412,23 @@ Option 2 is the safer next step.
 ## Standard Daily Operating Procedure
 
 1. Refresh Nikkei index, volume, and component data.
-2. Run `daily_hgb_rf_v3_scoring.py --train-policy live_pre_year`.
-3. Verify the latest policy-qualified JSON exists for the latest market date.
-4. Read `05_latest_adjustment_artifacts_live_pre_year.csv`.
+2. Run `python D:\SM\scripts\run_nikkei_hgb_rf_daily_workflow.py --as-of-date <date> --score-start-date <date> --journal-dir D:\SM\docs\trading-journal\nikkei`.
+3. Read the printed summary and confirm both `as_of_date` and `effective_signal_date`.
+4. Verify `06_daily_workflow_manifest_live_pre_year.json` and `05_latest_adjustment_artifacts_live_pre_year.csv` agree on the same live-policy run.
 5. If HGB and RF disagree, inspect `04_local_driver_explanations_live_pre_year.csv`.
-6. Feed the selected HGB artifact into `security_nikkei_etf_position_signal` only after confirming the artifact date matches the intended signal date.
+6. Feed the selected HGB artifact into `security_nikkei_etf_position_signal` only after confirming the artifact filename is policy-qualified and the live interpretation follows `effective_signal_date`.
 7. Use ETF premium/quote data for execution selection.
 
 ## Common Mistakes To Avoid
 
 - Do not treat `known_labels_asof` as live.
 - Do not read old JSON filenames without `train_policy`.
+- Do not assume `as_of_date` equals `effective_signal_date`.
 - Do not interpret "breakout" alone as a buy signal.
 - Do not replace HGB only because RF has higher raw accuracy; RF's balanced accuracy is worse in the current validation.
 - Do not confuse the model signal date with the ETF execution date.
 - Do not treat ETF premium backtest proxies as real-time IOPV validation.
+- Do not treat any new `10d` Nikkei weekly registry/refit suffix as acceptable. The code/test path is fixed and the packaged research snapshot was rerun on 2026-04-28, so any new `10d` suffix now indicates a regression rather than historical residue.
 - Do not upload the 577MB A-share/HS300 runtime into this Nikkei package.
 
 ## Next Recommended Work

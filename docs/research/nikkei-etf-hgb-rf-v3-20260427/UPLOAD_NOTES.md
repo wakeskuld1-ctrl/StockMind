@@ -21,6 +21,57 @@ Excluded:
 - `.playwright-cli/`.
 - A-share/HS300 runtime data because it is approximately 577.64MB and is not part of the active Nikkei ETF execution line.
 
+## 2026-04-29 Prediction-Methods Handoff Addendum
+
+This upload branch additionally packages the prediction-enhancement research line:
+
+- `Replay Classifier`
+- `Continuation Head`
+- simulated balance experiment
+- real failure mining experiments
+- prototype-add and `5D` slow-fail follow-up documents
+
+Included for this addendum:
+
+- `PREDICTION_METHODS_HANDOFF_20260429.md`
+- `REPLAY_CLASSIFIER_SUMMARY_20260428.md`
+- `CONTINUATION_HEAD_SUMMARY_20260428.md`
+- `SIMULATED_ACTION_BALANCE_SUMMARY_20260429.md`
+- `REAL_FAILURE_EVENT_SUMMARY_20260429.md`
+- `artifacts/04_replay_classifier_full_snapshot/`
+- `artifacts/05_continuation_head_full_snapshot/`
+- `artifacts/06_simulated_action_balance_experiment/`
+- `artifacts/07_real_failure_event_experiment/`
+- related Python scripts and tests under `scripts/`
+
+Known current research boundary:
+
+- the two prediction methods are enhancement layers on top of HGB/RF V3;
+- they are not standalone replacements for the base position-sizing model;
+- the active bottleneck is now `5D` pre-validation slow-fail sample density.
+
+Fresh verification used for this handoff branch:
+
+```powershell
+python D:\SM\scripts\test_nikkei_real_failure_event_balance.py
+python D:\SM\scripts\test_nikkei_continuation_head.py
+python D:\SM\scripts\test_nikkei_replay_classifier.py
+python D:\SM\scripts\test_run_nikkei_hgb_rf_daily_workflow.py
+python C:\Users\wakes\.codex\skills\nikkei-live-journal\scripts\test_upsert_journal.py
+```
+
+Results:
+
+- `test_nikkei_real_failure_event_balance.py`: `5 passed, 0 failed`
+- `test_nikkei_continuation_head.py`: `3 passed, 0 failed`
+- `test_nikkei_replay_classifier.py`: `6 passed, 0 failed`
+- `test_run_nikkei_hgb_rf_daily_workflow.py`: `4 passed, 0 failed`
+- `test_upsert_journal.py`: `4 passed, 0 failed`
+
+Artifact refresh used for this handoff branch:
+
+- `artifact_manifest.csv` regenerated to include the prediction-methods handoff doc and the `artifacts/04-07` research outputs.
+
 ## Fresh Verification Evidence
 
 Commands run during package preparation:

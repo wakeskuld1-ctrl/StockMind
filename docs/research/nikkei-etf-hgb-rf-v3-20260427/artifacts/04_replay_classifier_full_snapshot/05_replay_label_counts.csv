@@ -1,0 +1,8 @@
+﻿label_name,sample_count
+inconclusive,1145
+correct_reduce,361
+correct_add,314
+acceptable_reduce,200
+acceptable_add,115
+premature_add,48
+premature_reduce,20

@@ -1,0 +1,9 @@
+{
+  "target_definition_version": "nikkei_continuation_head_v1",
+  "label_horizon": "5d",
+  "comparison_summary_path": "D:\\SM\\docs\\research\\nikkei-etf-hgb-rf-v3-20260427\\artifacts\\07_real_failure_event_experiment\\5d\\comparison_summary.csv",
+  "distribution_summary_path": "D:\\SM\\docs\\research\\nikkei-etf-hgb-rf-v3-20260427\\artifacts\\07_real_failure_event_experiment\\5d\\distribution_summary.csv",
+  "baseline_predictions_path": "D:\\SM\\docs\\research\\nikkei-etf-hgb-rf-v3-20260427\\artifacts\\07_real_failure_event_experiment\\5d\\baseline_predictions_5d.csv",
+  "augmented_predictions_path": "D:\\SM\\docs\\research\\nikkei-etf-hgb-rf-v3-20260427\\artifacts\\07_real_failure_event_experiment\\5d\\augmented_predictions_5d.csv",
+  "real_failure_sample_path": "D:\\SM\\docs\\research\\nikkei-etf-hgb-rf-v3-20260427\\artifacts\\07_real_failure_event_experiment\\5d\\01_real_failure_event_samples.csv"
+}

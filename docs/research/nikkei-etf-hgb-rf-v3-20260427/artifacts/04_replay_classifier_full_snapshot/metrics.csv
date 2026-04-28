@@ -1,0 +1,5 @@
+﻿metric_name,metric_value
+sample_count,2205.0
+observed_label_count,7.0
+train_accuracy,0.8027210884353742
+used_dummy_fallback,0.0

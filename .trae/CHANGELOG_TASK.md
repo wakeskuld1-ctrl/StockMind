@@ -3204,6 +3204,27 @@
 - Catalog guard 通过：`cargo test --test stock_catalog_grouping_source_guard -- --nocapture`，`2 passed; 0 failed`。
 - Dispatcher guard 通过：`cargo test --test stock_dispatcher_grouping_source_guard -- --nocapture`，`1 passed; 0 failed`。
 - 编译检查通过：`cargo check`。
+## 2026-04-27
+### 修改内容
+- 新建全局 Skill `C:\Users\wakes\.codex\skills\nikkei-live-journal`，包含 `SKILL.md`、`references\journal_schema.md`、`scripts\upsert_journal.py`、`scripts\compare_rating_change.py` 和 `agents\openai.yaml`。
+- 新建日志目录 `D:\SM\docs\trading-journal\nikkei`，生成 `journal.csv`、`journal.md`、`snapshots\2026-04-24_159866.json`、`snapshots\2026-04-27_159866.json`、`2026-04-27_rating_change_review.md`。
+- 预置两条日经 ETF 实盘记录：`2026-04-24` 的 `mixed_hold_watch` 过渡状态，以及 `2026-04-27` 的 `risk_reduce` 减仓计划，记录了 HGB/RF 结果、关键技术因子、计划卖出 `35500` 份并保留 `5800` 份的实盘建议。
+- 用 `compare_rating_change.py` 生成了 `2026-04-27` 相对上一条信号的评级变化复盘逻辑，明确写入 RF 从 `0` 翻到 `-1` 后的关键因子变化。
+### 修改原因
+- 用户要求创建一个可长期复用的 Skill，把日经实盘信号、每日操作动作、执行结果和后续复盘持续记录下来，并且要特别支持“昨天评级变化到今天后，给出为什么改变”的复盘逻辑。
+- 当前日经 ETF 已进入实盘动作阶段，后续会发生 T+1 执行更新和 next-day review，如果不先固化结构化日志和更新规则，后面容易只剩聊天结论而缺少可追溯记录。
+### 方案还差什么？
+- [ ] 尚未补入 `2026-04-28` 的真实成交结果；明天减仓后需要更新同一行的 executed fields，而不是新建重复记录。
+- [ ] 尚未补入后续 `1D/3D/5D/10D/20D` 的结果复盘；当前仅完成信号记录和评级变化解释。
+- [ ] 尚未把 `159866` 之外的 `513520` 或其他日经 ETF 扩展进同一日志体系。
+### 潜在问题
+- [ ] `skill-creator` 自带校验脚本按本机默认编码读 `SKILL.md`，所以 Skill 文档当前刻意保持 ASCII；后续若直接写入非 ASCII 字符，校验可能再次失败。
+- [ ] 当前 `cash_before_cny=7000` 和目标保留 `5800` 份来自用户口述与近似估算，不是券商精确资产快照；执行后需要用真实成交数据回填。
+- [ ] `compare_rating_change.py` 会机械列出字段变化，若某些字段因 base position 漂移而上升但不构成风险下降，仍需要人工补一段解释，避免把数字变化误读成方向变化。
+### 关闭项
+- 已通过 `generate_openai_yaml.py` 生成 `agents\openai.yaml`。
+- 已通过 `quick_validate.py` 验证 Skill 结构合法。
+- 已实际运行 `upsert_journal.py` 和 `compare_rating_change.py`，确认日志、快照和评级变化复盘文件可生成。
 ## 2026-04-28
 ### 修改内容
 - 新增 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\MODEL_SUMMARY_20260428.md`，系统整理当前日经 ETF HGB/RF V3 主线的算法结构、调仓规则、训练思路、关键准确率、回测表现、解释性结论和未收口问题。
@@ -3223,3 +3244,328 @@
 
 ### 关闭项
 - 已把中文总览文档接入研究包 `README`、算法交接手册和上传说明，GitHub 上可以从研究包入口直接定位阅读。
+## 2026-04-28
+### 修改内容
+- 修改 `C:\Users\wakes\.codex\skills\nikkei-live-journal\scripts\upsert_journal.py`，把 JSON 快照写入逻辑从“原始更新 record”改成“upsert 后的完整合并行”，并补充对 UTF-8 BOM record file 的兼容读取。
+- 新增 `C:\Users\wakes\.codex\skills\nikkei-live-journal\scripts\test_upsert_journal.py`，覆盖两个回归场景：部分更新不得破坏快照完整性、CLI 必须接受带 BOM 的 JSON record。
+- 用 `upsert_journal.py` 回填 `D:\SM\docs\trading-journal\nikkei\journal.csv`、`journal.md`、`snapshots\2026-04-27_159866.json`，把 `2026-04-27` 信号对应的 `2026-04-28` 实盘成交写入同一行。
+
+### 修改原因
+- 实测发现 `nikkei-live-journal` 的 CSV 与 Markdown 是完整的，但 JSON 快照会被后续部分更新覆盖成残缺版本，导致三层真相漂移。
+- 在回填今天实盘成交时又暴露出第二个真实问题：PowerShell 常见的 UTF-8 BOM 临时 JSON 无法被 `load_record()` 读取，阻塞正常执行更新。
+
+### 方案还差什么?
+- [ ] 尚未补入 `2026-04-29` 的 1D 复盘结论；当前只完成了执行事实更新，`review_status` 仍为 `pending`。
+- [ ] 尚未补做 `3D/5D/10D/20D` 复盘条目；后续仍需沿用同一行持续更新。
+- [ ] 尚未把 `513520` 或其他日经 ETF 纳入同一实盘日志体系。
+
+### 潜在问题
+- [ ] 当前 `position_after_pct` 仍为空，因为用户未提供可严谨计算仓位占比所需的同口径账户总资产或收盘估值；后续如需要精确仓位复盘，需补同口径估值基准。
+- [ ] 快照现在会完整保留 merged row，但空字段会以空字符串落盘；如果后续消费者区分“缺失”和“空值”，需要再定义更严格的 snapshot schema。
+
+### 关闭项
+- 已通过 `python C:\Users\wakes\.codex\skills\nikkei-live-journal\scripts\test_upsert_journal.py`，2 条回归测试全部通过。
+- 已通过 `python C:\Users\wakes\.codex\skills\nikkei-live-journal\scripts\compare_rating_change.py --journal-dir D:\SM\docs\trading-journal\nikkei --signal-date 2026-04-27 --etf-symbol 159866`，评级变化复盘可复跑。
+- 已完成 `2026-04-27 / 159866` 执行更新：`executed_full`、`executed_sell_shares=36000`、`executed_avg_price_cny=1.519`、`holdings_after_shares=5300`、`cash_after_cny=67239`。
+- 已验证 `journal.csv`、`journal.md`、`snapshots\2026-04-27_159866.json` 三者一致。
+
+## 2026-04-28
+### 修改内容
+- 更新 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\ALGORITHM_HANDOFF_MANUAL.md`，补齐当前 Nikkei live workflow 的 operator 入口、`effective_signal_date` fallback 语义、artifact/manifest 字段名、journal 落盘路径和 replay 命令。
+- 更新 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\MODEL_SUMMARY_20260428.md`，把当前批准口径明确为“治理层扩窗重训 + 日常 daily walk-forward + live_pre_year artifact only”，并补入 ETF Tool / journal 边界与 fallback 字段名说明。
+- 更新 `D:\SM\docs\handoff\CURRENT_STATUS.md`，把 2026-04-28 的 Nikkei operator 真相、live-policy-only artifact 边界、journal 路径和最新 focused verification 证据写入当前交接真相文件。
+- 明确记录 `registry_id / candidate_registry_ref` 的 `10d` 问题当前状态：代码与测试路径已修复，但已打包研究快照仍可能保留历史残留，不能混成一个结论。
+- 执行最终验证，覆盖 `security_scorecard_refit_cli`、`security_scorecard_training_cli`、`security_nikkei_etf_position_signal_cli`、daily workflow 测试、journal 测试、`cargo check` 和一次真实 daily workflow 实跑。
+
+### 修改原因
+- 当前剩余任务是已批准方案C的收尾，需要把 expand-window / daily walk-forward / live artifact / journal / handoff 真相收口到同一轮交付里。
+- 之前文档虽然已经有研究包入口和总览，但还缺少“当前每天到底怎么跑、怎么看 fallback、什么 artifact 可以喂 Tool、哪里看日志”的恢复级说明。
+- 代码层的 `10d -> 1w` 修复与历史研究快照里的旧元数据不是同一件事；如果文档不拆开写，后续 AI 或工程师会被错误 handoff 误导。
+
+### 方案还差什么?
+- [ ] 尚未对整个研究包执行一次“修复后整包重跑”，因此已打包历史 `training_result.json` 仍可能保留旧的 `...10d-direction_head` 元数据残留。
+- [ ] 尚未把 Nikkei daily scoring / artifact 生成完全内收进 Rust Tool；当前日常 live workflow 仍依赖外部 Python 预处理和评分入口。
+- [ ] 尚未把 daily workflow 做成定时自动化；当前仍以人工触发 `run_nikkei_hgb_rf_daily_workflow.py` 为主。
+
+### 潜在问题
+- [ ] 当前工作区仍然很脏，包含大量无关 runtime 产物和历史 fixture；后续若要提交或推送，必须继续窄范围 stage。
+- [ ] Windows 环境下真实 daily workflow 会出现 `joblib/loky` 关于物理核心探测的非阻塞 warning；本轮 exit code 为 0，但后续如要压实日志整洁度，仍可补环境级降噪。
+- [ ] 当前 live workflow 对 `2026-04-27` 的真实运行结果仍回退到 `effective_signal_date=2026-04-24`；后续解读若忽略这个字段，仍可能误把请求日当成信号日。
+
+### 关闭项
+- 已把 operator 命令、fallback 字段、artifact/manifest/journal 路径和 ETF Tool live 边界写入研究手册与交接真相文件。
+- 已把 `10d` 问题改写为“代码已修、历史快照未必已重跑”的准确口径。
+- 已通过 `cargo test --test security_scorecard_refit_cli -- --nocapture`，`4 passed; 0 failed`。
+- 已通过 `cargo test --test security_scorecard_training_cli -- --nocapture`，`19 passed; 0 failed`。
+- 已通过 `cargo test --test security_nikkei_etf_position_signal_cli -- --nocapture`，`15 passed; 0 failed`。
+- 已通过 `python D:\SM\scripts\test_run_nikkei_hgb_rf_daily_workflow.py`，`4 passed; 0 failed`。
+- 已通过 `python C:\Users\wakes\.codex\skills\nikkei-live-journal\scripts\test_upsert_journal.py`，`4 passed; 0 failed`。
+- 已通过 `cargo check`。
+- 已完成真实 workflow 实跑：`python D:\SM\scripts\run_nikkei_hgb_rf_daily_workflow.py --as-of-date 2026-04-27 --score-start-date 2026-04-01 --output-root D:\SM\.verification\nikkei_daily_workflow_20260428`，结果为 `train_policy=live_pre_year`、`effective_signal_date=2026-04-24`、`HGB adjustment=-1`、`RF adjustment=0`。
+## 2026-04-28
+### 修改内容
+- `D:\.stockmind_runtime\nikkei_current_rerun_20260426_direction_head_yfinance_10y_long_volume_behavior`：在修复后的代码上重跑原始 `security_scorecard_training` 请求，并把根目录 `request.json` / `training_result.json`、`scorecard_model_registry`、`scorecard_refit_runs`、`scorecard_training_diagnostics` 刷新到当前 `1w` 周频 token。
+- `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\artifacts\01_training_and_intermediate_full_snapshot`：用刷新后的 runtime 回填研究包训练快照，并保留不受本次 token 修复影响的 `analysis_exports`。
+- `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\artifact_manifest.csv`：按刷新后的研究包内容重建 SHA256 清单。
+- `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\MODEL_SUMMARY_20260428.md` / `ALGORITHM_HANDOFF_MANUAL.md` / `D:\SM\docs\handoff\CURRENT_STATUS.md`：把“旧 `10d` 残留尚未整包 rerun”改成“已完成整包刷新”，并把当前主要缺口改写为 daily workflow 仍回退到 `2026-04-24`。
+- `D:\SM\progress.md` / `D:\SM\findings.md` / `D:\SM\task_plan.md`：补记本轮 rerun、`analysis_exports` 回填、以及 fresh daily workflow 的执行事实。
+
+### 修改原因
+- 用户明确要求在修复后的代码上做一次整包 rerun，把历史 `training_result.json` 一类旧 `10d` 残留产物全部刷新，并在完成后汇报今天的结果与今天的复盘情况。
+- 之前文档已经说明代码/测试口径修好了，但研究快照本身还没重跑；如果继续保留旧包，会让交接文档与真实 runtime 身份不一致。
+
+### 方案还差什么
+- [ ] 还没有把 `live_pre_year` daily scoring 链路推进到能产出 `2026-04-27` 的新正式 live artifact；当前 fresh workflow 仍回退到 `effective_signal_date=2026-04-24`。
+- [ ] 还没有对 fresh rerun 后的研究包重新做 GitHub 上传；如果后续要推送，需要再核对 upload notes 与 staged diff。
+
+### 潜在问题
+- [ ] `security_scorecard_training` 本身不会自动生成根目录 `training_result.json`，后续如果有人只重跑训练命令、不补这层持久化，仍会得到一个“子目录已更新但根摘要缺失”的 runtime。
+- [ ] `analysis_exports` 不属于本次周频 token 修复的训练输出；如果后续再次重建 runtime 根目录，仍要显式保留或重新生成这批导出，否则 daily workflow 会因缺少 `55_v3_adjustment_model_dataset.csv` 失败。
+- [ ] 当前 governed daily workflow 虽然可运行，但最新有效信号仍停在 `2026-04-24`；这意味着“今天的官方 operator 结果”与此前扩展链路里出现过的 `2026-04-27` 口径还没有完全收敛。
+
+### 关闭项
+- 已通过修复后 rerun，确认 `registry_id` 从 `...-10d-direction_head` 刷新为 `...-1w-direction_head`
+- 已通过修复后 rerun，确认 `candidate_registry_ref` 从 `...-10d-direction_head` 刷新为 `...-1w-direction_head`
+- 已重建研究包 `artifact_manifest.csv`
+- 已通过 `python D:\SM\scripts\run_nikkei_hgb_rf_daily_workflow.py --as-of-date 2026-04-28 --score-start-date 2026-04-01 --output-root D:\SM\.verification\nikkei_daily_workflow_20260428_rerun`
+## 2026-04-28
+### 修改内容
+- 新增 [REVIEW_CONTRACT.md](D:/SM/docs/trading-journal/nikkei/REVIEW_CONTRACT.md)，把日经实盘复盘固定为统一合同，明确区分事实源、复盘条件、次日观察项和模型优化记录字段。
+- 新增 [2026-04-28_live_review.md](D:/SM/docs/trading-journal/nikkei/2026-04-28_live_review.md)，记录 `2026-04-27` 风险减仓信号与 `2026-04-28` 实盘卖出 `36000` 股后的复盘判断、`1D/3D/5D` 复盘条件、明日观察重点和模型优化假设。
+- 新增 [2026-04-28-nikkei-review-docs-plan.md](D:/SM/docs/plans/2026-04-28-nikkei-review-docs-plan.md)，把这次文档沉淀的目标、文件和验证步骤写成独立计划，便于后续继续执行。
+### 修改原因
+- 用户要求形成一份完整的复盘条件文档，并把“明天关注什么”正式落盘，因为这份报告将作为后续优化模型的关键输入。
+- 现有 `journal.csv` / `journal.md` 只记录事实，不足以稳定承载“如何判定这次减仓对错”以及“模型后续应该学什么”的解释层。
+### 方案还差什么？
+- [ ] 尚未补入 `2026-04-29` 的实际行情结果，因此 `1D` 复盘标签仍未闭环。
+- [ ] 尚未把 `3D/5D` 结果回填到当天复盘文档，当前只定义了条件，还没有结果。
+- [ ] 尚未决定是否把“预测增强线”的后续研究拆成单独设计文档或训练计划。
+### 潜在问题
+- [ ] 当前复盘条件是制度化定义，不是事后验证结果；如果后续没有持续回填，文档价值会下降为静态说明。
+- [ ] `2026-04-28_live_review.md` 中关于 governed workflow 与本地 journal 的关系已如实注明，但后续解释时仍需避免把 `2026-04-27` 误当成当前 official workflow 的最新 `effective_signal_date`。
+### 关闭项
+- 已通过 `Test-Path D:\SM\docs\trading-journal\nikkei\REVIEW_CONTRACT.md` 验证合同文档已创建。
+- 已通过 `Test-Path D:\SM\docs\trading-journal\nikkei\2026-04-28_live_review.md` 验证当日复盘文档已创建。
+- 已通过 `Get-Content` 回读两份文档，确认关键段落包含复盘条件、明日关注项和模型优化字段。
+## 2026-04-28
+### 修改内容
+- 新增 [2026-04-28-prediction-enhancement-replay-design.md](D:/SM/docs/plans/2026-04-28-prediction-enhancement-replay-design.md)，正式定义“预测增强线”先走 `post-signal replay classifier` 的设计方案。
+- 在设计中明确：当前问题不只是不够多的量能指标，而是原 `1w` 方向标签与真实调仓问题错位；第一阶段必须改为事件锚定的 replay 样本与 `1D/3D/5D` 复盘标签。
+- 明确复用现有研究包中的历史事件资产与 live journal 作为双源样本体系，并规定二者不能无标记混为同一真相层。
+### 修改原因
+- 用户明确批准方案 B，并追问“是不是时间窗口问题”，需要把“先 replay classifier、后 continuation head”的原因沉淀成可执行设计，而不是停留在口头解释。
+- 如果不先把样本对象、标签语义和数据源边界写死，后续实现时很容易再次回到泛化的未来涨跌预测，导致量价特征继续失真。
+### 方案还差什么？
+- [ ] 尚未进入 `writing-plans` 阶段，仍缺正式实现计划。
+- [ ] 尚未决定 v1 是单一统一 replay classifier，还是按 `add` / `reduce` 分成两个分类器。
+- [ ] 尚未核实 ETF 历史溢价数据的可用覆盖度，执行层特征可能需要分层降级。
+### 潜在问题
+- [ ] 设计依赖历史 synthetic 事件样本扩充规模，但 synthetic 事件与真实实盘执行并不等价，后续评估必须分开统计。
+- [ ] 当前设计只锁定 `1D/3D/5D`，如果后续又混入 `10D` 而不重写契约，标签语义会再次漂移。
+### 关闭项
+- 已通过 `Test-Path D:\SM\docs\plans\2026-04-28-prediction-enhancement-replay-design.md` 验证设计文档已创建。
+- 已通过 `Get-Content` 回读设计文档，确认包含 Intent、Contract、Decision、Acceptance 和样本/标签边界定义。
+## 2026-04-28
+### 修改内容
+- 新增 [2026-04-28-nikkei-replay-classifier-implementation-plan.md](D:/SM/docs/plans/2026-04-28-nikkei-replay-classifier-implementation-plan.md)，把 replay classifier 的实现拆成可执行任务。
+- 计划明确第一轮实现保持离线 Python 链路，不改 Rust Tool 边界、不扩 journal schema，先完成样本构建、`1D/3D/5D` 标签派生、初版分类器训练和结果摘要导出。
+- 计划中锁定了将复用的研究样本文件、预期新增脚本、测试文件和 fresh verification 命令。
+### 修改原因
+- 用户要求继续推进，且前一轮设计已批准，需要进入正式实现计划阶段，避免直接跳到编码。
+- 当前最重要的是把“如何实现 replay classifier”拆成明确文件和验证步骤，降低后续实现偏离设计的风险。
+### 方案还差什么？
+- [ ] 还未进入实现执行，当前只有设计和 implementation plan。
+- [ ] 还未决定 v1 分类器是单一多类模型还是按 add/reduce 分开训练；计划中先保留为实现阶段决策点。
+- [ ] 还未决定是否在首轮结果可用后同步更新 handoff 文档或日经 Skill 说明。
+### 潜在问题
+- [ ] 计划默认首轮不碰 Rust Tool 和 journal schema，这能降低风险，但也意味着首轮结果先停留在研究链路，尚未直接进入每日 operator。
+- [ ] 如果历史 research 事件样本字段质量不一致，样本构建阶段可能需要额外清洗逻辑，实际工作量会高于当前最小计划。
+### 关闭项
+- 已通过 `Test-Path D:\SM\docs\plans\2026-04-28-nikkei-replay-classifier-implementation-plan.md` 验证实现计划文档已创建。
+- 已通过 `Get-Content` 回读实现计划文档，确认包含任务拆解、文件清单、测试步骤和验证命令。
+## 2026-04-28
+### 修改内容
+- 新增 `D:\SM\scripts\build_nikkei_replay_samples.py`，把日经 replay classifier 的事件样本构建、`1D/3D/5D` horizon 派生和 `correct/acceptable/premature/late/inconclusive` 标签派生落地为离线 Python 链路。
+- 新增 `D:\SM\scripts\train_nikkei_replay_classifier.py`，实现首版 replay classifier trainer：时间顺序切分、LogisticRegression 主路径、DummyClassifier 回退、metrics/predictions/label_counts/training summary 导出。
+- 新增 `D:\SM\scripts\test_nikkei_replay_classifier.py`，冻结 replay sample schema、source 分层、label 词表、禁用 generic 1w target 回退、trainer smoke contract。
+- 生成 `docs\research\nikkei-etf-hgb-rf-v3-20260427\artifacts\04_replay_classifier_full_snapshot\` 下的首轮样本、标签、metrics、predictions、label counts 和 summary JSON。
+- 新增 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\REPLAY_CLASSIFIER_SUMMARY_20260428.md`，汇总首轮 replay classifier 的样本、标签分布、验证结果、限制和下一步。
+- 更新 `D:\SM\docs\handoff\CURRENT_STATUS.md` 与 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\ALGORITHM_HANDOFF_MANUAL.md`，把 replay classifier 入口接入 handoff 口径。
+### 修改原因
+- 用户批准“方案B：先做 post-signal replay classifier，再考虑 continuation head”，并要求直接在当前会话开始执行，同时用子任务提升效率。
+- 现有 generic `1w` 方向目标与真实调仓问题错位，需要先把信号质量复盘任务独立建模，验证这条预测增强线是否更有信息量。
+### 方案还差什么？
+- [ ] 还未把 replay classifier 接入 daily operator，只完成了离线研究链路。
+- [ ] 还未为 `late_add` / `late_reduce` 稀缺类别补齐更稳的标签规则和样本来源。
+- [ ] 还未输出 confusion matrix / feature importance / add-vs-reduce 分拆评估，当前只到首轮 metrics 与预测流水。
+### 潜在问题
+- [ ] 当前标签规则仍是启发式规则，尚未形成正式治理契约，后续若修改规则需要重跑整包并同步 summary。
+- [ ] 首轮 validation accuracy 约 `0.678`，明显优于原先近随机的 generic `1w` 方向口径，但仍不足以直接视为实盘可用信号模型。
+- [ ] `inconclusive` 类别占比过高，`premature_*` 与 `late_*` 类别偏稀，后续若不做重平衡或标签重写，模型会继续偏向主流类别。
+### 关闭项
+- 已通过 `python D:\SM\scripts\test_nikkei_replay_classifier.py`，`6` 个 replay classifier 契约测试全部通过。
+- 已通过 `python D:\SM\scripts\test_run_nikkei_hgb_rf_daily_workflow.py`，现有 Nikkei daily workflow 回归测试通过。
+- 已通过 `python C:\Users\wakes\.codex\skills\nikkei-live-journal\scripts\test_upsert_journal.py`，live journal 回归测试通过。
+- 已实际生成 `04_replay_classifier_full_snapshot` 首轮产物，并得到 `validation_accuracy=0.6780`、`sample_count=2205`、`observed_label_count=7` 的首轮离线结果。
+## 2026-04-28
+### 修改内容
+- 优化 `D:\SM\scripts\build_nikkei_replay_samples.py`，新增 `is_replay_outcome_observed` 标记，用于区分已经形成真实复盘结果的样本与 `journal` 中仍处于 `pending` 的未观察样本。
+- 优化 `D:\SM\scripts\train_nikkei_replay_classifier.py`，加入：
+  - 对 `is_replay_outcome_observed=False` 样本的训练清理
+  - `class_weight='balanced'` 的 LogisticRegression
+  - confusion matrix 导出 `06_replay_confusion_matrix.csv`
+  - `observed_outcome_sample_count` 摘要字段
+- 优化 `D:\SM\scripts\test_nikkei_replay_classifier.py`，补充对 observed-outcome 清理和 confusion 输出的契约测试，并修正临时目录读取时序问题。
+- 更新 `REPLAY_CLASSIFIER_SUMMARY_20260428.md`，补入优化版验证结果、清理动作和主要错误模式。
+### 修改原因
+- 用户明确要求“先清理，然后看错误分析，再优化一版，做完再停”。首轮 replay classifier 虽然可行，但 `pending` journal 行和类别不平衡会稀释监督质量，需要继续收口。
+- 首轮错误分析显示主要混淆集中在 `acceptable_* / premature_* / correct_*` 的同方向内部误分，适合先做样本清理和类别平衡，而不是立刻切换模型路线。
+### 方案还差什么？
+- [ ] 还未把 `late_add` / `late_reduce` 从 0 样本状态补出来。
+- [ ] 还未输出按 `add` / `reduce` 家族拆分的更细粒度错误分析与特征解释。
+- [ ] 还未把优化后的 replay classifier 接入 daily operator，当前仍是离线研究链路。
+### 潜在问题
+- [ ] 当前 `validation_accuracy=0.7211` 已优于首轮 `0.6780`，但标签本身仍是启发式生成，结果不能直接等同于实盘可用模型。
+- [ ] 当前 `acceptable_add -> premature_add`、`correct_add -> acceptable_add/premature_add`、`acceptable_reduce -> correct_reduce/premature_reduce` 仍是主要混淆带，说明同方向内部质量分层还不够稳。
+- [ ] `inconclusive` 仍是最大类，后续若不继续重写标签边界，模型仍会天然偏向“先判不确定”。
+### 关闭项
+- 已通过 `python D:\SM\scripts\test_nikkei_replay_classifier.py`，优化后 6 个契约测试仍全部通过。
+- 已通过重新构建样本与训练，得到优化版结果：`sample_count=2203`、`train_sample_count=1762`、`validation_sample_count=441`、`validation_accuracy=0.7211`。
+- 已生成并验证 `06_replay_confusion_matrix.csv` 与更新后的 `REPLAY_CLASSIFIER_SUMMARY_20260428.md`。
+## 2026-04-28
+### 修改内容
+- 新增 `D:\SM\docs\plans\2026-04-28-nikkei-continuation-head-design.md` 与 `D:\SM\docs\plans\2026-04-28-nikkei-continuation-head-implementation-plan.md`，把 continuation head 的 intent、contract、decision、acceptance 和 TDD 落盘。
+- 新增 `D:\SM\scripts\test_nikkei_continuation_head.py`，先红后绿冻结 continuation 标签映射、eligibility 过滤与 trainer smoke contract。
+- 更新 `D:\SM\scripts\build_nikkei_replay_samples.py`，在 replay 标签之上新增 `continuation_label_1d/3d/5d`、`continuation_label_version`、`is_continuation_eligible` 与分 horizon outcome 观测标记。
+- 新增 `D:\SM\scripts\train_nikkei_continuation_head.py`，实现离线 continuation trainer，并生成 `artifacts\05_continuation_head_full_snapshot\` 产物。
+- 新增 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\CONTINUATION_HEAD_SUMMARY_20260428.md`，并同步更新 `REPLAY_CLASSIFIER_SUMMARY_20260428.md`、`ALGORITHM_HANDOFF_MANUAL.md`、`MODEL_SUMMARY_20260428.md`、`D:\SM\docs\handoff\CURRENT_STATUS.md`。
+### 修改原因
+- 用户已明确批准 continuation head 方案 A，需要在 replay classifier 之后落一条统一二分类 continuation 研究线。
+- replay classifier 已证明事件锚定标签可学，但仍缺少“同方向内部是干净延续还是噪声延续”的第二层质量判断。
+- 如果不把 continuation 契约、测试和 handoff 同步落盘，后续 AI 或工程师会继续把它当成未来计划，而不是当前研究现状。
+### 方案还差什么？
+- [ ] continuation head 目前仍是离线研究层，尚未接入 daily operator 或 Rust Tool 边界。
+- [ ] 当前标签极度不平衡，后续还需要围绕 `balanced_accuracy`、样本重平衡和 `add/reduce` 拆分继续优化。
+- [ ] 尚未补做 continuation head 的独立 code review 与后续模型增强线设计联动。
+### 潜在问题
+- [ ] continuation 验证精度低于多数类 accuracy 基线，不能把当前版本误当成可直接实盘化的动作层。
+- [ ] 负类主要来自 `premature_* / late_*` 压缩后的小样本，若上游 replay 负类口径继续漂移，continuation 表现也会一起漂移。
+- [ ] `MODEL_SUMMARY_20260428.md` 原文件编码较脏，本次只做尾部追加；后续若大改该文件，需要先统一编码再做结构化编辑。
+### 关闭项
+- 已通过 `python D:\SM\scripts\test_nikkei_continuation_head.py`，3 个 continuation contract tests 全部通过。
+- 已通过 `python D:\SM\scripts\build_nikkei_replay_samples.py` 刷新 replay 样本，并生成带 continuation 标签的最新 `02_replay_labeled_samples.csv`。
+- 已完成真实训练并写出 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\artifacts\05_continuation_head_full_snapshot\`。
+- 已补齐 continuation summary 与 handoff/research 文档同步，使“continuation 已落地、但仍属研究层”的口径可追溯。
+## 2026-04-29
+### 修改内容
+- 新建分支 `codex/nikkei-replay-continuation-handoff-20260429`，用于单独整理并推送 Nikkei `Replay Classifier / Continuation Head` 预测增强研究线，而不是把整个脏工作区原样上传。
+- 新增 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\PREDICTION_METHODS_HANDOFF_20260429.md`，把两种预测方法的目标、代码入口、实验轮次、当前结论、验证命令和下一步研究方向整理成单独交接文档。
+- 更新 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\README.md`、`ALGORITHM_HANDOFF_MANUAL.md`、`UPLOAD_NOTES.md` 与 `D:\SM\docs\handoff\CURRENT_STATUS.md`，把预测增强线正式接入研究包入口和交接顺序。
+- 刷新 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\artifact_manifest.csv`，使其覆盖新的 handoff 文档以及 `artifacts/04_replay_classifier_full_snapshot`、`05_continuation_head_full_snapshot`、`06_simulated_action_balance_experiment`、`07_real_failure_event_experiment`。
+- 准备只 stage 这条研究线相关代码、摘要、实验产物和计划文档，避免把无关 `target_*`、runtime fixtures、`.playwright-cli/` 等垃圾目录一起推上去。
+### 修改原因
+- 用户明确要求“把进度思路单独整理一下，推送到 GitHub，开一个新分支，主要是两种预测方法”，并要求代码也一起推上去，后续继续研究。
+- 当前工作区包含大量无关脏改动和运行产物，如果不先做交接聚焦和精确 stage，后续研究者很难分辨 `Replay Classifier / Continuation Head` 这条线到底做到了哪一步、验证过什么、现在卡在哪里。
+### 方案还差什么?
+- [ ] 还没有完成本次 branch 的精确 `git add / commit / push`；当前只是把交接材料、manifest 和验证证据整理到位。
+- [ ] 还没有决定是否要把与预测增强线弱相关但已修改的旧 Nikkei 包基础文件一并纳入本次提交，当前原则是只提交对 handoff 和方法复现有必要的文件。
+- [ ] 还没有创建 PR；当前用户只要求新分支推送，没有要求 PR。
+### 潜在问题
+- [ ] 当前仓库仍然有大量无关未跟踪文件和其他已修改文件，如果 stage 范围控制失误，容易把不属于预测增强线的脏文件带上去。
+- [ ] `artifact_manifest.csv` 现在反映的是当前研究包文件状态；如果最终提交故意排除某些 manifest 内已计入的文件，就会出现清单漂移。
+- [ ] 两种预测方法依赖已有的 HGB/RF V3 研究包底座；如果后续只看这次分支而忽略研究包主文档，仍然可能误解它们是独立可实盘替代模型。
+### 关闭项
+- 已完成预测增强线专属交接文档 `PREDICTION_METHODS_HANDOFF_20260429.md`。
+- 已把该文档接入 `README.md`、`ALGORITHM_HANDOFF_MANUAL.md`、`UPLOAD_NOTES.md` 和 `CURRENT_STATUS.md`。
+- 已在当前会话重新运行并记录验证：`test_nikkei_real_failure_event_balance.py`、`test_nikkei_continuation_head.py`、`test_nikkei_replay_classifier.py`、`test_run_nikkei_hgb_rf_daily_workflow.py`、`test_upsert_journal.py` 全部通过。
+- 已确认当前最重要的研究记忆点：这条线的核心不再是“是否存在 Replay/Continuation 方法”，而是“5D slow-fail 样本在 time-aware train split 下密度不足”，后续研究应围绕这个瓶颈继续挖样本。
+### 修改内容
+- 新增 `D:\SM\docs\plans\2026-04-29-nikkei-5d-slow-fail-prototype-design.md` 与 `D:\SM\docs\plans\2026-04-29-nikkei-5d-slow-fail-prototype-implementation-plan.md`，把第四轮 continuation 负样本优化收口为“只专攻 `5D premature_add` 的 slow-fail 专项规则”。
+- 修改 `D:\SM\scripts\test_nikkei_real_failure_event_balance.py`，先用 TDD 冻结第四轮契约：`1D/3D` 维持当前 shared prototype-add 行为，`5D` 必须走单独 slow-fail 规则，并能输出 `prototype_add_failure_5d_resistance_exhaustion` 与 `prototype_add_failure_5d_extended_drift` 两种专属 reason。
+- 修改 `D:\SM\scripts\build_nikkei_replay_samples.py`，把 add 失败挖掘改成 horizon-aware：`1D/3D` 继续用 shared prototype-add，`5D` 改用两段式 slow-fail 子规则；同时补上 empty mined pool 也要返回带列头空表的健壮性。
+- 修改 `D:\SM\scripts\run_nikkei_real_failure_event_balance.py`，补上 empty mined pool 的实验健壮性：没有有效 mined rows 时仍可正常导出 comparison / distribution / predictions。
+- 重跑 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\artifacts\07_real_failure_event_experiment\1d|3d|5d\`，刷新 5D 专项后的 `comparison_summary.csv`、`distribution_summary.csv`、预测文件与 `01_real_failure_event_samples.csv`。
+- 更新 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\REAL_FAILURE_EVENT_SUMMARY_20260429.md`、`CONTINUATION_HEAD_SUMMARY_20260428.md` 与 `D:\SM\docs\handoff\CURRENT_STATUS.md`，把“5D 已专项化，且指标小幅超过 baseline，但训练窗样本只剩 1 条”写入正式交接。
+### 修改原因
+- 第三轮 prototype-add 证明方向对了，但 `5D` 仍明显弱于 `1D/3D`，说明 `5D premature_add` 不是同一种失败形状，继续共用 shared prototype 会稀释真正的多日 slow-fail。
+- 对 untouched validation 的再拆解显示，`5D` 更像“高仓位 + 接近阻力/突破衰竭 + 多日缓慢失速”，因此用户批准方案 A 后，需要单独给 `5D` 建规则，而不是继续全局改 shared prototype。
+### 方案还差什么?
+- [ ] 还没有扩大 `5D` slow-fail 在训练窗之前的可用历史样本密度；当前专项规则总共挖到 `9` 条，落到 train split 里只剩 `1` 条。
+- [ ] 还没有继续拆 `5D` slow-fail 两个子类内部的更细差异，例如高广度阻力衰竭 vs 深度延伸后缓跌。
+- [ ] 还没有评估是否需要单独为 `5D` 改时间切分或采用更早历史窗扩充研究样本；当前瓶颈已经从规则形状转成 pre-validation 样本密度。
+### 潜在问题
+- [ ] 虽然 `5D balanced_accuracy` 已从第三轮 shared prototype 的 `0.5841` 提升到 `0.6067`，并略高于 `5D` baseline 的 `0.6018`，但因为有效 mined train count 只有 `1`，结果稳定性不足，不能直接视作可并入 governed 训练。
+- [ ] 当前 `5D` 专项的正向结果高度依赖时间切分位置；如果 validation 起点变化，`real_failure_train_count=1` 可能导致指标大幅波动。
+- [ ] 如果后续有人只看“`5D` 已经超过 baseline”而忽略 `train_count=1`，会误判这轮专项已经收敛；当前更准确的结论是“规则方向对了，但密度严重不足”。
+### 关闭项
+- 已完成 TDD 红绿：`python D:\SM\scripts\test_nikkei_real_failure_event_balance.py` 先红后绿，最终 `5 passed, 0 failed`。
+- 已完成 fresh verification：`python D:\SM\scripts\test_nikkei_continuation_head.py`、`python D:\SM\scripts\test_nikkei_replay_classifier.py`、`python D:\SM\scripts\test_run_nikkei_hgb_rf_daily_workflow.py`、`python C:\Users\wakes\.codex\skills\nikkei-live-journal\scripts\test_upsert_journal.py` 全部通过。
+- 已确认 `1D/3D` 维持第三轮结果不变，`5D` 专项后指标变为：`baseline_balanced_accuracy 0.6018 -> augmented_balanced_accuracy 0.6067`，`negative_recall 0.6364 -> 0.6364`，`real_failure_train_count=1`。
+- 已确认当前记忆点：第四轮不是“规则错了”，而是“5D 专项规则已对准真实 slow-fail 形状，但 time-aware split 下可用训练样本太少”，下一步应优先扩充 `5D` pre-validation slow-fail 样本密度，而不是继续全局改 shared prototype。
+### 修改内容
+- 新增 `D:\SM\docs\plans\2026-04-29-nikkei-prototype-add-failure-mining-design.md` 与 `D:\SM\docs\plans\2026-04-29-nikkei-prototype-add-failure-mining-implementation-plan.md`，把第三轮 continuation 负样本优化正式收口为“prototype-driven add failure mining”。
+- 修改 `D:\SM\scripts\test_nikkei_real_failure_event_balance.py`，先用 TDD 冻结第三轮契约：builder 必须允许 `daily_position + add + blank event labels` 原型负样本，必须拒绝 `reduce` 样本，并保持 horizon-specific 负类过滤。
+- 修改 `D:\SM\scripts\build_nikkei_replay_samples.py`，新增 prototype-add 语义所需的 `_optional_text()`、`_numeric_value()`，并把 `build_real_failure_event_samples()` 收窄为 add-only 原型挖掘：要求 `signal_direction=add`、`signal_family in {daily_position, breakout_followthrough}`、`base_position_v3>=0.18`、`dist_res20<=0.02`、`dist_sup20>=0.02`、`avg_component_vr>=0.74`，同时允许空白事件字段。
+- 重跑 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\artifacts\07_real_failure_event_experiment\1d|3d|5d\`，刷新 `comparison_summary.csv`、`distribution_summary.csv`、预测文件与 `01_real_failure_event_samples.csv`。
+- 更新 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\REAL_FAILURE_EVENT_SUMMARY_20260429.md`、`CONTINUATION_HEAD_SUMMARY_20260428.md` 与 `D:\SM\docs\handoff\CURRENT_STATUS.md`，记录 prototype-add 第三轮结果。
+### 修改原因
+- 通过拆 untouched validation 负类发现，真实负类主流不是“显式 event failure”，而是 `daily_position` 场景下的 `premature_add`，大多数还没有明确的 `candidate_event_type / candidate_action_label`。
+- 上一轮 broad real-failure mining 虽然修掉了 mixed-horizon leakage，但样本形状仍与真实验证负类错位；因此第三轮必须改成“更像真实负类”的 prototype-driven add-only 挖掘，而不是继续广撒 mixed add/reduce 失败样本。
+### 方案还差什么?
+- [ ] 还没有把 prototype-add family 再拆成更细的子类型，例如 `blank-event daily_position premature add`、`near-resistance rejection after add`、`3D fail breakout followthrough`。
+- [ ] 还没有为 `5D` 单独定义更合适的原型规则；当前共用 add prototype 对 `1D/3D` 有帮助，但对 `5D` 仍然不够。
+- [ ] 还没有把这条 prototype 研究线接入 daily operator；当前仍然是 research-only augmentation 验证。
+### 潜在问题
+- [ ] 第三轮 prototype-add 虽然比第二轮 broad real-failure 明显改善了 `1D/3D` 的 `balanced_accuracy` 与负类召回，但三条 horizon 都仍未超过 baseline，因此不能并入 governed continuation 训练。
+- [ ] `5D` 仍然表现较弱，说明 `premature_add` 家族内部可能至少还存在“短期失败”和“多日失败”两种不同形状，用同一套 prototype 阈值会继续混淆。
+- [ ] 当前 builder 允许空白事件字段是为了贴合真实负类形状，但后续如果有人误把“空白字段”理解成“无条件放行”，会重新放大宽口径误采样风险。
+### 关闭项
+- 已完成 TDD 红绿：`python D:\SM\scripts\test_nikkei_real_failure_event_balance.py` 先红后绿，最终 `4 passed, 0 failed`。
+- 已完成 fresh verification：`python D:\SM\scripts\test_nikkei_continuation_head.py`、`python D:\SM\scripts\test_nikkei_replay_classifier.py`、`python D:\SM\scripts\test_run_nikkei_hgb_rf_daily_workflow.py`、`python C:\Users\wakes\.codex\skills\nikkei-live-journal\scripts\test_upsert_journal.py` 全部通过。
+- 已确认第三轮 prototype-add 结果优于第二轮 broad real-failure：`1D balanced_accuracy 0.5805 -> 0.7230`、`3D 0.5000 -> 0.6363`、`5D 0.5000 -> 0.5841`；负类召回分别改善为 `0.8125 / 0.6250 / 0.2727`。
+- 已确认当前结论：第三轮方向正确，但仍未超过 baseline，因此下一步不是扩大样本量，而是继续拆 `premature_add` 的真实子类型，特别是针对 `5D` 的失败形状单独建规则。
+### 修改内容
+- 更新 `D:\SM\docs\plans\2026-04-29-nikkei-real-failure-event-mining-design.md` 与 `D:\SM\docs\plans\2026-04-29-nikkei-real-failure-event-mining-implementation-plan.md`，把真实失败事件补样本方案收口为“方案 A：builder 按 `label_horizon` 直接产出纯负类池”。
+- 先改 `D:\SM\scripts\test_nikkei_real_failure_event_balance.py`，新增 horizon-specific builder 契约与 requested-horizon 过滤测试，并确认红灯失败点是 `build_real_failure_event_samples()` 尚不接收 `label_horizon`、导出池也缺少 `failure_label_horizon`。
+- 修改 `D:\SM\scripts\build_nikkei_replay_samples.py`，为 `build_real_failure_event_samples(frame, label_horizon)` 增加 horizon 校验、requested-horizon 纯负类过滤与 `failure_label_horizon` 字段；同时修改 `D:\SM\scripts\run_nikkei_real_failure_event_balance.py`，让 runner 与训练 horizon 对齐调用 builder。
+- 重跑 `artifacts/07_real_failure_event_experiment/1d|3d|5d/`，刷新 `comparison_summary.csv`、`distribution_summary.csv`、预测文件和 `experiment_summary.json`。
+- 新增 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\REAL_FAILURE_EVENT_SUMMARY_20260429.md`，并更新 `CONTINUATION_HEAD_SUMMARY_20260428.md` 与 `D:\SM\docs\handoff\CURRENT_STATUS.md`，记录方案 A 已验证“不是混入口径问题，而是 failure 样本代表性不足”。
+### 修改原因
+- 上一轮真实失败事件实验虽然方向比广义模拟增强更窄，但 mined pool 仍然用“任一 horizon 为负就保留整行”的口径，导致 `5D` 实验里混入 `continuation_label_5d = 1` 的样本，无法判断问题到底出在过滤口径还是样本形状。
+- 用户批准方案 A 后，需要把 builder 自身收紧为 horizon-specific 输出，先排除 mixed-horizon leakage，再看真实 balance-aware 指标是否仍然失败。
+### 方案还差什么?
+- [ ] 还没有把 untouched validation 负类逐条拆解成更细的失败语义簇，例如 `false breakout after add`、`failed support reclaim`、`premature reduce before resumed rally`、`late reduce after downside expansion`。
+- [ ] 还没有做第三轮更窄口径的 failure mining 或 validation-negative replay 对齐实验；当前只证明了“方案 A 仍不足以改善 balance-aware 指标”。
+- [ ] 还没有把这条研究线接入 daily operator；当前仍然停留在 research-only continuation augmentation 验证。
+### 潜在问题
+- [ ] 方案 A 已经消除了 requested-horizon 正类混入，但 `1D/3D/5D` 的 `balanced_accuracy` 和负类召回仍然下降，说明当前 failure pool 依旧不能代表 untouched validation 的真实负类形状。
+- [ ] 如果后续有人只看 `accuracy`，仍会误判这轮增强有效，因为 `accuracy` 在三条 horizon 上都显著上升；必须继续坚持只看 `balanced_accuracy + negative recall + real validation only`。
+- [ ] 当前 `07_real_failure_event_experiment` 输出文件名仍沿用通用命名；虽然内容已是 horizon-specific，但后续消费方如果忽略 `failure_label_horizon` 字段，仍有误读风险。
+### 关闭项
+- 已按 TDD 完成红绿：`python D:\SM\scripts\test_nikkei_real_failure_event_balance.py` 先红后绿，最终 `3 passed, 0 failed`。
+- 已完成 fresh verification：`python D:\SM\scripts\test_nikkei_continuation_head.py`、`python D:\SM\scripts\test_nikkei_replay_classifier.py`、`python D:\SM\scripts\test_run_nikkei_hgb_rf_daily_workflow.py`、`python C:\Users\wakes\.codex\skills\nikkei-live-journal\scripts\test_upsert_journal.py` 全部通过。
+- 已确认 `07_real_failure_event_experiment` 新结果中，`1D` failure train=`81`、`3D`=`109`、`5D`=`123`，且各自 `distribution_summary.csv` 都只保留 requested horizon 的负类 `0`。
+- 已确认方案 A 结论：builder 过滤口径已修正，但真实验证上的 `balanced_accuracy` 仍由 `1D 0.7906 -> 0.5805`、`3D 0.7147 -> 0.5000`、`5D 0.6018 -> 0.5000` 下滑，负类召回也同步恶化，因此当前瓶颈是 failure 样本代表性，而不是数量或过滤正确性。
+### 修改内容
+- 新增 `D:\SM\docs\plans\2026-04-29-nikkei-simulated-action-balance-design.md` 与 `D:\SM\docs\plans\2026-04-29-nikkei-simulated-action-balance-implementation-plan.md`，把“真实历史事件 + 隔离模拟动作样本 + 真实验证对比”的方案和实现拆解落盘。
+- 新增 `D:\SM\scripts\test_nikkei_simulated_action_balance.py`，先红后绿冻结模拟样本单独标记、`source_sample_id` 可追溯、以及“模拟样本不得进入验证集”的实验契约。
+- 更新 `D:\SM\scripts\build_nikkei_replay_samples.py`，新增 `build_simulated_action_samples()`，基于真实历史事件生成 `sample_source=simulated_action_replay` 的模拟加仓/减仓样本，并保留 replay / continuation 标签派生。
+- 新增 `D:\SM\scripts\run_nikkei_simulated_action_balance.py`，实现 baseline vs augmented 对比实验，固定真实验证集，只允许模拟样本进入训练集。
+- 生成 `D:\SM\docs\research\nikkei-etf-hgb-rf-v3-20260427\artifacts\06_simulated_action_balance_experiment\` 下的 `1d/3d/5d` 实验产物，并新增 `SIMULATED_ACTION_BALANCE_SUMMARY_20260429.md`。
+- 更新 `CONTINUATION_HEAD_SUMMARY_20260428.md` 与 `D:\SM\docs\handoff\CURRENT_STATUS.md`，补充“首轮模拟补样本实验已做，但未改善真实验证平衡指标”的当前真相。
+### 修改原因
+- 用户要求“找一些数据，模拟一些加仓减仓动作，把这块数据补全”，目标是解决 continuation / replay 的负样本稀缺问题。
+- 这类补样本如果直接并入主训练集，最容易污染真值，所以先按方案 A 做“隔离增强 + 真验证对比”。
+- 实验的价值不只是补数据，更重要的是证明当前瓶颈到底是“样本数量”还是“负样本形状”。
+### 方案还差什么？
+- [ ] 当前模拟样本仍然只是实验层，尚未形成可并入 governed 训练主集的批准版本。
+- [ ] 还没有把“广义事件增强”收紧到“针对真实失败事件的定向增强”，后续需要改成 false breakout / support fail / premature reduce / late reduce 等更窄口径。
+- [ ] 还没有把这轮实验结果重新反馈回 replay 标签设计本身，尤其是 `late_*` 稀缺问题。
+### 潜在问题
+- [ ] 首轮模拟增强虽然显著提高了裸 `accuracy`，但降低了 `balanced_accuracy` 和负类召回，说明它把模型推向了多数类，而不是补对了失败样本。
+- [ ] 当前模拟样本池里正类仍然多于负类，且与真实验证负类形状不够一致，因此“补量”没有变成“补对”。
+- [ ] 如果后续有人只看 `accuracy`，会误判这轮增强是成功的；后续必须继续坚持 `balanced_accuracy + negative recall + real validation only`。
+### 关闭项
+- 已通过 `python D:\SM\scripts\test_nikkei_simulated_action_balance.py`，2 个新契约测试通过。
+- 已通过 `python D:\SM\scripts\test_nikkei_continuation_head.py`、`python D:\SM\scripts\test_nikkei_replay_classifier.py`、`python D:\SM\scripts\test_run_nikkei_hgb_rf_daily_workflow.py` 与 `python C:\Users\wakes\.codex\skills\nikkei-live-journal\scripts\test_upsert_journal.py`，确认旧链路未被带坏。
+- 已完成真实实验并确认：模拟样本只进入训练、不进入验证；首轮增强未改善真实验证的平衡指标，因此当前结论是“负样本质量问题大于负样本数量问题”。

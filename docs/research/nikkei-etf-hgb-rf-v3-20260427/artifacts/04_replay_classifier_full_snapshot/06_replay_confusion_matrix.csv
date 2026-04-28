@@ -1,0 +1,8 @@
+﻿actual_label,acceptable_add,acceptable_reduce,correct_add,correct_reduce,inconclusive,premature_add,premature_reduce
+acceptable_add,52,0,19,0,0,44,0
+acceptable_reduce,0,131,0,32,0,0,37
+correct_add,88,0,170,0,0,56,0
+correct_reduce,0,88,0,232,0,0,41
+inconclusive,6,4,3,2,1105,22,3
+premature_add,10,0,2,0,0,36,0
+premature_reduce,0,10,0,0,0,0,10

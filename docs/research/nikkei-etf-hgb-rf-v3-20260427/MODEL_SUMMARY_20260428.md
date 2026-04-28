@@ -159,7 +159,47 @@ V3 是底层仓位锚：
 
 样本切法不是简单随机拆分，而是按时间顺序切分，避免未来信息泄漏。
 
-### 4.3 特征设计思路
+### 4.3 当前实盘口径
+
+2026-04-28 起，当前批准口径不再是“拿一份旧 daily snapshot 手工解释”，而是：
+
+1. 扩窗重训
+2. 每日 walk-forward
+3. 只消费 `live_pre_year`
+
+具体含义：
+
+- 治理层的重训 / 年度 walk-forward 回测按扩窗口径推进，而不是长期冻结旧训练窗口。
+- 评分层按日执行 walk-forward 式 live workflow。
+- `known_labels_asof` 只保留为诊断口径，不能进入实盘信号链。
+- 每次运行都要同时暴露 `as_of_date` 和 `effective_signal_date`，避免把“请求日期”误当成“真实有效信号日”。
+
+需要特别注意：
+
+- 当前 2026 年 `live_pre_year` 日常 workflow 的训练/验证切分是固定的：`train through 2025-09-30`，`validate on 2025Q4`，然后对请求区间逐日打分。
+- 扩窗 cadence 主要体现在治理层重训和年度 HGB walk-forward，不等于“每天都重写 2026 live 训练窗”。
+
+当前操作入口是：
+
+- `python D:\SM\scripts\run_nikkei_hgb_rf_daily_workflow.py --as-of-date 2026-04-27 --score-start-date 2026-04-01 --journal-dir D:\SM\docs\trading-journal\nikkei`
+
+这个 workflow 会：
+
+- 跑一轮 `live_pre_year` daily scoring
+- 读取 `05_latest_adjustment_artifacts_live_pre_year.csv`
+- 读取 `06_daily_workflow_manifest_live_pre_year.json`
+- 输出 HGB / RF 的稳定摘要
+- 可选自动写入 `docs/trading-journal/nikkei/`
+
+如果请求日已经晚于最后一个有效 live row，workflow 会回退到 `<= as_of_date` 的最后一个可用信号日，并明确写出 `effective_signal_date`。因此实盘解释必须跟随 `effective_signal_date`，不能只看请求日期。
+
+实现字段名分别是：
+
+- artifact table：`requested_as_of_date`、`effective_as_of_date`
+- workflow manifest：`latest_artifact_as_of_date`
+- stdout 摘要：`effective_signal_date=...`
+
+### 4.4 特征设计思路
 
 当前主线特征分为两大组：
 
@@ -189,7 +229,7 @@ V3 是底层仓位锚：
 - `weekly_down_day_volume_share`
 - `weekly_volume_price_confirmation`
 
-### 4.4 资金面处理原则
+### 4.5 资金面处理原则
 
 资金面目前已经从“直接进训练”降级为“观察层”。
 
@@ -397,19 +437,36 @@ RF 的重要度更偏向：
 - 当前一周方向预测本身并不强
 - 模型价值更可能体现在“调仓约束”和“风险管理”，而不是单纯押涨跌
 
-### 7.2 registry / refit 里仍有旧 `10d` 语义残留
+### 7.2 registry / refit 的旧 `10d` 残留已经完成整包刷新
 
-在当前 `training_result.json` 中仍能看到：
+这一条现在要分成“已经修完的部分”和“仍未修完的部分”来看：
 
-- `registry_id = ...-10d-direction_head`
-- `candidate_registry_ref = ...-10d-direction_head`
+1. 代码与测试层已经修复
+2. 研究包训练快照也已经在 2026-04-28 完成 post-fix rerun 刷新
 
-这说明：
+代码层修复内容没有变：
 
-- artifact 的主体命名已经切到 `1w`
-- 但部分 registry / refit 元数据仍残留 `10d`
+- `registry_id`
+- `candidate_registry_ref`
 
-这属于合同层遗留，不影响当前研究包阅读，但会影响后续正式化。
+现在会优先依据 artifact truth / model identity 生成日经周频 `1w` token，而不是继续从通用 `horizon_days=10` 回退成旧的 `10d` 后缀。
+
+对应保护已经进入测试：
+
+- `tests/security_scorecard_refit_cli.rs`
+- `tests/security_scorecard_training_cli.rs`
+
+而且这次已经把研究包里的训练快照同步刷新：
+
+- `training_result.json`
+- `scorecard_model_registry/*.json`
+- `scorecard_refit_runs/*.json`
+- `artifact_manifest.csv`
+
+因此当前正确口径应是：
+
+- 当前研究包训练快照里的正式 registry/refit 元数据已经与代码口径一致，使用 `1w` token
+- 如果后续新的周频 rerun 再出现 `...10d-direction_head`，应直接视为回归缺陷，而不是历史残留
 
 ### 7.3 资金持续性时间尺度还没完全对齐
 
@@ -439,19 +496,26 @@ RF 的重要度更偏向：
 - 把 `HGB 增强 V3` 当成当前主风险仓位模型
 - 把 `RF` 当成辅助解释和分歧检测器
 - 把 ETF 执行层理解为“择低溢价买入 + 开盘执行 + 3bp 成本”的实盘近似口径
+- 把 `scripts/run_nikkei_hgb_rf_daily_workflow.py` 当成当前标准 daily operator 入口
+- 只消费 `live_pre_year` artifact，并用 `effective_signal_date` 解释当天有效信号
+- 把 `src/ops/security_nikkei_etf_position_signal.rs` 理解为只接受 `live_pre_year` HGB artifact 的正式 ETF Tool
+- 把 journal 默认落盘位置理解为 `D:\SM\docs\trading-journal\nikkei\`
 
 ### 8.2 不能这样用
 
 - 不能把 `known_labels_asof` 当成实盘信号
+- 不能把请求日 `as_of_date` 直接当成有效信号日，必须同时确认 `effective_signal_date`
 - 不能把周频 `holdout` 或单次高命中率样本直接当成生产结论
 - 不能把 `4w` 资金持续性结果当成 `1y` 结果对外汇报
 - 不能把当前模型说成“已经稳定预测日经未来一周涨跌”
+- 不能把旧的无 `train_policy` JSON 或非 policy-qualified JSON 当成正式 live artifact
+- 不能把 `known_labels_asof` artifact 或非 policy 文件名喂给 `security_nikkei_etf_position_signal`
 
 ## 9. 当前总判断
 
 如果只用一句话总结当前研究状态：
 
-**这套体系已经从“泛化的涨跌预测”收敛到“围绕调仓点做风险仓位管理”，其中 HGB 增强 V3 仍是当前最优主线；但周频 `1w` 方向训练本身预测力仍弱，资金持续性时间尺度与 registry 元数据也还没有完全收口，因此现在适合当研究型实盘辅助系统，不适合被表述成完全成熟的自动交易模型。**
+**这套体系已经从“泛化的涨跌预测”收敛到“围绕调仓点做风险仓位管理”，其中 HGB 增强 V3 仍是当前最优主线；当前 live 口径也已经收口到“扩窗重训 + 每日 walk-forward + live_pre_year artifact only”，但周频 `1w` 方向训练本身预测力仍弱，资金持续性时间尺度也还没有完全对齐，因此现在适合当研究型实盘辅助系统，不适合被表述成完全成熟的自动交易模型。**
 
 ## 10. 推荐阅读顺序
 
@@ -461,3 +525,21 @@ RF 的重要度更偏向：
 4. `artifacts/02_live_like_backtest_full_snapshot/08_no_deadband_decision_summary.csv`
 5. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/02_model_validation_metrics_live_pre_year.csv`
 6. `artifacts/03_daily_hgb_rf_scoring_full_snapshot/03_global_feature_importance_live_pre_year.csv`
+
+## 11. Continuation Head Update (2026-04-28)
+
+The research stack is now four-layer:
+
+1. base position framework
+2. HGB / RF adjustment model
+3. replay classifier
+4. continuation head
+
+The continuation head is not a replacement for the HGB/RF line. It is a second-stage research layer that compresses replay truth into a binary continuation-quality target over `1D / 3D / 5D`.
+
+Current reality:
+
+- the pipeline now exists and is reproducible;
+- `1D` continuation is more learnable than `5D`;
+- raw validation accuracy is not a safe headline because the target is extremely imbalanced toward continuation;
+- operator integration is not approved yet.

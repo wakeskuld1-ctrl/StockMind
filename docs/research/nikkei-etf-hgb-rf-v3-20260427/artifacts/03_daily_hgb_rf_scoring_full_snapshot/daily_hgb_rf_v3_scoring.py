@@ -61,16 +61,36 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    analysis_root = Path(args.analysis_root)
+    run_daily_scoring(
+        as_of_date=args.as_of_date,
+        score_start_date=args.score_start_date,
+        analysis_root=args.analysis_root,
+        output_root=args.output_root,
+        train_policy=args.train_policy,
+    )
+
+
+# 2026-04-28 CST: Added to let the governed daily workflow call the scorer
+# directly without rebuilding CLI argv strings. Purpose: keep one execution path
+# for CLI runs and scripted live_pre_year daily workflow runs.
+def run_daily_scoring(
+    *,
+    as_of_date: str,
+    score_start_date: str,
+    analysis_root: str | Path,
+    output_root: str | Path,
+    train_policy: str,
+) -> dict[str, object]:
+    analysis_root = Path(analysis_root)
     adjustment_root = analysis_root / "adjustment_point_analysis"
-    output_root = Path(args.output_root)
+    output_root = Path(output_root)
     output_root.mkdir(parents=True, exist_ok=True)
 
-    as_of_date = pd.Timestamp(args.as_of_date)
-    score_start_date = pd.Timestamp(args.score_start_date)
+    as_of_date = pd.Timestamp(as_of_date)
+    score_start_date = pd.Timestamp(score_start_date)
     training_frame = load_training_frame(adjustment_root)
     features = feature_columns(training_frame)
-    train_frame = select_training_rows(training_frame, as_of_date, args.train_policy)
+    train_frame = select_training_rows(training_frame, as_of_date, train_policy)
     score_frame = build_live_feature_frame(
         analysis_root=analysis_root,
         adjustment_root=adjustment_root,
@@ -120,7 +140,7 @@ def main() -> None:
                 train_frame,
                 features,
                 as_of_date,
-                args.train_policy,
+                train_policy,
             )
         )
         importance_rows.extend(
@@ -131,11 +151,11 @@ def main() -> None:
                 train_frame,
                 features,
                 as_of_date,
-                args.train_policy,
+                train_policy,
             )
         )
         driver_rows.extend(compute_driver_rows(spec.name, scored, train_frame, importance_rows, features))
-        artifact_rows.append(build_latest_artifact_row(spec.name, scored, as_of_date, args.train_policy))
+        artifact_rows.append(build_latest_artifact_row(spec.name, scored, as_of_date, train_policy))
 
     all_scores = pd.concat(scored_frames, ignore_index=True)
     metrics = pd.DataFrame(metrics_rows)
@@ -143,8 +163,20 @@ def main() -> None:
     drivers = pd.DataFrame(driver_rows)
     artifacts = pd.DataFrame(artifact_rows)
 
-    write_outputs(output_root, all_scores, metrics, importances, drivers, artifacts, as_of_date, args.train_policy)
+    manifest = write_outputs(
+        output_root,
+        all_scores,
+        metrics,
+        importances,
+        drivers,
+        artifacts,
+        as_of_date,
+        train_policy,
+        score_start_date=score_start_date,
+        analysis_root=analysis_root,
+    )
     print_summary(all_scores, metrics, artifacts, output_root)
+    return manifest
 
 
 def load_training_frame(adjustment_root: Path) -> pd.DataFrame:
@@ -536,17 +568,64 @@ def write_outputs(
     artifacts: pd.DataFrame,
     as_of_date: pd.Timestamp,
     train_policy: str,
-) -> None:
-    scores.to_csv(output_root / f"01_daily_model_scores_{train_policy}.csv", index=False, encoding="utf-8-sig")
-    metrics.to_csv(output_root / f"02_model_validation_metrics_{train_policy}.csv", index=False, encoding="utf-8-sig")
-    importances.to_csv(output_root / f"03_global_feature_importance_{train_policy}.csv", index=False, encoding="utf-8-sig")
-    drivers.to_csv(output_root / f"04_local_driver_explanations_{train_policy}.csv", index=False, encoding="utf-8-sig")
-    artifacts.to_csv(output_root / f"05_latest_adjustment_artifacts_{train_policy}.csv", index=False, encoding="utf-8-sig")
+    score_start_date: pd.Timestamp | None = None,
+    analysis_root: Path | None = None,
+) -> dict[str, object]:
+    generated_files: list[str] = []
+    latest_artifact_as_of_date = (
+        pd.to_datetime(artifacts["as_of_date"]).max().date().isoformat()
+        if not artifacts.empty
+        else as_of_date.date().isoformat()
+    )
+
+    score_path = output_root / f"01_daily_model_scores_{train_policy}.csv"
+    metrics_path = output_root / f"02_model_validation_metrics_{train_policy}.csv"
+    importance_path = output_root / f"03_global_feature_importance_{train_policy}.csv"
+    drivers_path = output_root / f"04_local_driver_explanations_{train_policy}.csv"
+    artifacts_path = output_root / f"05_latest_adjustment_artifacts_{train_policy}.csv"
+
+    scores.to_csv(score_path, index=False, encoding="utf-8-sig")
+    metrics.to_csv(metrics_path, index=False, encoding="utf-8-sig")
+    importances.to_csv(importance_path, index=False, encoding="utf-8-sig")
+    drivers.to_csv(drivers_path, index=False, encoding="utf-8-sig")
+    artifacts.to_csv(artifacts_path, index=False, encoding="utf-8-sig")
+    generated_files.extend(
+        [
+            score_path.name,
+            metrics_path.name,
+            importance_path.name,
+            drivers_path.name,
+            artifacts_path.name,
+        ]
+    )
     for _, row in artifacts.iterrows():
         # 2026-04-27 CST: Include train_policy to prevent live and diagnostic
         # artifacts from overwriting each other during paired research runs.
         artifact_path = output_root / f"{row['model_id']}_{train_policy}_{as_of_date.date().isoformat()}_adjustment.json"
         artifact_path.write_text(json.dumps(row.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
+        generated_files.append(artifact_path.name)
+
+    # 2026-04-28 CST: Added a machine-readable manifest because the governed
+    # workflow must prove which policy/date produced each live artifact batch.
+    # Purpose: let downstream daily operators and tests validate live-only files.
+    manifest = {
+        "contract_version": CONTRACT_VERSION,
+        "model_set_version": MODEL_SET_VERSION,
+        "train_policy": train_policy,
+        "as_of_date": as_of_date.date().isoformat(),
+        "latest_artifact_as_of_date": latest_artifact_as_of_date,
+        "score_start_date": (
+            score_start_date.date().isoformat()
+            if score_start_date is not None
+            else pd.to_datetime(scores["date"]).min().date().isoformat()
+        ),
+        "analysis_root": str(analysis_root) if analysis_root is not None else None,
+        "generated_files": generated_files,
+    }
+    manifest_path = output_root / f"06_daily_workflow_manifest_{train_policy}.json"
+    manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")
+    generated_files.append(manifest_path.name)
+    return manifest
 
 
 def print_summary(scores: pd.DataFrame, metrics: pd.DataFrame, artifacts: pd.DataFrame, output_root: Path) -> None:

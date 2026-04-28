@@ -1,0 +1,38 @@
+{
+  "target_definition_version": "nikkei_replay_label_v1",
+  "sample_count": 2205,
+  "sample_sources": [
+    "historical_research",
+    "live_journal"
+  ],
+  "label_vocabulary": [
+    "correct_reduce",
+    "acceptable_reduce",
+    "premature_reduce",
+    "late_reduce",
+    "correct_add",
+    "acceptable_add",
+    "premature_add",
+    "late_add",
+    "inconclusive"
+  ],
+  "required_fields": [
+    "sample_id",
+    "signal_date",
+    "sample_source",
+    "signal_family",
+    "signal_direction",
+    "action_type",
+    "base_position_v3",
+    "rating_state",
+    "dist_res20",
+    "dist_sup20",
+    "dist_sup60",
+    "weighted_vol_down",
+    "component_above200_breadth",
+    "avg_component_vr",
+    "horizon_1d_close_return",
+    "horizon_3d_close_return",
+    "horizon_5d_close_return"
+  ]
+}

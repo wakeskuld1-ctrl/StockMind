@@ -1,0 +1,7 @@
+﻿dataset,label_name,sample_count
+baseline_train,1,789
+baseline_train,0,38
+simulated_train,1,480
+simulated_train,0,144
+validation_real,1,191
+validation_real,0,16

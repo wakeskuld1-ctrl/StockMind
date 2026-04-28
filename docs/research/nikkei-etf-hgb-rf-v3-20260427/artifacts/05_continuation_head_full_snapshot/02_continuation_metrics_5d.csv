@@ -1,0 +1,10 @@
+﻿metric_name,metric_value
+sample_count,2205.0
+eligible_sample_count,1058.0
+observed_outcome_sample_count,1058.0
+train_sample_count,846.0
+validation_sample_count,212.0
+observed_label_count,2.0
+train_accuracy,0.6276595744680851
+validation_accuracy,0.5707547169811321
+used_dummy_fallback,0.0

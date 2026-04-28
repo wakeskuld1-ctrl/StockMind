@@ -22,12 +22,17 @@ This is a research snapshot, not a final production model registry.
 | `artifact_manifest.csv` | File inventory and SHA256 hashes for all included artifacts. |
 | `MODEL_SUMMARY_20260428.md` | Chinese summary of algorithms, rules, training logic, accuracy, backtest results, and current limits. |
 | `ALGORITHM_HANDOFF_MANUAL.md` | Algorithm handoff manual for the next AI or engineer. |
+| `PREDICTION_METHODS_HANDOFF_20260429.md` | Dedicated handoff for the Replay Classifier and Continuation Head research line. |
 
 ## Key Research Conclusions
 
 If you need the fastest high-level overview, read:
 
 `MODEL_SUMMARY_20260428.md`
+
+If you need only the two prediction-enhancement methods, read:
+
+`PREDICTION_METHODS_HANDOFF_20260429.md`
 
 ### HGB Enhanced V3
 
