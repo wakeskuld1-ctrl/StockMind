@@ -1,0 +1,9 @@
+{
+  "search_mode": "small_range_bounded_refinement",
+  "config_count": 96,
+  "best_config_name": "f0.50_s1_-0.05_1_0.40_t0_0.00_0_0.00_h20_r5",
+  "best_total_return": 1.1275124505583793,
+  "best_max_drawdown": -0.14271275123632376,
+  "best_median_repair_days": 1.0,
+  "best_repair_within_5d": 0.9655172413793104
+}

@@ -1,0 +1,6 @@
+record_type,as_of_date,symbol,trade_date,side,quantity,price,cash_amount,remaining_position,cost_basis,source_note
+trade_event,2026-04-29,518800.SH,2026-02-04,buy,2900,10.824,31389.60,,,user_provided_historical_trade
+trade_event,2026-04-29,518800.SH,2026-04-03,sell,900,9.782,8803.80,,,user_provided_historical_trade
+trade_event,2026-04-29,518800.SH,2026-04-29,buy,1800,10.112,18201.60,,,user_provided_first_layer_add
+position_snapshot,2026-04-29,518800.SH,,,,,,1885,11.988,user_provided_current_snapshot
+position_snapshot,2026-04-29,518800.SH,,,,,,3685,11.07316010854817,post_first_layer_recomputed_from_snapshot_plus_fill

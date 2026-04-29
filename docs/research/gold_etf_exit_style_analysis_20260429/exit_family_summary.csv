@@ -1,0 +1,4 @@
+family,best_config_name,best_total_return,best_max_drawdown,best_return_drawdown_ratio,family_config_count
+high_watermark_drawdown,hwm_dd_0.015,1.0980205404145447,-0.14271275123632376,7.693920346306606,4
+staged_profit_giveback,profit_0.050_giveback_0.50,0.984199672839333,-0.1318892047337089,7.462321687559514,6
+ma_trend,ma5_trend,0.8484073326742299,-0.14271275123632376,5.944860044561247,3

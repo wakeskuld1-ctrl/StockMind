@@ -1,0 +1,19 @@
+{
+  "study": "gold_etf_15d_anchor_extension_exit",
+  "anchor_day": 15,
+  "rebound_check_day": 5,
+  "max_hold_days": [
+    20,
+    30,
+    40,
+    60,
+    90,
+    120,
+    160,
+    200
+  ],
+  "best_config_name": "anchor15_max20_r5",
+  "best_total_return": 1.005043527050121,
+  "best_max_drawdown": -0.14271275123632376,
+  "best_return_drawdown_ratio": 7.04242275720569
+}

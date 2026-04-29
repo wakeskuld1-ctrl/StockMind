@@ -1,0 +1,11 @@
+{
+  "study": "gold_etf_partial_exit_global_grid",
+  "rule_count": 3276,
+  "best_config_name": "p0.70_canchor_return_gt_0.01_dd0.010_s18_h60_loss_hold_to_max",
+  "best_total_return": 1.4093361168546026,
+  "best_max_drawdown": -0.14271275123632388,
+  "best_return_drawdown_ratio": 9.875334226587961,
+  "beats_live_return_drawdown_ratio": true,
+  "defensive_candidate": false,
+  "acceptance_live_rule_ratio": 7.9
+}

@@ -1,0 +1,14 @@
+{
+  "study": "gold_etf_partial_exit_stability",
+  "live_rule_return_drawdown_ratio": 7.9,
+  "config_count": 144,
+  "beats_live_count": 133,
+  "beats_live_share": 0.9236111111111112,
+  "top10_median_return_drawdown_ratio": 9.807050479116224,
+  "top10_min_return_drawdown_ratio": 9.495985621204474,
+  "top10_max_return_drawdown_ratio": 9.875334226587961,
+  "best_config_name": "p0.70_canchor_return_gt_0.01_dd0.010_s18_h60_loss_hold_to_max",
+  "best_total_return": 1.4093361168546026,
+  "best_max_drawdown": -0.14271275123632388,
+  "best_return_drawdown_ratio": 9.875334226587961
+}
